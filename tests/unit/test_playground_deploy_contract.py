@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from playground.api.app import _build_cors_origins, _build_cors_origin_regex
+from playground.api.app import _build_cors_origin_regex, _build_cors_origins
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WRANGLER_PATH = PROJECT_ROOT / "wrangler.toml"
