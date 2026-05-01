@@ -1,11 +1,15 @@
 /**
  * DataForge Playground frontend.
  *
- * This file assumes Cloudflare Pages serves the static UI and the backend URL
- * is provided through config.js at runtime.
+ * This file assumes Cloudflare Workers Static Assets serves the static UI and
+ * the backend URL is provided through config.js at runtime.
  */
 
-const BACKEND_URL = String(window.__DATAFORGE_CONFIG__?.BACKEND_URL ?? "").trim();
+function normalizeBackendUrl(rawUrl) {
+    return String(rawUrl ?? "").trim().replace(/\/+$/, "");
+}
+
+const BACKEND_URL = normalizeBackendUrl(window.__DATAFORGE_CONFIG__?.BACKEND_URL ?? "");
 const HEALTH_TIMEOUT_MS = 3000;
 const HEALTH_MAX_RETRIES = 8;
 const HEALTH_INITIAL_DELAY_MS = 1000;

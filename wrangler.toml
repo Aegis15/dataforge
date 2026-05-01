@@ -1,0 +1,6 @@
+name = "dataforge"
+compatibility_date = "2026-04-27"
+
+[assets]
+directory = "./playground/web"
+not_found_handling = "404-page"

@@ -74,18 +74,21 @@ git push origin main
 ```
 
 The backend remains API-only. The browser UI is deployed separately to
-Cloudflare Pages.
+Cloudflare Workers Static Assets.
 
 ## Step 6: Configure Space variables and secrets
 
 In the Space settings:
 
 - `DATAFORGE_PLAYGROUND_ORIGINS`
-  Example: `https://dataforge.pages.dev`
+  Example: `https://dataforge.<your-workers-subdomain>.workers.dev`
 - `GROQ_API_KEY` or `GEMINI_API_KEY`
   Optional. Enables advanced mode in the hosted playground.
 - `DATAFORGE_LLM_PROVIDER`
   Optional. Set this explicitly if you want to force a provider selection.
+
+If you attach a custom frontend domain, add that exact origin to
+`DATAFORGE_PLAYGROUND_ORIGINS` as a comma-separated value.
 
 ## Step 7: Verify
 
@@ -94,6 +97,8 @@ curl -s https://Praneshrajan15-data-quality-env.hf.space/api/health
 curl -s -X POST \
   -F "file=@playground/api/samples/hospital_10rows.csv" \
   https://Praneshrajan15-data-quality-env.hf.space/api/profile
+python scripts/playground/verify_frontend_deploy.py \
+  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev
 ```
 
 Expected health response:

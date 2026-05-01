@@ -11,7 +11,7 @@ APP_PATH = PROJECT_ROOT / "playground" / "web" / "app.js"
 
 
 def test_index_uses_relative_asset_paths_and_config_contract() -> None:
-    """The static frontend must be deployable on Pages without HF static assumptions."""
+    """The static frontend must be deployable from Cloudflare assets without HF static assumptions."""
     body = INDEX_PATH.read_text(encoding="utf-8")
     assert "/static/" not in body
     assert 'src="./config.js"' in body
@@ -29,6 +29,7 @@ def test_config_js_exposes_backend_url_contract() -> None:
 def test_frontend_stays_storage_free_and_capability_aware() -> None:
     """The frontend remains storage-free and consumes health capability metadata."""
     body = APP_PATH.read_text(encoding="utf-8")
+    assert "normalizeBackendUrl" in body
     assert "localStorage" not in body
     assert "sessionStorage" not in body
     assert "advanced_available" in body

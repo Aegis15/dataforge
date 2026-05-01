@@ -1,8 +1,8 @@
 """Stateless FastAPI backend for the hosted DataForge playground.
 
-The Week 5 playground is intentionally split across two free-tier hosts:
+The hosted playground is intentionally split across two free-tier hosts:
 
-- Cloudflare Pages serves the static frontend.
+- Cloudflare Workers Static Assets serves the static frontend.
 - Hugging Face Spaces serves this API-only backend.
 
 All uploaded data is processed in memory or under a per-request temporary
@@ -95,8 +95,8 @@ def _build_cors_origins() -> list[str]:
 
 
 def _build_cors_origin_regex() -> str:
-    """Build the regex allowlist for Pages and optional localhost development."""
-    patterns = [r"https://.*\.pages\.dev"]
+    """Build the regex allowlist for Cloudflare hostnames and local development."""
+    patterns = [r"https://.*\.(?:pages|workers)\.dev"]
     if os.environ.get("DATAFORGE_PLAYGROUND_DEV") == "1":
         patterns.append(r"http://(?:localhost|127(?:\.\d{1,3}){3})(?::\d+)?")
     return "^(" + "|".join(patterns) + ")$"
@@ -310,7 +310,7 @@ async def root() -> dict[str, Any]:
         "service": "DataForge Playground API",
         "status": "ok",
         "docs_url": "/api/docs",
-        "frontend_hosting": "cloudflare_pages",
+        "frontend_hosting": "cloudflare_static_assets",
     }
 
 

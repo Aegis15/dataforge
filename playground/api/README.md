@@ -13,8 +13,8 @@ short_description: Upload a CSV, profile and dry-run-repair it in your browser.
 # DataForge Playground
 
 API backend for the hosted DataForge Playground. The browser UI is deployed to
-Cloudflare Pages; this Space serves the stateless CSV profiling and dry-run
-repair endpoints.
+Cloudflare Workers Static Assets; this Space serves the stateless CSV
+profiling and dry-run repair endpoints.
 
 **What it does:**
 

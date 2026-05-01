@@ -10,12 +10,13 @@ running server or network access.
 from __future__ import annotations
 
 import io
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from playground.api.app import MAX_UPLOAD_BYTES, app, limiter
+from playground.api.app import MAX_UPLOAD_BYTES, _build_cors_origin_regex, app, limiter
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -51,7 +52,7 @@ def test_root_returns_api_service_metadata(client: TestClient) -> None:
     body = response.json()
     assert body["service"] == "DataForge Playground API"
     assert body["docs_url"] == "/api/docs"
-    assert body["frontend_hosting"] == "cloudflare_pages"
+    assert body["frontend_hosting"] == "cloudflare_static_assets"
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +81,22 @@ def test_health_reports_advanced_capability_when_keyed(
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["advanced_available"] is True
+
+
+@pytest.mark.integration
+def test_cors_allows_workers_dev_origin(client: TestClient) -> None:
+    """Workers-hosted frontends receive the expected CORS allow-origin header."""
+    origin = "https://dataforge.example-subdomain.workers.dev"
+    response = client.options(
+        "/api/health",
+        headers={
+            "Origin": origin,
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == origin
+    assert re.fullmatch(_build_cors_origin_regex(), origin) is not None
 
 
 # ---------------------------------------------------------------------------

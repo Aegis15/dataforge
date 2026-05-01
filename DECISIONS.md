@@ -203,3 +203,32 @@ frontend. The cold-start tradeoff is acceptable for a demo playground.
 or Cloudflare changes Pages pricing), or a sponsor donates compute, revisit
 the hosting choice. If cold-start UX proves unacceptable in design-partner
 feedback, consider a paid tier or a keep-alive cron.
+
+---
+
+## 2026-04-27 - Align the frontend deploy path with Cloudflare Workers Static Assets
+**Context**: the deployed Cloudflare project is running Workers Builds with
+`wrangler deploy`, but the repo still documents Cloudflare Pages and a
+build-time `sed` mutation of `playground/web/config.js`. This drift caused the
+latest frontend build to fail because Wrangler was not given an explicit assets
+directory for the static site.
+**Alternatives**:
+- Move the frontend back to Cloudflare Pages. Pros: matches the older repo docs.
+  Cons: requires reworking the connected Cloudflare project and keeps two
+  deployment models in play.
+- Keep the current Cloudflare Worker project and add explicit static-assets
+  configuration (this choice). Pros: matches the existing Cloudflare build
+  system, makes the assets directory explicit, and lets the repo own the
+  frontend deployment contract through `wrangler.toml`. Cons: requires doc and
+  metadata updates from Pages wording to Workers Static Assets wording.
+**Decision**: keep the existing Cloudflare Worker project and standardize the
+frontend on Cloudflare Workers Static Assets.
+**Reasoning**: the codebase already ships a pure static frontend, so the
+minimal durable fix is to add an assets-only Wrangler config, replace the
+runtime config mutation with a validated Python renderer, and broaden backend
+CORS to `*.workers.dev` plus explicit custom origins.
+**Reviewed with**: `playground/web/DEPLOY.md`, `specs/SPEC_playground.md`, and
+the Cloudflare Workers static-assets / Pages configuration docs.
+**Reversal criteria**: if Cloudflare deprecates assets-only Worker deploys for
+repo-connected builds, or if Pages regains a clear operational advantage for
+this static site, revisit the frontend hosting model.

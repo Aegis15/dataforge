@@ -114,7 +114,7 @@ jobs:
           pip install -e ".[dev]"
           pip install -r playground/api/requirements.txt
       - name: Playground smoke tests
-        run: pytest tests/integration/test_playground_smoke.py tests/unit/test_playground_stage_space.py tests/unit/test_playground_web_contract.py -x -v
+        run: pytest tests/integration/test_playground_smoke.py tests/unit/test_playground_deploy_contract.py tests/unit/test_playground_stage_space.py tests/unit/test_playground_web_contract.py -x -v
       - name: Validate HF Space YAML front-matter
         run: |
           python -c "

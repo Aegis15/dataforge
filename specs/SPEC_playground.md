@@ -2,14 +2,14 @@
 
 > Status: Reviewed
 > Owner: @Praneshrajan15
-> Last updated: 2026-04-24
+> Last updated: 2026-04-27
 
 ## 1. Purpose (2 sentences)
 
 Provide a stateless, free-tier browser demo of DataForge profiling and
 repair-dry-run behavior without weakening the core Safety -> Verifier ->
-Transaction shape. The frontend is served from Cloudflare Pages and the backend
-is served as an API-only Hugging Face Docker Space.
+Transaction shape. The frontend is served from Cloudflare Workers Static Assets
+and the backend is served as an API-only Hugging Face Docker Space.
 
 ## 2. Outcomes (measurable, binary pass/fail)
 
@@ -30,7 +30,8 @@ is served as an API-only Hugging Face Docker Space.
 - API endpoints: `/`, `/api/health`, `/api/samples/{name}`, `/api/profile`, `/api/repair`
 - Temporary-directory-only dry-run transaction journaling
 - Heuristic-first behavior with optional advanced mode
-- Cloudflare Pages frontend with runtime backend configuration via `config.js`
+- Cloudflare Workers Static Assets frontend with runtime backend configuration
+  via `config.js`
 - Hugging Face staging script and deployment runbooks
 - Playground-focused tests, CI checks, and quality-gate coverage
 
@@ -51,7 +52,8 @@ is served as an API-only Hugging Face Docker Space.
 
 ## 5. Prior decisions (locked - require new spec to change)
 
-- Cloudflare Pages serves the frontend; Hugging Face Space serves the API backend.
+- Cloudflare Workers Static Assets serves the frontend; Hugging Face Space
+  serves the API backend.
 - The hosted playground is stateless and dry-run only.
 - Heuristic mode is the default; advanced mode is opt-in and backend-key-gated.
 - Playground-only runtime dependencies stay out of core package runtime deps.

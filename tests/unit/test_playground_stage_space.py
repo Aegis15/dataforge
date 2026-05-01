@@ -76,8 +76,11 @@ def test_space_setup_runbook_uses_staging_flow() -> None:
     assert "subtree" not in body.lower()
 
 
-def test_pages_deploy_runbook_rewrites_config_only() -> None:
-    """The Pages deploy runbook targets config.js instead of mutating app.js."""
+def test_frontend_deploy_runbook_uses_workers_static_assets_flow() -> None:
+    """The frontend deploy runbook documents the renderer and Wrangler contract."""
     body = DEPLOY_PATH.read_text(encoding="utf-8")
+    assert "wrangler.toml" in body
+    assert "render_web_config.py" in body
+    assert "verify_frontend_deploy.py" in body
     assert "config.js" in body
-    assert "app.js" not in body.lower() or "config.js" in body
+    assert "sed -i" not in body
