@@ -10,11 +10,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 __all__ = [
-    "DETECTION_WEIGHT", "FALSE_POS_PENALTY_RATE", "FIX_WEIGHT",
-    "LATE_STEP_THRESHOLD", "P_FALSE_POS", "P_INVALID", "P_LATE_STEP",
-    "P_REINSPECT", "P_WRONG_FIX", "R_DIAGNOSE", "R_EXPLORE", "R_FIX",
-    "R_FIX_PARTIAL", "R_JUSTIFY_BONUS", "R_TYPE_BONUS", "SPAM_THRESHOLD",
-    "EpisodeMetrics", "RewardEngine",
+    "DETECTION_WEIGHT",
+    "FALSE_POS_PENALTY_RATE",
+    "FIX_WEIGHT",
+    "LATE_STEP_THRESHOLD",
+    "P_FALSE_POS",
+    "P_INVALID",
+    "P_LATE_STEP",
+    "P_REINSPECT",
+    "P_WRONG_FIX",
+    "R_DIAGNOSE",
+    "R_EXPLORE",
+    "R_FIX",
+    "R_FIX_PARTIAL",
+    "R_JUSTIFY_BONUS",
+    "R_TYPE_BONUS",
+    "SPAM_THRESHOLD",
+    "EpisodeMetrics",
+    "RewardEngine",
 ]
 
 # Positive rewards
@@ -65,12 +78,13 @@ class RewardEngine:
             return 0.0
         detection_rate = metrics.found_issues / metrics.total_issues
         fix_rate = (
-            metrics.fixed_issues / metrics.fixable_issues
-            if metrics.fixable_issues > 0 else 0.0
+            metrics.fixed_issues / metrics.fixable_issues if metrics.fixable_issues > 0 else 0.0
         )
         fp_rate = FALSE_POS_PENALTY_RATE
-        if (metrics.total_issues > 0
-                and metrics.total_diagnoses > SPAM_THRESHOLD * metrics.total_issues):
+        if (
+            metrics.total_issues > 0
+            and metrics.total_diagnoses > SPAM_THRESHOLD * metrics.total_issues
+        ):
             fp_rate *= 2.0
         penalty = metrics.false_positives * fp_rate
         raw = detection_rate * DETECTION_WEIGHT + fix_rate * FIX_WEIGHT - penalty
@@ -93,8 +107,7 @@ class RewardEngine:
         if not new_row_indices:
             return P_REINSPECT
         undiscovered = sum(
-            1 for r in new_row_indices
-            if r in ground_truth_rows and r not in found_issue_rows
+            1 for r in new_row_indices if r in ground_truth_rows and r not in found_issue_rows
         )
         bonus = undiscovered * R_EXPLORE
         if total_rows > 0:

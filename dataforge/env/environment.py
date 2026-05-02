@@ -164,6 +164,7 @@ class DataForgeEnv:
         self._schema_info = dict.fromkeys(self._df.columns, "str")
         if _DEFAULT_SCHEMA.exists():
             import yaml
+
             with open(_DEFAULT_SCHEMA, encoding="utf-8") as f:
                 schema_data = yaml.safe_load(f)
             if schema_data and "columns" in schema_data:
@@ -173,7 +174,9 @@ class DataForgeEnv:
         self._ground_truth = run_all_detectors(self._df)
         logger.info(
             "Episode %s: %d rows, %d ground-truth issues",
-            self._episode_id[:8], len(self._df), len(self._ground_truth),
+            self._episode_id[:8],
+            len(self._df),
+            len(self._ground_truth),
         )
 
         # Initial observation with first 5 rows
@@ -220,9 +223,7 @@ class DataForgeEnv:
             return self._error_step(str(exc))
 
         # Late-step penalty
-        reward += self._reward_engine.compute_late_penalty(
-            self._step_count, self._max_steps
-        )
+        reward += self._reward_engine.compute_late_penalty(self._step_count, self._max_steps)
 
         # Accumulate
         self._cumulative_reward += reward
@@ -240,7 +241,9 @@ class DataForgeEnv:
             self._cumulative_reward = max(self._cumulative_reward, terminal)
 
         obs = DataForgeObservation(
-            visible_rows=tool_result.data if tool_result.action_type == "INSPECT_ROWS" and tool_result.success else None,
+            visible_rows=tool_result.data
+            if tool_result.action_type == "INSPECT_ROWS" and tool_result.success
+            else None,
             scratchpad_summary=self._scratchpad.summary(),
             step_budget_remaining=max(0, self._max_steps - self._step_count),
             tool_usage_history=list(self._tool_history),
@@ -284,7 +287,11 @@ class DataForgeEnv:
             return self._handle_diagnose(action)
         if isinstance(action, Fix):
             return self._handle_fix(action)
-        return ToolResult(action_type="UNKNOWN", success=False, error={"verdict": "error", "reason": "Unknown action type"}), P_INVALID
+        return ToolResult(
+            action_type="UNKNOWN",
+            success=False,
+            error={"verdict": "error", "reason": "Unknown action type"},
+        ), P_INVALID
 
     # ── Action handlers ───────────────────────────────────────────────────
 
@@ -292,7 +299,11 @@ class DataForgeEnv:
         """Handle INSPECT_ROWS: return dataset rows."""
         valid_indices = [i for i in action.row_indices if 0 <= i < len(self._df)]
         if not valid_indices:
-            return ToolResult(action_type="INSPECT_ROWS", success=False, error={"verdict": "error", "reason": "No valid row indices"}), P_INVALID
+            return ToolResult(
+                action_type="INSPECT_ROWS",
+                success=False,
+                error={"verdict": "error", "reason": "No valid row indices"},
+            ), P_INVALID
 
         # Apply 20-row cap
         valid_indices = valid_indices[:20]
@@ -303,7 +314,7 @@ class DataForgeEnv:
                 rows = rows[valid_cols]
 
         row_dicts = rows.to_dict(orient="records")
-        for i, idx in enumerate(valid_indices[:len(row_dicts)]):
+        for i, idx in enumerate(valid_indices[: len(row_dicts)]):
             row_dicts[i]["_row_index"] = idx
 
         # Noise injection
@@ -316,7 +327,11 @@ class DataForgeEnv:
         gt_rows = {issue.row for issue in self._ground_truth}
         found_rows = {f["row"] for f in self._found_issues}
         bonus = self._reward_engine.compute_exploration_bonus(
-            new_indices, self._inspected_rows, len(self._df), gt_rows, found_rows,
+            new_indices,
+            self._inspected_rows,
+            len(self._df),
+            gt_rows,
+            found_rows,
         )
         return ToolResult(action_type="INSPECT_ROWS", success=True, data=row_dicts), bonus
 
@@ -326,11 +341,27 @@ class DataForgeEnv:
         try:
             parsed = sqlglot.parse(action.query)
         except sqlglot.errors.ParseError as exc:
-            return ToolResult(action_type="SQL_QUERY", success=False, error={"verdict": "error", "reason": str(exc), "suggested_constraint": "Use valid SQL syntax"}), P_INVALID
+            return ToolResult(
+                action_type="SQL_QUERY",
+                success=False,
+                error={
+                    "verdict": "error",
+                    "reason": str(exc),
+                    "suggested_constraint": "Use valid SQL syntax",
+                },
+            ), P_INVALID
 
         for stmt in parsed:
             if stmt is not None and stmt.key not in ("select",):
-                return ToolResult(action_type="SQL_QUERY", success=False, error={"verdict": "rejected", "reason": f"Only SELECT queries allowed, got {stmt.key.upper()}", "suggested_constraint": "Use SELECT statements only"}), P_INVALID
+                return ToolResult(
+                    action_type="SQL_QUERY",
+                    success=False,
+                    error={
+                        "verdict": "rejected",
+                        "reason": f"Only SELECT queries allowed, got {stmt.key.upper()}",
+                        "suggested_constraint": "Use SELECT statements only",
+                    },
+                ), P_INVALID
 
         try:
             conn = duckdb.connect(":memory:")
@@ -340,19 +371,38 @@ class DataForgeEnv:
             rows = result_df.head(_MAX_RESULT_ROWS).to_dict(orient="records")
             return ToolResult(action_type="SQL_QUERY", success=True, data=rows), 0.0
         except duckdb.Error as exc:
-            return ToolResult(action_type="SQL_QUERY", success=False, error={"verdict": "error", "reason": str(exc)}), P_INVALID
+            return ToolResult(
+                action_type="SQL_QUERY",
+                success=False,
+                error={"verdict": "error", "reason": str(exc)},
+            ), P_INVALID
 
     def _handle_stat(self, action: StatTest) -> tuple[ToolResult, float]:
         """Handle STAT_TEST: run zscore/iqr/ks on a column."""
         if action.column not in self._df.columns:
-            return ToolResult(action_type="STAT_TEST", success=False, error={"verdict": "error", "reason": f"Column '{action.column}' not found"}), P_INVALID
+            return ToolResult(
+                action_type="STAT_TEST",
+                success=False,
+                error={"verdict": "error", "reason": f"Column '{action.column}' not found"},
+            ), P_INVALID
 
         try:
             col = pd.to_numeric(self._df[action.column], errors="coerce").dropna()
             if len(col) == 0:
-                return ToolResult(action_type="STAT_TEST", success=False, error={"verdict": "error", "reason": f"No numeric values in column '{action.column}'"}), P_INVALID
+                return ToolResult(
+                    action_type="STAT_TEST",
+                    success=False,
+                    error={
+                        "verdict": "error",
+                        "reason": f"No numeric values in column '{action.column}'",
+                    },
+                ), P_INVALID
         except Exception as exc:
-            return ToolResult(action_type="STAT_TEST", success=False, error={"verdict": "error", "reason": str(exc)}), P_INVALID
+            return ToolResult(
+                action_type="STAT_TEST",
+                success=False,
+                error={"verdict": "error", "reason": str(exc)},
+            ), P_INVALID
 
         from scipy import stats as scipy_stats
 
@@ -360,51 +410,93 @@ class DataForgeEnv:
             zscores = scipy_stats.zscore(col)
             threshold = action.threshold or 3.0
             outliers = col.index[abs(zscores) > threshold].tolist()
-            data = {"test": "zscore", "threshold": threshold, "outlier_indices": outliers, "n_outliers": len(outliers), "mean": float(col.mean()), "std": float(col.std())}
+            data = {
+                "test": "zscore",
+                "threshold": threshold,
+                "outlier_indices": outliers,
+                "n_outliers": len(outliers),
+                "mean": float(col.mean()),
+                "std": float(col.std()),
+            }
         elif action.test_type == "iqr":
             q1, q3 = float(col.quantile(0.25)), float(col.quantile(0.75))
             iqr_val = q3 - q1
             factor = action.threshold or 1.5
             lower, upper = q1 - factor * iqr_val, q3 + factor * iqr_val
             outliers = col.index[(col < lower) | (col > upper)].tolist()
-            data = {"test": "iqr", "q1": q1, "q3": q3, "iqr": iqr_val, "lower": lower, "upper": upper, "outlier_indices": outliers}
+            data = {
+                "test": "iqr",
+                "q1": q1,
+                "q3": q3,
+                "iqr": iqr_val,
+                "lower": lower,
+                "upper": upper,
+                "outlier_indices": outliers,
+            }
         elif action.test_type == "ks":
-            stat_val, p_val = scipy_stats.kstest(col, "norm", args=(float(col.mean()), float(col.std())))
-            data = {"test": "ks", "statistic": float(stat_val), "p_value": float(p_val), "normal": p_val > 0.05}
+            stat_val, p_val = scipy_stats.kstest(
+                col, "norm", args=(float(col.mean()), float(col.std()))
+            )
+            data = {
+                "test": "ks",
+                "statistic": float(stat_val),
+                "p_value": float(p_val),
+                "normal": p_val > 0.05,
+            }
         else:
-            return ToolResult(action_type="STAT_TEST", success=False, error={"verdict": "error", "reason": f"Unknown test type: {action.test_type}"}), P_INVALID
+            return ToolResult(
+                action_type="STAT_TEST",
+                success=False,
+                error={"verdict": "error", "reason": f"Unknown test type: {action.test_type}"},
+            ), P_INVALID
 
         return ToolResult(action_type="STAT_TEST", success=True, data=data), 0.0
 
     def _handle_pattern(self, action: PatternMatch) -> tuple[ToolResult, float]:
         """Handle PATTERN_MATCH: evaluate regex against column values."""
         if action.column not in self._df.columns:
-            return ToolResult(action_type="PATTERN_MATCH", success=False, error={"verdict": "error", "reason": f"Column '{action.column}' not found"}), P_INVALID
+            return ToolResult(
+                action_type="PATTERN_MATCH",
+                success=False,
+                error={"verdict": "error", "reason": f"Column '{action.column}' not found"},
+            ), P_INVALID
 
         try:
             compiled = re.compile(action.pattern)
         except re.error as exc:
-            return ToolResult(action_type="PATTERN_MATCH", success=False, error={"verdict": "error", "reason": f"Invalid regex: {exc}"}), P_INVALID
+            return ToolResult(
+                action_type="PATTERN_MATCH",
+                success=False,
+                error={"verdict": "error", "reason": f"Invalid regex: {exc}"},
+            ), P_INVALID
 
         matches: list[dict[str, Any]] = []
         for idx, val in enumerate(self._df[action.column].astype(str)):
             is_match = bool(compiled.search(val))
             if is_match == action.expect_match:
                 matches.append({"row": idx, "column": action.column, "value": val})
-        return ToolResult(action_type="PATTERN_MATCH", success=True, data={"matches": matches[:_MAX_RESULT_ROWS], "total_matches": len(matches)}), 0.0
+        return ToolResult(
+            action_type="PATTERN_MATCH",
+            success=True,
+            data={"matches": matches[:_MAX_RESULT_ROWS], "total_matches": len(matches)},
+        ), 0.0
 
     def _handle_hypothesis(self, action: Hypothesis) -> tuple[ToolResult, float]:
         """Handle HYPOTHESIS: record claim and award root-cause credit."""
         self._scratchpad.add_hypothesis(
-            action.claim, action.affected_rows,
-            action.affected_columns, action.root_cause_type,
+            action.claim,
+            action.affected_rows,
+            action.affected_columns,
+            action.root_cause_type,
         )
         # Check for root-cause match against ground truth
         credit = 0.0
         for issue in self._ground_truth:
-            if (issue.row in action.affected_rows
-                    and issue.column in action.affected_columns
-                    and issue.issue_type == action.root_cause_type):
+            if (
+                issue.row in action.affected_rows
+                and issue.column in action.affected_columns
+                and issue.issue_type == action.root_cause_type
+            ):
                 credit += R_EXPLORE
         data = {"recorded": True, "root_cause_credit": credit}
         return ToolResult(action_type="HYPOTHESIS", success=True, data=data), credit
@@ -412,39 +504,67 @@ class DataForgeEnv:
     def _handle_diagnose(self, action: Diagnose) -> tuple[ToolResult, float]:
         """Handle DIAGNOSE: score against ground truth."""
         if action.row < 0 or action.row >= len(self._df):
-            return ToolResult(action_type="DIAGNOSE", success=False, error={"verdict": "error", "reason": f"Row {action.row} out of bounds"}), P_INVALID
+            return ToolResult(
+                action_type="DIAGNOSE",
+                success=False,
+                error={"verdict": "error", "reason": f"Row {action.row} out of bounds"},
+            ), P_INVALID
         if action.column not in self._df.columns:
-            return ToolResult(action_type="DIAGNOSE", success=False, error={"verdict": "error", "reason": f"Column '{action.column}' not found"}), P_INVALID
+            return ToolResult(
+                action_type="DIAGNOSE",
+                success=False,
+                error={"verdict": "error", "reason": f"Column '{action.column}' not found"},
+            ), P_INVALID
 
         # Already reported?
         for found in self._found_issues:
             if found["row"] == action.row and found["column"] == action.column:
-                return ToolResult(action_type="DIAGNOSE", success=True, data={"result": "already_found"}), 0.0
+                return ToolResult(
+                    action_type="DIAGNOSE", success=True, data={"result": "already_found"}
+                ), 0.0
 
         # Match ground truth
         for issue in self._ground_truth:
             if issue.row == action.row and issue.column == action.column:
                 type_match = action.issue_type == issue.issue_type
                 reward = self._reward_engine.diagnose_reward(type_match)
-                self._found_issues.append({"row": action.row, "column": action.column, "type": action.issue_type})
+                self._found_issues.append(
+                    {"row": action.row, "column": action.column, "type": action.issue_type}
+                )
                 self._scratchpad.confirm_issue(action.row, action.column, action.issue_type)
-                return ToolResult(action_type="DIAGNOSE", success=True, data={"result": "correct", "type_match": type_match}), reward
+                return ToolResult(
+                    action_type="DIAGNOSE",
+                    success=True,
+                    data={"result": "correct", "type_match": type_match},
+                ), reward
 
         # False positive
         self._false_positives += 1
-        return ToolResult(action_type="DIAGNOSE", success=True, data={"result": "false_positive"}), P_FALSE_POS
+        return ToolResult(
+            action_type="DIAGNOSE", success=True, data={"result": "false_positive"}
+        ), P_FALSE_POS
 
     def _handle_fix(self, action: Fix) -> tuple[ToolResult, float]:
         """Handle FIX: validate through safety/SMT, then score."""
         if action.row < 0 or action.row >= len(self._df):
-            return ToolResult(action_type="FIX", success=False, error={"verdict": "error", "reason": f"Row {action.row} out of bounds"}), P_INVALID
+            return ToolResult(
+                action_type="FIX",
+                success=False,
+                error={"verdict": "error", "reason": f"Row {action.row} out of bounds"},
+            ), P_INVALID
         if action.column not in self._df.columns:
-            return ToolResult(action_type="FIX", success=False, error={"verdict": "error", "reason": f"Column '{action.column}' not found"}), P_INVALID
+            return ToolResult(
+                action_type="FIX",
+                success=False,
+                error={"verdict": "error", "reason": f"Column '{action.column}' not found"},
+            ), P_INVALID
 
         # Already fixed?
         for fixed in self._fixed_issues:
             if fixed["row"] == action.row and fixed["column"] == action.column:
-                return ToolResult(action_type="FIX", success=True, data={"result": "already_fixed"}), 0.0
+                return ToolResult(
+                    action_type="FIX", success=True, data={"result": "already_fixed"}
+                ), 0.0
 
         # Safety filter + SMT verifier (best-effort, no crash on import failure)
         try:
@@ -454,20 +574,32 @@ class DataForgeEnv:
             safety_ok = False
             safety_msg = f"Safety pipeline failed closed: {exc}"
         if not safety_ok:
-            return ToolResult(action_type="FIX", success=False, error={"verdict": "rejected", "reason": safety_msg}), P_INVALID
+            return ToolResult(
+                action_type="FIX",
+                success=False,
+                error={"verdict": "rejected", "reason": safety_msg},
+            ), P_INVALID
 
         # Match ground truth
         for issue in self._ground_truth:
             if issue.row == action.row and issue.column == action.column:
                 if issue.expected is None:
-                    return ToolResult(action_type="FIX", success=True, data={"result": "detection_only"}), 0.0
+                    return ToolResult(
+                        action_type="FIX", success=True, data={"result": "detection_only"}
+                    ), 0.0
 
                 # Exact match (case-insensitive)
                 if action.new_value.strip().lower() == str(issue.expected).lower():
-                    reward = self._reward_engine.fix_reward(exact=True, has_justification=bool(action.justification))
-                    self._fixed_issues.append({"row": action.row, "column": action.column, "value": action.new_value})
+                    reward = self._reward_engine.fix_reward(
+                        exact=True, has_justification=bool(action.justification)
+                    )
+                    self._fixed_issues.append(
+                        {"row": action.row, "column": action.column, "value": action.new_value}
+                    )
                     self._auto_diagnose(action, issue)
-                    return ToolResult(action_type="FIX", success=True, data={"result": "correct"}), reward
+                    return ToolResult(
+                        action_type="FIX", success=True, data={"result": "correct"}
+                    ), reward
 
                 # Partial: numeric within 1%
                 try:
@@ -475,24 +607,42 @@ class DataForgeEnv:
                     exp = float(str(issue.expected))
                     rel_err = abs(prov - exp) / abs(exp) if exp != 0 else abs(prov)
                     if rel_err < 0.01:
-                        reward = self._reward_engine.fix_reward(exact=False, has_justification=bool(action.justification))
-                        self._fixed_issues.append({"row": action.row, "column": action.column, "value": action.new_value})
+                        reward = self._reward_engine.fix_reward(
+                            exact=False, has_justification=bool(action.justification)
+                        )
+                        self._fixed_issues.append(
+                            {"row": action.row, "column": action.column, "value": action.new_value}
+                        )
                         self._auto_diagnose(action, issue)
-                        return ToolResult(action_type="FIX", success=True, data={"result": "partial_numeric"}), reward
+                        return ToolResult(
+                            action_type="FIX", success=True, data={"result": "partial_numeric"}
+                        ), reward
                 except (ValueError, TypeError):
                     pass
 
                 # Partial: string similarity >= 85%
-                sim = SequenceMatcher(None, action.new_value.lower(), str(issue.expected).lower()).ratio()
+                sim = SequenceMatcher(
+                    None, action.new_value.lower(), str(issue.expected).lower()
+                ).ratio()
                 if sim >= 0.85:
-                    reward = self._reward_engine.fix_reward(exact=False, has_justification=bool(action.justification))
-                    self._fixed_issues.append({"row": action.row, "column": action.column, "value": action.new_value})
+                    reward = self._reward_engine.fix_reward(
+                        exact=False, has_justification=bool(action.justification)
+                    )
+                    self._fixed_issues.append(
+                        {"row": action.row, "column": action.column, "value": action.new_value}
+                    )
                     self._auto_diagnose(action, issue)
-                    return ToolResult(action_type="FIX", success=True, data={"result": "partial_string"}), reward
+                    return ToolResult(
+                        action_type="FIX", success=True, data={"result": "partial_string"}
+                    ), reward
 
-                return ToolResult(action_type="FIX", success=True, data={"result": "wrong_value"}), P_WRONG_FIX
+                return ToolResult(
+                    action_type="FIX", success=True, data={"result": "wrong_value"}
+                ), P_WRONG_FIX
 
-        return ToolResult(action_type="FIX", success=True, data={"result": "no_issue_at_location"}), P_WRONG_FIX
+        return ToolResult(
+            action_type="FIX", success=True, data={"result": "no_issue_at_location"}
+        ), P_WRONG_FIX
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -506,11 +656,18 @@ class DataForgeEnv:
 
             old_val = str(self._df.at[action.row, action.column])
             cell_fix = CellFix(
-                row=action.row, column=action.column,
-                old_value=old_val, new_value=action.new_value,
+                row=action.row,
+                column=action.column,
+                old_value=old_val,
+                new_value=action.new_value,
                 detector_id="agent",
             )
-            proposed = ProposedFix(fix=cell_fix, reason=action.justification, confidence=0.8, provenance="deterministic")
+            proposed = ProposedFix(
+                fix=cell_fix,
+                reason=action.justification,
+                confidence=0.8,
+                provenance="deterministic",
+            )
 
             sf = SafetyFilter()
             ctx = SafetyContext()
@@ -532,11 +689,12 @@ class DataForgeEnv:
     def _auto_diagnose(self, action: Fix, issue: Issue) -> None:
         """Auto-credit diagnosis when agent fixes without diagnosing first."""
         already = any(
-            f["row"] == action.row and f["column"] == action.column
-            for f in self._found_issues
+            f["row"] == action.row and f["column"] == action.column for f in self._found_issues
         )
         if not already:
-            self._found_issues.append({"row": action.row, "column": action.column, "type": issue.issue_type})
+            self._found_issues.append(
+                {"row": action.row, "column": action.column, "type": issue.issue_type}
+            )
 
     def _inject_noise(self, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Apply deterministic observation noise (epsilon=0.15)."""
@@ -551,7 +709,11 @@ class DataForgeEnv:
                     col = self._noise_rng.choice(cols)
                     val = row_copy[col]
                     if isinstance(val, str) and len(val) > 3:
-                        row_copy[col] = val[:-(self._noise_rng.randint(1, 3))] if self._noise_rng.random() < 0.5 else val.swapcase()
+                        row_copy[col] = (
+                            val[: -(self._noise_rng.randint(1, 3))]
+                            if self._noise_rng.random() < 0.5
+                            else val.swapcase()
+                        )
             noisy.append(row_copy)
         return noisy
 
@@ -569,7 +731,9 @@ class DataForgeEnv:
 
     def _error_step(self, message: str) -> StepResult:
         """Build error StepResult."""
-        tr = ToolResult(action_type="ERROR", success=False, error={"verdict": "error", "reason": message})
+        tr = ToolResult(
+            action_type="ERROR", success=False, error={"verdict": "error", "reason": message}
+        )
         self._tool_history.append(tr)
         self._cumulative_reward += P_INVALID
         done = self._step_count >= self._max_steps
@@ -579,21 +743,27 @@ class DataForgeEnv:
             observation=DataForgeObservation(
                 step_budget_remaining=max(0, self._max_steps - self._step_count),
                 tool_usage_history=list(self._tool_history[-_TOOL_HISTORY_LIMIT:]),
-                latest_result=tr, done=done, reward=P_INVALID,
+                latest_result=tr,
+                done=done,
+                reward=P_INVALID,
                 cumulative_reward=self._cumulative_reward,
                 scratchpad_summary=self._scratchpad.summary(),
             ),
-            reward=P_INVALID, done=done,
+            reward=P_INVALID,
+            done=done,
         )
 
     def _terminal_result(self, reward: float) -> StepResult:
         """Build terminal StepResult for already-done episodes."""
         return StepResult(
             observation=DataForgeObservation(
-                step_budget_remaining=0, done=True, reward=reward,
+                step_budget_remaining=0,
+                done=True,
+                reward=reward,
                 cumulative_reward=self._cumulative_reward,
                 scratchpad_summary=self._scratchpad.summary(),
                 tool_usage_history=list(self._tool_history[-_TOOL_HISTORY_LIMIT:]),
             ),
-            reward=reward, done=True,
+            reward=reward,
+            done=True,
         )

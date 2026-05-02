@@ -50,11 +50,13 @@ def _execute_query(df: pd.DataFrame, query: str, max_rows: int = 20) -> dict:
 @pytest.fixture()
 def sample_df() -> pd.DataFrame:
     """Small test DataFrame."""
-    return pd.DataFrame({
-        "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
-        "age": [25, 30, 35, 40, 45],
-        "score": [88.5, 92.1, 75.0, 95.3, 81.7],
-    })
+    return pd.DataFrame(
+        {
+            "name": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+            "age": [25, 30, 35, 40, 45],
+            "score": [88.5, 92.1, 75.0, 95.3, 81.7],
+        }
+    )
 
 
 class TestSqlQueryExecution:

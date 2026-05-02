@@ -84,8 +84,11 @@ class TestTerminalScore:
 
     def test_perfect_episode(self) -> None:
         metrics = EpisodeMetrics(
-            found_issues=5, total_issues=5, fixed_issues=3,
-            fixable_issues=3, false_positives=0,
+            found_issues=5,
+            total_issues=5,
+            fixed_issues=3,
+            fixable_issues=3,
+            false_positives=0,
         )
         score = self.engine.compute_terminal_score(metrics)
         # (5/5)*0.40 + (3/3)*0.60 - 0 = 0.40 + 0.60 = 1.0
@@ -97,8 +100,11 @@ class TestTerminalScore:
 
     def test_partial_detection_and_fix(self) -> None:
         metrics = EpisodeMetrics(
-            found_issues=3, total_issues=5, fixed_issues=2,
-            fixable_issues=3, false_positives=1,
+            found_issues=3,
+            total_issues=5,
+            fixed_issues=2,
+            fixable_issues=3,
+            false_positives=1,
         )
         # (3/5)*0.40 + (2/3)*0.60 - 1*0.05
         # = 0.24 + 0.40 - 0.05 = 0.59
@@ -107,8 +113,11 @@ class TestTerminalScore:
 
     def test_spam_doubles_penalty(self) -> None:
         metrics = EpisodeMetrics(
-            found_issues=3, total_issues=5, fixed_issues=0,
-            fixable_issues=3, false_positives=8,
+            found_issues=3,
+            total_issues=5,
+            fixed_issues=0,
+            fixable_issues=3,
+            false_positives=8,
         )
         # total_diagnoses = 3 + 8 = 11 > 2.0 * 5 = 10 → fp_rate doubles
         # (3/5)*0.40 + 0 - 8*0.10 = 0.24 - 0.80 → clamped to 0.0
@@ -117,8 +126,11 @@ class TestTerminalScore:
 
     def test_score_clamped_to_unit(self) -> None:
         metrics = EpisodeMetrics(
-            found_issues=5, total_issues=5, fixed_issues=5,
-            fixable_issues=5, false_positives=0,
+            found_issues=5,
+            total_issues=5,
+            fixed_issues=5,
+            fixable_issues=5,
+            false_positives=0,
         )
         assert 0.0 <= self.engine.compute_terminal_score(metrics) <= 1.0
 
@@ -148,15 +160,21 @@ class TestExplorationBonus:
 
     def test_reinspect_penalty(self) -> None:
         bonus = self.engine.compute_exploration_bonus(
-            new_row_indices=set(), inspected_rows={0, 1}, total_rows=10,
-            ground_truth_rows={3}, found_issue_rows=set(),
+            new_row_indices=set(),
+            inspected_rows={0, 1},
+            total_rows=10,
+            ground_truth_rows={3},
+            found_issue_rows=set(),
         )
         assert bonus == P_REINSPECT
 
     def test_bonus_for_new_rows_with_issues(self) -> None:
         bonus = self.engine.compute_exploration_bonus(
-            new_row_indices={3, 4}, inspected_rows={0, 1}, total_rows=10,
-            ground_truth_rows={3}, found_issue_rows=set(),
+            new_row_indices={3, 4},
+            inspected_rows={0, 1},
+            total_rows=10,
+            ground_truth_rows={3},
+            found_issue_rows=set(),
         )
         assert bonus > 0
 

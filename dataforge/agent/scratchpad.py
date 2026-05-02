@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-
 __all__ = [
     "ConfirmedIssue",
     "DeadEnd",
@@ -148,9 +147,7 @@ class Scratchpad:
             column: Column name.
             issue_type: Issue type classification.
         """
-        self.confirmed_issues.append(
-            ConfirmedIssue(row=row, column=column, issue_type=issue_type)
-        )
+        self.confirmed_issues.append(ConfirmedIssue(row=row, column=column, issue_type=issue_type))
 
     def add_dead_end(self, description: str, step_number: int) -> None:
         """Record a dead end.

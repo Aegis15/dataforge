@@ -128,8 +128,10 @@ class TestHypothesis:
     def test_records_hypothesis(self, env: DataForgeEnv) -> None:
         env.reset(seed=42)
         action = Hypothesis(
-            action_type="HYPOTHESIS", claim="Decimal shift in rating",
-            affected_rows=[5], affected_columns=["rating"],
+            action_type="HYPOTHESIS",
+            claim="Decimal shift in rating",
+            affected_rows=[5],
+            affected_columns=["rating"],
             root_cause_type="decimal_shift",
         )
         result = env.step(action)
@@ -155,8 +157,11 @@ class TestFix:
     def test_fix_out_of_bounds(self, env: DataForgeEnv) -> None:
         env.reset(seed=42)
         action = Fix(
-            action_type="FIX", row=9999, column="rating",
-            new_value="4.5", justification="test",
+            action_type="FIX",
+            row=9999,
+            column="rating",
+            new_value="4.5",
+            justification="test",
         )
         result = env.step(action)
         assert result.observation.latest_result is not None
@@ -174,8 +179,11 @@ class TestFix:
 
         monkeypatch.setattr(environment_mod.DataForgeEnv, "_check_safety", boom)
         action = Fix(
-            action_type="FIX", row=0, column="rating",
-            new_value="4.5", justification="test",
+            action_type="FIX",
+            row=0,
+            column="rating",
+            new_value="4.5",
+            justification="test",
         )
         result = env.step(action)
         latest = result.observation.latest_result

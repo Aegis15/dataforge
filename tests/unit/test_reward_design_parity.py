@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataforge.env import reward as reward_mod
 
-
 # Canonical values from REWARD_DESIGN.md (legacy environment parity).
 _CANONICAL = {
     "R_DIAGNOSE": 0.10,
@@ -46,8 +45,10 @@ def test_terminal_formula_matches_legacy() -> None:
 
     engine = RewardEngine()
     metrics = EpisodeMetrics(
-        found_issues=3, total_issues=5,
-        fixed_issues=2, fixable_issues=3,
+        found_issues=3,
+        total_issues=5,
+        fixed_issues=2,
+        fixable_issues=3,
         false_positives=1,
     )
     assert engine.compute_terminal_score(metrics) == 0.59

@@ -81,9 +81,7 @@ class TestPatternMatch:
     """Tests for the PATTERN_MATCH action model."""
 
     def test_valid_pattern(self) -> None:
-        action = PatternMatch(
-            action_type="PATTERN_MATCH", pattern=r"^\d{5}$", column="zip"
-        )
+        action = PatternMatch(action_type="PATTERN_MATCH", pattern=r"^\d{5}$", column="zip")
         assert action.expect_match is True
 
     def test_expect_no_match(self) -> None:
@@ -110,8 +108,10 @@ class TestHypothesis:
         with pytest.raises(ValidationError):
             Hypothesis(
                 action_type="HYPOTHESIS",
-                claim="test", affected_rows=[-1],
-                affected_columns=["x"], root_cause_type="t",
+                claim="test",
+                affected_rows=[-1],
+                affected_columns=["x"],
+                root_cause_type="t",
             )
 
 
@@ -132,23 +132,33 @@ class TestFix:
 
     def test_valid_fix(self) -> None:
         action = Fix(
-            action_type="FIX", row=5, column="rating",
-            new_value="4.5", justification="Corrected decimal shift.",
+            action_type="FIX",
+            row=5,
+            column="rating",
+            new_value="4.5",
+            justification="Corrected decimal shift.",
         )
         assert action.fix_type == "correct_value"
 
     def test_delete_row(self) -> None:
         action = Fix(
-            action_type="FIX", row=3, column="name",
-            new_value="", justification="Duplicate row.", fix_type="delete_row",
+            action_type="FIX",
+            row=3,
+            column="name",
+            new_value="",
+            justification="Duplicate row.",
+            fix_type="delete_row",
         )
         assert action.fix_type == "delete_row"
 
     def test_rejects_empty_justification(self) -> None:
         with pytest.raises(ValidationError):
             Fix(
-                action_type="FIX", row=0, column="x",
-                new_value="v", justification="",
+                action_type="FIX",
+                row=0,
+                column="x",
+                new_value="v",
+                justification="",
             )
 
 
@@ -182,53 +192,75 @@ class TestParseAction:
         assert isinstance(action, PatternMatch)
 
     def test_parse_pattern_prompt_aliases(self) -> None:
-        action = parse_action({
-            "action_type": "PATTERN_MATCH",
-            "regex": ".",
-            "column": "x",
-            "expect": "no_match",
-        })
+        action = parse_action(
+            {
+                "action_type": "PATTERN_MATCH",
+                "regex": ".",
+                "column": "x",
+                "expect": "no_match",
+            }
+        )
         assert isinstance(action, PatternMatch)
         assert action.pattern == "."
         assert action.expect_match is False
 
     def test_parse_hypothesis(self) -> None:
-        action = parse_action({
-            "action_type": "HYPOTHESIS", "claim": "c",
-            "affected_rows": [0], "affected_columns": ["x"],
-            "root_cause_type": "t",
-        })
+        action = parse_action(
+            {
+                "action_type": "HYPOTHESIS",
+                "claim": "c",
+                "affected_rows": [0],
+                "affected_columns": ["x"],
+                "root_cause_type": "t",
+            }
+        )
         assert isinstance(action, Hypothesis)
 
     def test_parse_hypothesis_prompt_shape(self) -> None:
-        action = parse_action({
-            "action_type": "HYPOTHESIS",
-            "claim": "c",
-            "root_column": "x",
-            "downstream": ["y"],
-        })
+        action = parse_action(
+            {
+                "action_type": "HYPOTHESIS",
+                "claim": "c",
+                "root_column": "x",
+                "downstream": ["y"],
+            }
+        )
         assert isinstance(action, Hypothesis)
         assert action.affected_columns == ["x", "y"]
         assert action.root_cause_type == "x"
 
     def test_parse_diagnose(self) -> None:
-        action = parse_action({
-            "action_type": "DIAGNOSE", "row": 0, "column": "x", "issue_type": "t",
-        })
+        action = parse_action(
+            {
+                "action_type": "DIAGNOSE",
+                "row": 0,
+                "column": "x",
+                "issue_type": "t",
+            }
+        )
         assert isinstance(action, Diagnose)
 
     def test_parse_fix(self) -> None:
-        action = parse_action({
-            "action_type": "FIX", "row": 0, "column": "x",
-            "new_value": "v", "justification": "j",
-        })
+        action = parse_action(
+            {
+                "action_type": "FIX",
+                "row": 0,
+                "column": "x",
+                "new_value": "v",
+                "justification": "j",
+            }
+        )
         assert isinstance(action, Fix)
 
     def test_parse_fix_prompt_alias(self) -> None:
-        action = parse_action({
-            "action_type": "FIX", "row": 0, "column": "x",
-            "proposed_value": "v",
-        })
+        action = parse_action(
+            {
+                "action_type": "FIX",
+                "row": 0,
+                "column": "x",
+                "proposed_value": "v",
+            }
+        )
         assert isinstance(action, Fix)
         assert action.new_value == "v"
         assert action.justification == "Agent proposed value via FIX."

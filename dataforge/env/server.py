@@ -87,8 +87,13 @@ async def metadata() -> dict[str, Any]:
             "and repair data-quality issues in tabular datasets."
         ),
         "action_types": [
-            "INSPECT_ROWS", "SQL_QUERY", "STAT_TEST",
-            "PATTERN_MATCH", "HYPOTHESIS", "DIAGNOSE", "FIX",
+            "INSPECT_ROWS",
+            "SQL_QUERY",
+            "STAT_TEST",
+            "PATTERN_MATCH",
+            "HYPOTHESIS",
+            "DIAGNOSE",
+            "FIX",
         ],
     }
 

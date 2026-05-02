@@ -15,7 +15,8 @@ class TestToolResult:
 
     def test_error_result(self) -> None:
         r = ToolResult(
-            action_type="SQL_QUERY", success=False,
+            action_type="SQL_QUERY",
+            success=False,
             error={"verdict": "error", "reason": "syntax error", "location": "line 1"},
         )
         assert r.success is False
@@ -43,10 +44,7 @@ class TestDataForgeObservation:
         assert len(obs.visible_rows) == 2
 
     def test_observation_with_tool_history(self) -> None:
-        results = [
-            ToolResult(action_type=f"ACTION_{i}", success=True)
-            for i in range(5)
-        ]
+        results = [ToolResult(action_type=f"ACTION_{i}", success=True) for i in range(5)]
         obs = DataForgeObservation(
             step_budget_remaining=25,
             tool_usage_history=results,
@@ -65,8 +63,10 @@ class TestDataForgeObservation:
 
     def test_done_observation(self) -> None:
         obs = DataForgeObservation(
-            step_budget_remaining=0, done=True,
-            reward=0.75, cumulative_reward=0.85,
+            step_budget_remaining=0,
+            done=True,
+            reward=0.75,
+            cumulative_reward=0.85,
         )
         assert obs.done is True
         assert obs.reward == 0.75

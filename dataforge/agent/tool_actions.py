@@ -58,9 +58,7 @@ class InspectRows(BaseModel):
 
     action_type: Literal["INSPECT_ROWS"]
     row_indices: list[int] = Field(min_length=1, description="Row indices to inspect (0-indexed).")
-    column_names: list[str] | None = Field(
-        default=None, description="Optional column filter."
-    )
+    column_names: list[str] | None = Field(default=None, description="Optional column filter.")
 
     @field_validator("row_indices")
     @classmethod
@@ -106,13 +104,9 @@ class StatTest(BaseModel):
     """
 
     action_type: Literal["STAT_TEST"]
-    test_type: Literal["zscore", "iqr", "ks"] = Field(
-        description="Statistical test to run."
-    )
+    test_type: Literal["zscore", "iqr", "ks"] = Field(description="Statistical test to run.")
     column: str = Field(min_length=1, description="Column name to test.")
-    threshold: float | None = Field(
-        default=None, description="Optional threshold override."
-    )
+    threshold: float | None = Field(default=None, description="Optional threshold override.")
 
     model_config = {"frozen": True}
 
@@ -170,15 +164,9 @@ class Hypothesis(BaseModel):
 
     action_type: Literal["HYPOTHESIS"]
     claim: str = Field(min_length=1, description="Root-cause claim.")
-    affected_rows: list[int] = Field(
-        min_length=1, description="Affected row indices."
-    )
-    affected_columns: list[str] = Field(
-        min_length=1, description="Affected column names."
-    )
-    root_cause_type: str = Field(
-        min_length=1, description="Detector-vocabulary root cause type."
-    )
+    affected_rows: list[int] = Field(min_length=1, description="Affected row indices.")
+    affected_columns: list[str] = Field(min_length=1, description="Affected column names.")
+    root_cause_type: str = Field(min_length=1, description="Detector-vocabulary root cause type.")
 
     @field_validator("affected_rows")
     @classmethod

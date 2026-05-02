@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from hypothesis import given, settings, strategies as st
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from dataforge.env.reward import EpisodeMetrics, RewardEngine
 
@@ -26,8 +27,10 @@ def test_terminal_score_in_unit_interval(
 
     engine = RewardEngine()
     metrics = EpisodeMetrics(
-        found_issues=found, total_issues=total,
-        fixed_issues=fixed, fixable_issues=fixable,
+        found_issues=found,
+        total_issues=total,
+        fixed_issues=fixed,
+        fixable_issues=fixable,
         false_positives=fp,
     )
     score = engine.compute_terminal_score(metrics)
