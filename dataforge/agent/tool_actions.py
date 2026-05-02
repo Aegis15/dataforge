@@ -26,7 +26,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, cast
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -249,7 +249,7 @@ Action = Annotated[
 """Discriminated union of all valid DataForge environment actions."""
 
 
-def parse_action(raw: dict[str, Any]) -> Action:  # type: ignore[return]
+def parse_action(raw: dict[str, Any]) -> Action:
     """Parse and validate a raw action dict into the appropriate typed model.
 
     This is the single entry point for HTTP handlers and tests to validate
@@ -274,8 +274,8 @@ def parse_action(raw: dict[str, Any]) -> Action:  # type: ignore[return]
     """
     from pydantic import TypeAdapter
 
-    adapter = TypeAdapter(Action)
-    return adapter.validate_python(_normalize_action(raw))
+    adapter: TypeAdapter[Action] = TypeAdapter(Action)
+    return cast(Action, adapter.validate_python(_normalize_action(raw)))
 
 
 def _normalize_action(raw: dict[str, Any]) -> dict[str, Any]:

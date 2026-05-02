@@ -14,7 +14,7 @@ import re
 import uuid
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import duckdb
 import pandas as pd
@@ -180,7 +180,7 @@ class DataForgeEnv:
         )
 
         # Initial observation with first 5 rows
-        initial_rows = self._df.head(5).to_dict(orient="records")
+        initial_rows = cast(list[dict[str, Any]], self._df.head(5).to_dict(orient="records"))
         obs = DataForgeObservation(
             visible_rows=initial_rows,
             step_budget_remaining=self._max_steps,
@@ -271,7 +271,7 @@ class DataForgeEnv:
 
     # ── Dispatch ──────────────────────────────────────────────────────────
 
-    def _dispatch(self, action: Action) -> tuple[ToolResult, float]:  # type: ignore[type-arg]
+    def _dispatch(self, action: Action) -> tuple[ToolResult, float]:
         """Route action to handler. Returns (tool_result, step_reward)."""
         if isinstance(action, InspectRows):
             return self._handle_inspect(action)
@@ -313,7 +313,7 @@ class DataForgeEnv:
             if valid_cols:
                 rows = rows[valid_cols]
 
-        row_dicts = rows.to_dict(orient="records")
+        row_dicts = cast(list[dict[str, Any]], rows.to_dict(orient="records"))
         for i, idx in enumerate(valid_indices[: len(row_dicts)]):
             row_dicts[i]["_row_index"] = idx
 
@@ -404,7 +404,7 @@ class DataForgeEnv:
                 error={"verdict": "error", "reason": str(exc)},
             ), P_INVALID
 
-        from scipy import stats as scipy_stats
+        from scipy import stats as scipy_stats  # type: ignore[import-untyped]
 
         if action.test_type == "zscore":
             zscores = scipy_stats.zscore(col)

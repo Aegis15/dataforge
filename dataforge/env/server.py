@@ -101,7 +101,7 @@ async def metadata() -> dict[str, Any]:
 @app.get("/schema")
 async def schema() -> dict[str, Any]:
     """Return JSON schemas for action and observation models."""
-    action_adapter = TypeAdapter(Action)
+    action_adapter: TypeAdapter[Action] = TypeAdapter(Action)
     return {
         "action": action_adapter.json_schema(),
         "observation": DataForgeObservation.model_json_schema(),
