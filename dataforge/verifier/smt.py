@@ -9,7 +9,7 @@ from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, Field
-from z3 import (  # type: ignore[import-untyped,import-not-found]
+from z3 import (  # type: ignore[import-untyped]
     And,
     Bool,
     ForAll,

@@ -26,7 +26,7 @@ Example::
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -275,7 +275,7 @@ def parse_action(raw: dict[str, Any]) -> Action:
     from pydantic import TypeAdapter
 
     adapter: TypeAdapter[Action] = TypeAdapter(Action)
-    return cast(Action, adapter.validate_python(_normalize_action(raw)))
+    return adapter.validate_python(_normalize_action(raw))
 
 
 def _normalize_action(raw: dict[str, Any]) -> dict[str, Any]:
