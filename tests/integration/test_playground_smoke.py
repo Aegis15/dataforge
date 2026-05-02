@@ -10,13 +10,12 @@ running server or network access.
 from __future__ import annotations
 
 import io
-import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from playground.api.app import MAX_UPLOAD_BYTES, _build_cors_origin_regex, app, limiter
+from playground.api.app import MAX_UPLOAD_BYTES, app, limiter
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -84,8 +83,8 @@ def test_health_reports_advanced_capability_when_keyed(
 
 
 @pytest.mark.integration
-def test_cors_allows_workers_dev_origin(client: TestClient) -> None:
-    """Workers-hosted frontends receive the expected CORS allow-origin header."""
+def test_cors_rejects_unconfigured_workers_dev_origin(client: TestClient) -> None:
+    """Workers-hosted frontends must be explicitly configured in production CORS."""
     origin = "https://dataforge.example-subdomain.workers.dev"
     response = client.options(
         "/api/health",
@@ -94,9 +93,8 @@ def test_cors_allows_workers_dev_origin(client: TestClient) -> None:
             "Access-Control-Request-Method": "GET",
         },
     )
-    assert response.status_code == 200
-    assert response.headers["access-control-allow-origin"] == origin
-    assert re.fullmatch(_build_cors_origin_regex(), origin) is not None
+    assert response.status_code == 400
+    assert "access-control-allow-origin" not in response.headers
 
 
 # ---------------------------------------------------------------------------
@@ -171,13 +169,25 @@ def test_profile_advanced_allowed_when_provider_key_is_present(
 
 
 @pytest.mark.integration
+def test_near_limit_upload_is_accepted(client: TestClient) -> None:
+    """A valid CSV file at the 1 MiB file cap is not rejected for multipart overhead."""
+    payload_prefix = b"value\n"
+    csv_bytes = payload_prefix + (b"x" * (MAX_UPLOAD_BYTES - len(payload_prefix)))
+    response = client.post(
+        "/api/profile",
+        files={"file": ("near_limit.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    assert response.status_code == 200
+    assert response.json()["meta"]["rows"] == 1
+
+
+@pytest.mark.integration
 def test_oversize_body_rejected(client: TestClient) -> None:
     """POST /api/profile with > 1 MB body returns 413."""
-    oversized = b"x" * (1_048_576 + 1024)  # ~1.001 MB
+    oversized = b"value\n" + (b"x" * MAX_UPLOAD_BYTES)
     response = client.post(
         "/api/profile",
         files={"file": ("big.csv", io.BytesIO(oversized), "text/csv")},
-        headers={"Content-Length": str(len(oversized) + 200)},
     )
     assert response.status_code == 413
 

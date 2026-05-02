@@ -180,5 +180,37 @@
     "direct_tests": ["tests/unit/test_cli_bench.py"],
     "integration_tests": ["tests/integration/test_bench_workflow.py"],
     "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/agent/tool_actions.py": {
+    "direct_tests": ["tests/unit/test_tool_actions.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/agent/scratchpad.py": {
+    "direct_tests": ["tests/unit/test_scratchpad.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/env/reward.py": {
+    "direct_tests": ["tests/unit/test_reward.py", "tests/unit/test_reward_design_parity.py"],
+    "property_tests": ["tests/property/test_reward_bounds.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/env/observation.py": {
+    "direct_tests": ["tests/unit/test_observation.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/env/environment.py": {
+    "direct_tests": ["tests/unit/test_sql_query.py"],
+    "integration_tests": ["tests/integration/test_openenv_spec.py"],
+    "property_tests": ["tests/property/test_reward_bounds.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/env/server.py": {
+    "integration_tests": ["tests/integration/test_openenv_spec.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/env/__init__.py": {
+    "direct_tests": ["tests/integration/test_openenv_spec.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
   }
 }
+

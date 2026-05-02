@@ -44,16 +44,23 @@ logger = logging.getLogger("playground.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 MAX_UPLOAD_BYTES = 1_048_576
+MAX_MULTIPART_OVERHEAD_BYTES = 16_384
 SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
 ALLOWED_SAMPLES = {"hospital_10rows", "flights_10rows", "beers_10rows"}
 
 
 class SizeCapMiddleware(BaseHTTPMiddleware):
-    """Reject requests whose declared Content-Length exceeds the upload cap."""
+    """Reject requests whose declared Content-Length cannot contain a valid upload."""
 
-    def __init__(self, app: ASGIApp, max_bytes: int = MAX_UPLOAD_BYTES) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        max_file_bytes: int = MAX_UPLOAD_BYTES,
+        max_multipart_overhead_bytes: int = MAX_MULTIPART_OVERHEAD_BYTES,
+    ) -> None:
         super().__init__(app)
-        self.max_bytes = max_bytes
+        self.max_file_bytes = max_file_bytes
+        self.max_body_bytes = max_file_bytes + max_multipart_overhead_bytes
 
     async def dispatch(
         self,
@@ -67,15 +74,15 @@ class SizeCapMiddleware(BaseHTTPMiddleware):
                 length = int(content_length)
             except ValueError:
                 return JSONResponse(status_code=400, content={"error": "invalid_content_length"})
-            if length > self.max_bytes:
+            if length > self.max_body_bytes:
                 logger.warning(
-                    "Rejected request: Content-Length %d exceeds max %d",
+                    "Rejected request: Content-Length %d exceeds max body %d",
                     length,
-                    self.max_bytes,
+                    self.max_body_bytes,
                 )
                 return JSONResponse(
                     status_code=413,
-                    content={"error": "file_too_large", "max_bytes": self.max_bytes},
+                    content={"error": "file_too_large", "max_bytes": self.max_file_bytes},
                 )
         return await call_next(request)
 
@@ -94,11 +101,13 @@ def _build_cors_origins() -> list[str]:
     return [origin.strip() for origin in env_origins.split(",") if origin.strip()]
 
 
-def _build_cors_origin_regex() -> str:
-    """Build the regex allowlist for Cloudflare hostnames and local development."""
-    patterns = [r"https://.*\.(?:pages|workers)\.dev"]
+def _build_cors_origin_regex() -> str | None:
+    """Build the regex allowlist for local development only."""
+    patterns: list[str] = []
     if os.environ.get("DATAFORGE_PLAYGROUND_DEV") == "1":
         patterns.append(r"http://(?:localhost|127(?:\.\d{1,3}){3})(?::\d+)?")
+    if not patterns:
+        return None
     return "^(" + "|".join(patterns) + ")$"
 
 
@@ -109,7 +118,11 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url=None,
 )
-app.add_middleware(SizeCapMiddleware, max_bytes=MAX_UPLOAD_BYTES)
+app.add_middleware(
+    SizeCapMiddleware,
+    max_file_bytes=MAX_UPLOAD_BYTES,
+    max_multipart_overhead_bytes=MAX_MULTIPART_OVERHEAD_BYTES,
+)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_build_cors_origins(),

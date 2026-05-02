@@ -2,25 +2,28 @@
 
 This document contains the authoritative steps to deploy the API-only
 playground backend to the Hugging Face Docker Space at
-`Praneshrajan15/data-quality-env`. It uses a staged build directory because the
+`<hf-user>/dataforge-playground`. It uses a staged build directory because the
 Docker build needs files from the monorepo root.
 
 ## Prerequisites
 
 - A Hugging Face account with write access to
-  `https://huggingface.co/spaces/Praneshrajan15/data-quality-env`
+  `https://huggingface.co/spaces/<hf-user>/dataforge-playground`
 - Git installed locally
 - Optional: `hf` if you want to create the Space from the CLI
 
 ## Step 1: Ensure the Space exists
 
-The current production target is the existing Space
-`Praneshrajan15/data-quality-env`.
+The production target is:
+
+```text
+https://huggingface.co/spaces/<hf-user>/dataforge-playground
+```
 
 If you ever need to recreate it from scratch:
 
 ```bash
-hf repos create Praneshrajan15/data-quality-env --type space --space-sdk docker --exist-ok
+hf repos create <hf-user>/dataforge-playground --type space --space-sdk docker --exist-ok
 ```
 
 ## Step 2: Stage the exact Space contents
@@ -43,7 +46,7 @@ This produces a clean Hugging Face Space repo root containing:
 ## Step 3: Clone the target Space repo
 
 ```bash
-git clone https://huggingface.co/spaces/Praneshrajan15/data-quality-env .hf-space-repo
+git clone https://huggingface.co/spaces/<hf-user>/dataforge-playground .hf-space-repo
 ```
 
 If your Git credential helper is not already configured, authenticate with your
@@ -81,6 +84,7 @@ Cloudflare Workers Static Assets.
 In the Space settings:
 
 - `DATAFORGE_PLAYGROUND_ORIGINS`
+  Required in production. Set this to the exact Cloudflare frontend origin.
   Example: `https://dataforge.<your-workers-subdomain>.workers.dev`
 - `GROQ_API_KEY` or `GEMINI_API_KEY`
   Optional. Enables advanced mode in the hosted playground.
@@ -93,12 +97,13 @@ If you attach a custom frontend domain, add that exact origin to
 ## Step 7: Verify
 
 ```bash
-curl -s https://Praneshrajan15-data-quality-env.hf.space/api/health
+curl -s https://<hf-user>-dataforge-playground.hf.space/api/health
 curl -s -X POST \
   -F "file=@playground/api/samples/hospital_10rows.csv" \
-  https://Praneshrajan15-data-quality-env.hf.space/api/profile
+  https://<hf-user>-dataforge-playground.hf.space/api/profile
 python scripts/playground/verify_frontend_deploy.py \
-  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev
+  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev \
+  --backend-url https://<hf-user>-dataforge-playground.hf.space
 ```
 
 Expected health response:
@@ -114,8 +119,8 @@ From the monorepo root:
 ```bash
 python -m pip install -e ".[dev]"
 pip install -r playground/api/requirements.txt
-docker build -f playground/api/Dockerfile -t data-quality-env-playground .
-docker run -p 7860:7860 -e DATAFORGE_PLAYGROUND_DEV=1 data-quality-env-playground
+docker build -f playground/api/Dockerfile -t dataforge-playground .
+docker run -p 7860:7860 -e DATAFORGE_PLAYGROUND_DEV=1 dataforge-playground
 ```
 
 ## Troubleshooting

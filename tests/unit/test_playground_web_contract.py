@@ -24,6 +24,8 @@ def test_config_js_exposes_backend_url_contract() -> None:
     body = CONFIG_PATH.read_text(encoding="utf-8")
     assert "window.__DATAFORGE_CONFIG__" in body
     assert "BACKEND_URL" in body
+    assert 'BACKEND_URL: ""' not in body
+    assert "https://Praneshrajan15-dataforge-playground.hf.space" in body
 
 
 def test_frontend_stays_storage_free_and_capability_aware() -> None:

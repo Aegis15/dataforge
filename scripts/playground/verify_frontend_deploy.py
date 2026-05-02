@@ -6,7 +6,7 @@ import argparse
 
 import httpx
 
-DEFAULT_BACKEND_URL = "https://Praneshrajan15-data-quality-env.hf.space"
+DEFAULT_BACKEND_URL = "https://Praneshrajan15-dataforge-playground.hf.space"
 
 
 def normalize_url(value: str) -> str:

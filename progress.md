@@ -98,3 +98,9 @@ Ralph and manual iterations append here. Never delete entries.
 - Frontend hosting contract moved from Cloudflare Pages wording to Cloudflare Workers Static Assets wording.
 - Added `wrangler.toml`, `.assetsignore`, `_headers`, and a checked-in `render_web_config.py` build step for repo-connected Workers Builds deploys.
 - Added `verify_frontend_deploy.py` plus deployment-focused tests to check backend URL rendering and `workers.dev` CORS behavior.
+
+### 2026-05-01 playground hardening
+- Standardized the Hugging Face Space target on `dataforge-playground` across deploy docs, the frontend runtime config, the verification script, and the manual Space sync workflow.
+- Tightened production CORS to explicit `DATAFORGE_PLAYGROUND_ORIGINS` values only; localhost remains available only under `DATAFORGE_PLAYGROUND_DEV=1`.
+- Split the hosted upload guard into a real 1 MiB CSV file cap plus small multipart-envelope tolerance, with tests for near-limit acceptance and oversize rejection.
+- Added contract tests preventing the old `data-quality-env` Space URL and broad Cloudflare origin matching from returning unnoticed.

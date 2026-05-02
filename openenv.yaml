@@ -1,25 +1,19 @@
 spec_version: 1
-name: data_quality_env
+name: dataforge-env
 type: environment
-app: server.app:app
+app: dataforge.env.server:app
 port: 7860
 description: >
-  Data Quality Validation & Cleaning Pipeline — agents learn to detect
-  and fix real-world data quality issues in tabular datasets under partial
-  observability. Covers format errors, duplicates, missing values,
-  referential integrity, cascading errors, floating-point precision traps,
-  and business rule violations across three progressively challenging tasks
-  (50–250 rows) with dense reward signals and information-theoretic
-  exploration bonuses.
+  DataForge RL Environment — agents learn to detect, diagnose, and repair
+  data-quality issues in tabular datasets using typed tool-use actions,
+  with SMT-verified repair gating and dense reward signals. Supports
+  7 action types (INSPECT_ROWS, SQL_QUERY, STAT_TEST, PATTERN_MATCH,
+  HYPOTHESIS, DIAGNOSE, FIX) with constitutional safety filtering.
 tags:
   - openenv
   - data-quality
   - rl-environment
-  - tabular-data
-  - multi-task
-  - partial-observability
+  - tool-use
+  - dataforge
+  - smt-verified
   - dense-reward
-tasks:
-  - task_1_format_fixer
-  - task_2_duplicate_detective
-  - task_3_integrity_auditor

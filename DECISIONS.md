@@ -225,10 +225,194 @@ directory for the static site.
 frontend on Cloudflare Workers Static Assets.
 **Reasoning**: the codebase already ships a pure static frontend, so the
 minimal durable fix is to add an assets-only Wrangler config, replace the
-runtime config mutation with a validated Python renderer, and broaden backend
-CORS to `*.workers.dev` plus explicit custom origins.
+runtime config mutation with a validated Python renderer, and keep backend CORS
+owned by explicit deployment configuration.
 **Reviewed with**: `playground/web/DEPLOY.md`, `specs/SPEC_playground.md`, and
 the Cloudflare Workers static-assets / Pages configuration docs.
 **Reversal criteria**: if Cloudflare deprecates assets-only Worker deploys for
 repo-connected builds, or if Pages regains a clear operational advantage for
 this static site, revisit the frontend hosting model.
+
+---
+
+## 2026-05-01 - Expand action space from 4 to 7 typed tool-use actions
+**Context**: the legacy `data_quality_env` uses 4 untyped actions (`inspect`,
+`diagnose`, `fix`, `finalize`). Week 6 migrates to a typed tool-use interface.
+The question is whether to preserve the legacy action vocabulary or expand it.
+**Alternatives**:
+- Keep 4 actions (port legacy vocabulary). Pros: minimal migration risk.
+  Cons: blocks richer agent strategies; `inspect` conflates row viewing,
+  column stats, and secondary table access into one overloaded action.
+- Expand to 7 typed actions. Pros: each action has clear semantics and
+  field-level Pydantic validation; enables SQL queries, statistical tests,
+  pattern matching, and hypothesis recording that are essential for a
+  production-grade data-quality agent. Cons: agent code and training
+  pipelines must adapt to the larger action space.
+- Expand to 10+ actions (fine-grained per detector). Pros: maximum
+  specificity. Cons: combinatorial explosion makes RL exploration harder;
+  many actions would be rarely used.
+**Decision**: expand to 7 typed actions with discriminated Pydantic union.
+**Reasoning**: 7 actions hits the sweet spot between expressiveness and
+learnability. Each action maps to a distinct cognitive operation (explore,
+analyze, hypothesize, diagnose, repair). The legacy `finalize` is replaced
+by automatic step-budget termination, which eliminates the pathological
+case where an agent wastes a step by finalizing prematurely and simplifies
+the episode lifecycle. The discriminated union pattern prevents cross-model
+field pollution that plagued the legacy `DataQualityAction` monolith.
+**Reviewed with**: SPEC_openenv_env.md and the Week 6 implementation.
+**Reversal criteria**: if RL training shows the 7-action space is too sparse
+for exploration (> 2× sample complexity vs 4 actions on equivalent tasks),
+consider collapsing SQL_QUERY + STAT_TEST + PATTERN_MATCH into a single
+`ANALYZE` action with a sub-type discriminator.
+
+---
+
+## 2026-05-01 - INSPECT_ROWS returns up to 20 rows, not 20 cells
+**Context**: the Week 6 prompt says "up to 20 cells total, not 20 rows."
+With a 10-column dataset, that allows only 2 rows per inspection — severely
+limiting information gain per step compared to the legacy 10-row limit.
+**Alternatives**:
+- 20 cells (literal prompt). Pros: minimal data leakage per step; forces
+  the agent to use SQL_QUERY for broader views. Cons: with 10 columns, only
+  2 rows visible per action; the agent needs 5 inspections to see what one
+  legacy inspection showed, wasting precious step budget on data access
+  instead of reasoning.
+- 20 rows (relaxed cap). Pros: each inspection returns enough rows for the
+  agent to spot patterns across multiple records; matches the scale at which
+  detectors operate (row-level issues); compatible with the exploration bonus
+  formula which rewards coverage breadth. Cons: slightly more data per step.
+- 10 rows (legacy parity). Pros: direct backward compatibility. Cons:
+  arbitrary number with no principled justification.
+**Decision**: 20 rows per INSPECT_ROWS action.
+**Reasoning**: the cell-level interpretation creates a perverse incentive:
+the agent must spend its finite step budget on data access rather than
+analysis. With 20 rows × 10 columns, the agent sees ~200 cells per
+inspection — enough to identify multi-row patterns (e.g., FD violations,
+systematic decimal shifts) that are architecturally invisible in a 2-row
+window. The agent retains fine-grained column filtering via the optional
+`column_names` field for targeted queries, and SQL_QUERY provides
+unrestricted read access for complex analysis.
+**Reviewed with**: SPEC_openenv_env.md, REWARD_DESIGN.md exploration bonus.
+**Reversal criteria**: if agents learn to request maximum rows on every step
+(ignoring the exploration bonus decay), consider reducing the cap to 10 or
+adding a diminishing-returns penalty for large inspections.
+
+---
+
+## 2026-05-01 - Use hospital fixture as default, support configurable datasets
+**Context**: the environment needs a default dataset for `reset()`. Options
+include the existing `fixtures/hospital_10rows.csv`, a purpose-built fixture,
+or the legacy JSON datasets in `datasets/`.
+**Alternatives**:
+- Hospital fixture only. Pros: immediate usability; already has a schema
+  YAML. Cons: limited diversity for training.
+- Purpose-built fixture. Pros: can be tailored to test all detector types.
+  Cons: delays ship; may not represent real-world data characteristics.
+- Support both via task configuration. Pros: extensible architecture;
+  default fixture for quick-start, configurable loading for BYOD (bring
+  your own data) scenarios. Cons: slightly more code surface.
+**Decision**: use `fixtures/hospital_10rows.csv` with its schema YAML as
+the default episode dataset, with the architecture supporting future
+configurable task loading.
+**Reasoning**: the hospital fixture is the canonical test dataset already
+used by the detector suite and benchmark pipeline. Using it as the default
+ensures the ground truth generated by `run_all_detectors()` produces
+meaningful issues (type_mismatch on `phone_number`, decimal_shift on
+`rating`, fd_violation on `provider_number → hospital_name`). The
+architecture's `_load_fixture()` path is trivially extensible to accept
+arbitrary CSV+schema pairs in future milestones.
+**Reviewed with**: SPEC_openenv_env.md §3 (IN scope).
+**Reversal criteria**: if the hospital fixture proves too small or too
+repetitive for meaningful RL training, add a larger purpose-built fixture
+(~100 rows, 15 columns, all detector types represented) as the default.
+
+---
+
+## 2026-05-01 - Port legacy noise model verbatim (ε=0.15, seed-based RNG)
+**Context**: the legacy environment implements stochastic observation noise
+with 15% probability per row, using seed-based `random.Random`. The Week 6
+prompt asks whether to refine the noise model.
+**Alternatives**:
+- Port verbatim. Pros: tested, simple, deterministic for same seed, and
+  already validated by the legacy test suite. Cons: noise is row-level
+  only (no column-correlated noise, no systematic bias).
+- Refine with column-correlated noise. Pros: more realistic; mimics
+  real-world pipeline errors that affect entire columns. Cons: increased
+  complexity; requires new calibration; risks breaking determinism
+  guarantees expected by RL training scripts.
+- Remove noise entirely. Pros: simplest. Cons: loses the POMDP training
+  capability that forces agents to be robust to observation uncertainty.
+**Decision**: port the legacy noise model verbatim.
+**Reasoning**: the legacy model is simple, deterministic, and effective for
+its purpose (partial observability training). Refining the noise model is a
+research concern that belongs in a future training experiment, not in the
+environment architecture. The ε=0.15 parameter and seed-based RNG ensure
+reproducible episodes across training runs, which is more important than
+noise realism at this stage.
+**Reviewed with**: SPEC_openenv_env.md §4 (constraints).
+**Reversal criteria**: if agent training shows the current noise model is
+either too easy (agents trivially learn to ignore it) or too hard (agents
+can't converge), tune ε or switch to column-correlated noise.
+
+---
+
+## 2026-05-01 - Hypothesis root-cause matching on issue_type (closed vocabulary)
+**Context**: the HYPOTHESIS action awards root-cause credit when the agent's
+claim matches hidden ground truth. The matching criteria must be defined.
+**Alternatives**:
+- Match on `issue_type` only. Pros: deterministic, testable; uses the
+  closed vocabulary (`IssueTypeLiteral`) which is machine-readable and
+  already present in detector output. Cons: coarse; doesn't validate the
+  causal reasoning in the `claim` text.
+- Match on `issue_type` + `reason` field. Pros: validates richer reasoning.
+  Cons: `reason` is free-form text; fuzzy matching is unreliable, requires
+  an LLM judge, and violates the "no LLM calls in environment" constraint.
+- Match on `issue_type` + `row` + `column`. Pros: precise location-aware
+  matching. Cons: this is equivalent to DIAGNOSE; removes the
+  strategic value of HYPOTHESIS as a "broader claim" action.
+**Decision**: match on `issue_type` (from `IssueTypeLiteral`) plus row and
+column membership in `affected_rows` and `affected_columns` respectively.
+**Reasoning**: this provides meaningful credit granularity without requiring
+text analysis. The agent gets credit for correctly identifying that "rows
+[5, 6] in column 'rating' have a `decimal_shift` issue" — which is the
+actionable insight a root-cause analysis should produce. The `claim` text
+is recorded in the scratchpad for observability but not scored, preserving
+the "no LLM calls" invariant. The per-issue credit of `R_EXPLORE = 0.01`
+is intentionally small: HYPOTHESIS is a planning action, not a scoring
+shortcut, and its primary value is helping the agent organize its
+investigation strategy.
+**Reviewed with**: SPEC_openenv_env.md §6.5, detector base.py `Issue` model.
+**Reversal criteria**: if future work adds a lightweight offline NLI model
+for claim verification (no runtime LLM call), consider upgrading hypothesis
+matching to validate the `claim` text against the ground-truth `reason`.
+
+
+---
+
+## 2026-05-01 - Exact-origin CORS and `dataforge-playground` Space naming
+**Context**: Week 5 hardening found two deployment risks: the backend accepted
+any `*.workers.dev` / `*.pages.dev` origin in production, and docs/config drifted
+between the repo name (`data-quality-env`) and the product playground target.
+**Alternatives**:
+- Keep wildcard Cloudflare CORS and the existing Space slug. Pros: no deploy
+  churn. Cons: another Cloudflare-hosted site could call the API, and public
+  URLs do not match the product name.
+- Revert to Cloudflare Pages and subtree push. Pros: matches the original Week 5
+  prompt literally. Cons: contradicts the reviewed Workers Static Assets flow
+  and the staged Docker build context already verified in CI.
+- Keep Workers Static Assets, require exact production origins, and standardize
+  the Hugging Face Space as `dataforge-playground`. Pros: preserves the tested
+  deploy path, tightens API exposure, and aligns the public demo URL with the
+  product name. Cons: maintainers must set `DATAFORGE_PLAYGROUND_ORIGINS`
+  explicitly after deploy.
+**Decision**: keep Workers Static Assets, remove production wildcard CORS, allow
+localhost only under `DATAFORGE_PLAYGROUND_DEV=1`, and standardize the Space slug
+as `dataforge-playground`.
+**Reasoning**: exact-origin CORS is the narrowest free-tier-safe contract, while
+the product-named Space avoids a confusing public URL without changing API
+behavior.
+**Reviewed with**: Week 5 playground hardening plan, `SPEC_playground.md`, and
+the existing playground smoke/contract tests.
+**Reversal criteria**: if Cloudflare changes preview host behavior in a way that
+makes exact-origin previews unmanageable, add a narrowly-scoped preview-origin
+configuration mechanism rather than restoring broad platform wildcards.

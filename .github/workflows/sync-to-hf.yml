@@ -13,7 +13,7 @@ jobs:
     permissions:
       contents: read
     env:
-      HF_SPACE_ID: Praneshrajan15/data-quality-env
+      HF_SPACE_ID: Praneshrajan15/dataforge-playground
     steps:
       - uses: actions/checkout@v4
 

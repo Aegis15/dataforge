@@ -16,6 +16,7 @@ ASSETSIGNORE_PATH = PROJECT_ROOT / "playground" / "web" / ".assetsignore"
 HEADERS_PATH = PROJECT_ROOT / "playground" / "web" / "_headers"
 RENDERER_PATH = PROJECT_ROOT / "scripts" / "playground" / "render_web_config.py"
 VERIFIER_PATH = PROJECT_ROOT / "scripts" / "playground" / "verify_frontend_deploy.py"
+HF_SYNC_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "sync-to-hf.yml"
 
 
 def _load_renderer_module():
@@ -46,27 +47,34 @@ def test_assetsignore_and_headers_protect_runtime_config() -> None:
     assert VERIFIER_PATH.exists()
 
 
+def test_hf_sync_workflow_targets_dataforge_playground_space() -> None:
+    """The manual HF deployment workflow pushes to the product-named Space."""
+    body = HF_SYNC_WORKFLOW_PATH.read_text(encoding="utf-8")
+    assert "HF_SPACE_ID: Praneshrajan15/dataforge-playground" in body
+    assert "HF_SPACE_ID: Praneshrajan15/data-quality-env" not in body
+
+
 def test_renderer_writes_normalized_backend_url(tmp_path: Path) -> None:
     """The config renderer strips trailing slashes and writes valid JS."""
     module = _load_renderer_module()
     output_path = tmp_path / "config.js"
 
     rendered = module.render_config(
-        "https://Praneshrajan15-data-quality-env.hf.space/",
+        "https://Praneshrajan15-dataforge-playground.hf.space/",
         output_path=output_path,
     )
 
     body = rendered.read_text(encoding="utf-8")
-    assert '"https://Praneshrajan15-data-quality-env.hf.space"' in body
-    assert 'https://Praneshrajan15-data-quality-env.hf.space/"' not in body
+    assert '"https://Praneshrajan15-dataforge-playground.hf.space"' in body
+    assert 'https://Praneshrajan15-dataforge-playground.hf.space/"' not in body
 
 
 @pytest.mark.parametrize(
     "value",
     [
         "",
-        "http://Praneshrajan15-data-quality-env.hf.space",
-        "https://Praneshrajan15-data-quality-env.hf.space?preview=true",
+        "http://Praneshrajan15-dataforge-playground.hf.space",
+        "https://Praneshrajan15-dataforge-playground.hf.space?preview=true",
     ],
 )
 def test_renderer_rejects_invalid_backend_urls(value: str) -> None:
@@ -76,16 +84,31 @@ def test_renderer_rejects_invalid_backend_urls(value: str) -> None:
         module.normalize_backend_url(value)
 
 
-def test_cors_helpers_allow_workers_dev_and_explicit_origins(
+def test_cors_helpers_allow_only_explicit_production_origins(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The backend allowlist covers workers.dev plus explicit custom domains."""
+    """Production CORS uses explicit origins and no wildcard Cloudflare host regex."""
     monkeypatch.setenv(
         "DATAFORGE_PLAYGROUND_ORIGINS",
         "https://demo.example.com, https://dataforge.example.com",
     )
+    monkeypatch.delenv("DATAFORGE_PLAYGROUND_DEV", raising=False)
     explicit = _build_cors_origins()
     regex = _build_cors_origin_regex()
 
     assert explicit == ["https://demo.example.com", "https://dataforge.example.com"]
-    assert re.fullmatch(regex, "https://dataforge.account-subdomain.workers.dev") is not None
+    assert regex is None
+    assert "https://dataforge.account-subdomain.workers.dev" not in explicit
+
+
+def test_cors_helper_allows_localhost_only_in_dev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Local browser development is regex-allowed only behind the dev flag."""
+    monkeypatch.setenv("DATAFORGE_PLAYGROUND_DEV", "1")
+    regex = _build_cors_origin_regex()
+
+    assert regex is not None
+    assert re.fullmatch(regex, "http://localhost:8788") is not None
+    assert re.fullmatch(regex, "http://127.0.0.1:7860") is not None
+    assert re.fullmatch(regex, "https://dataforge.account-subdomain.workers.dev") is None

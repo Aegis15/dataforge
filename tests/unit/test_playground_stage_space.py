@@ -74,6 +74,9 @@ def test_space_setup_runbook_uses_staging_flow() -> None:
     body = SPACE_SETUP_PATH.read_text(encoding="utf-8")
     assert "stage_space.py" in body
     assert "subtree" not in body.lower()
+    assert "dataforge-playground" in body
+    assert "data-quality-env.hf.space" not in body
+    assert "huggingface.co/spaces/Praneshrajan15/data-quality-env" not in body
 
 
 def test_frontend_deploy_runbook_uses_workers_static_assets_flow() -> None:
@@ -83,4 +86,7 @@ def test_frontend_deploy_runbook_uses_workers_static_assets_flow() -> None:
     assert "render_web_config.py" in body
     assert "verify_frontend_deploy.py" in body
     assert "config.js" in body
+    assert "dataforge-playground" in body
+    assert "data-quality-env.hf.space" not in body
+    assert "broad `workers.dev`" in body
     assert "sed -i" not in body

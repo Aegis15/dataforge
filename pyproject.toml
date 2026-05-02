@@ -60,8 +60,11 @@ playground = [
     "uvicorn[standard]>=0.30",
     "python-multipart>=0.0.9",
 ]
+openenv = [
+    "openenv-core[core]>=0.2.2",
+]
 all = [
-    "dataforge[dev,train,eval,playground]",
+    "dataforge[dev,train,eval,playground,openenv]",
 ]
 
 [project.scripts]

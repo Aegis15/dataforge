@@ -35,7 +35,9 @@ npx wrangler@4.85.0 deploy --config wrangler.toml
 - **Root directory**: `/`
 
 `wrangler.toml` is the frontend deployment source of truth. The renderer is the
-only supported way to produce the deployable `config.js` file.
+supported way to override the deployable `config.js` file. The committed
+`config.js` also contains the public production backend URL so an assets-only
+deploy cannot accidentally ship an empty backend config.
 
 ## Step 2: Set the backend URL
 
@@ -43,8 +45,8 @@ In the Cloudflare project settings, add:
 
 | Variable | Value | Scope |
 | -------- | ----- | ----- |
-| `BACKEND_URL` | `https://Praneshrajan15-data-quality-env.hf.space` | Production |
-| `BACKEND_URL` | `https://Praneshrajan15-data-quality-env.hf.space` | Preview |
+| `BACKEND_URL` | `https://<hf-user>-dataforge-playground.hf.space` | Production |
+| `BACKEND_URL` | `https://<hf-user>-dataforge-playground.hf.space` | Preview |
 
 ## Step 3: Deploy
 
@@ -76,6 +78,9 @@ Confirm that:
 - No Worker script is required; this remains an assets-only frontend deploy.
 - No custom domain is required for the free-tier launch, but any custom domain
   must be added to `DATAFORGE_PLAYGROUND_ORIGINS` in the Hugging Face Space.
+- In production, `DATAFORGE_PLAYGROUND_ORIGINS` must contain the exact
+  Cloudflare frontend origin. The backend does not allow broad `workers.dev`
+  wildcards.
 - No browser storage is used.
 - No API keys are embedded in the frontend; all provider keys stay in Hugging
   Face Space secrets.

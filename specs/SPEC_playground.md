@@ -18,7 +18,8 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - [ ] `POST /api/profile` on `hospital_10rows.csv` returns a valid issue list within 5 s warm.
 - [ ] `POST /api/repair?dry_run=true` returns fixes plus a redacted journal derived from a real `RepairTransaction`.
 - [ ] `advanced=true` is rejected with 400 when no provider key is configured and accepted when one is present.
-- [ ] Uploads larger than 1 MB are rejected with 413 before a full body read.
+- [ ] Uploaded CSV files larger than 1 MiB are rejected with 413; valid near-limit CSVs are not rejected only because of multipart overhead.
+- [ ] Production CORS allows only exact origins from `DATAFORGE_PLAYGROUND_ORIGINS`; localhost is regex-allowed only when `DATAFORGE_PLAYGROUND_DEV=1`.
 - [ ] Rate limiting returns 429 on the 11th POST within a minute from one client.
 - [ ] The frontend uses relative assets plus `config.js` and never assumes HF static hosting.
 - [ ] No browser storage APIs or frontend API keys appear under `playground/web/`.
@@ -32,6 +33,7 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Heuristic-first behavior with optional advanced mode
 - Cloudflare Workers Static Assets frontend with runtime backend configuration
   via `config.js`
+- Hugging Face Docker Space named `dataforge-playground`
 - Hugging Face staging script and deployment runbooks
 - Playground-focused tests, CI checks, and quality-gate coverage
 
@@ -53,7 +55,7 @@ and the backend is served as an API-only Hugging Face Docker Space.
 ## 5. Prior decisions (locked - require new spec to change)
 
 - Cloudflare Workers Static Assets serves the frontend; Hugging Face Space
-  serves the API backend.
+  `dataforge-playground` serves the API backend.
 - The hosted playground is stateless and dry-run only.
 - Heuristic mode is the default; advanced mode is opt-in and backend-key-gated.
 - Playground-only runtime dependencies stay out of core package runtime deps.
@@ -134,7 +136,12 @@ Input: 11 POST requests from one client in under a minute
 Expected output: first 10 accepted, 11th returns 429
 Reasoning: validates the free-tier abuse guard and the single-worker contract.
 
-### Case A.6: HF staging is internally consistent
+### Case A.6: CORS is exact-origin in production
+Input: production request from an unconfigured `workers.dev` origin
+Expected output: no `Access-Control-Allow-Origin` response header
+Reasoning: prevents another Cloudflare account from calling the API by virtue of sharing the same platform domain.
+
+### Case A.7: HF staging is internally consistent
 Input: `python scripts/playground/stage_space.py --output-dir <tmp>`
 Expected output: staged repo contains every Docker COPY source and omits the frontend tree
 Reasoning: prevents deploy docs from drifting away from the actual Docker build context.
