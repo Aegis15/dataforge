@@ -30,8 +30,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # §1  Configuration
@@ -40,7 +38,7 @@ from typing import Dict, List, Optional, Tuple
 PROJECT_ROOT = Path(__file__).resolve().parent
 
 # Required files (relative to project root)
-REQUIRED_FILES: List[str] = [
+REQUIRED_FILES: list[str] = [
     "openenv.yaml",
     "models.py",
     "compat.py",
@@ -65,7 +63,7 @@ REQUIRED_FILES: List[str] = [
 ]
 
 # Secret patterns to scan for (compiled regex patterns)
-SECRET_PATTERNS: List[Tuple[str, re.Pattern]] = [
+SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("OpenAI API key", re.compile(r"sk-[a-zA-Z0-9]{20,}")),
     ("HuggingFace token", re.compile(r"hf_[a-zA-Z0-9]{20,}")),
     ("Generic Bearer token", re.compile(r'["\']Bearer\s+[a-zA-Z0-9._\-]{20,}["\']')),
@@ -87,15 +85,13 @@ _NC = "\033[0m"
 
 # Enable ANSI on Windows
 if sys.platform == "win32":
-    try:
+    with contextlib.suppress(Exception):
         os.system("")  # Enable ANSI escape codes on Windows 10+
-    except Exception:
-        pass
 
 _pass_count = 0
 _fail_count = 0
 _warn_count = 0
-_errors: List[str] = []
+_errors: list[str] = []
 
 
 def _pass(msg: str) -> None:
@@ -124,6 +120,7 @@ def _section(title: str) -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 # §3  Validation Steps
 # ═══════════════════════════════════════════════════════════════════════════
+
 
 def check_required_files() -> None:
     """Step 1: Verify all required files exist."""
@@ -174,7 +171,9 @@ def check_python_imports() -> None:
             if result.returncode == 0:
                 _pass(label)
             else:
-                _fail(f"{label}: {result.stderr.strip().splitlines()[-1] if result.stderr else 'unknown error'}")
+                _fail(
+                    f"{label}: {result.stderr.strip().splitlines()[-1] if result.stderr else 'unknown error'}"
+                )
         except subprocess.TimeoutExpired:
             _fail(f"{label}: TIMEOUT")
         except Exception as exc:
@@ -236,9 +235,7 @@ def check_inference_output_contract() -> None:
         start_line = inference_module._start_log_line(
             "task_1_format_fixer", "data_quality_env", "test-model"
         )
-        step_line = inference_module._step_log_line(
-            1, "finalize()", 0.0001, True, None
-        )
+        step_line = inference_module._step_log_line(1, "finalize()", 0.0001, True, None)
 
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
@@ -250,18 +247,13 @@ def check_inference_output_contract() -> None:
         else:
             _fail(f"inference [START] format invalid: {start_line}")
 
-        expected_step = (
-            "[STEP] step=1 action=finalize() "
-            "reward=0.0001 done=true error=null"
-        )
+        expected_step = "[STEP] step=1 action=finalize() reward=0.0001 done=true error=null"
         if step_line == expected_step:
             _pass("inference [STEP] format")
         else:
             _fail(f"inference [STEP] format invalid: {step_line}")
 
-        expected_end = (
-            "[END] success=true steps=1 score=0.0001 rewards=0.0001"
-        )
+        expected_end = "[END] success=true steps=1 score=0.0001 rewards=0.0001"
         if end_line == expected_end:
             _pass("inference [END] format")
         else:
@@ -323,7 +315,9 @@ def check_dataset_integrity() -> None:
                 fixable_meta = meta.get("fixable_issues", 0)
                 actual_fixable = sum(1 for i in issues if i.get("expected") is not None)
                 if fixable_meta != actual_fixable:
-                    _fail(f"{label}: _meta.fixable_issues ({fixable_meta}) != actual ({actual_fixable})")
+                    _fail(
+                        f"{label}: _meta.fixable_issues ({fixable_meta}) != actual ({actual_fixable})"
+                    )
                 else:
                     _pass(f"{label}: _meta.fixable_issues consistent ({fixable_meta})")
 
@@ -421,9 +415,12 @@ def check_docker_build(skip: bool = False) -> None:
     try:
         result = subprocess.run(
             [
-                docker_cmd, "build",
-                "-t", "data_quality_env:validate",
-                "-f", str(PROJECT_ROOT / "server" / "Dockerfile"),
+                docker_cmd,
+                "build",
+                "-t",
+                "data_quality_env:validate",
+                "-f",
+                str(PROJECT_ROOT / "server" / "Dockerfile"),
                 str(PROJECT_ROOT),
             ],
             capture_output=True,
@@ -550,13 +547,14 @@ def check_port_consistency() -> None:
     """Step 10: Verify port number is consistent across all configuration files."""
     _section("Step 10: Port Consistency")
 
-    port_sources: Dict[str, Optional[int]] = {}
+    port_sources: dict[str, int | None] = {}
 
     # 1. openenv.yaml
     yaml_path = PROJECT_ROOT / "openenv.yaml"
     if yaml_path.exists():
         content = yaml_path.read_text(encoding="utf-8")
         import re as _re
+
         match = _re.search(r"^port:\s*(\d+)", content, _re.MULTILINE)
         if match:
             port_sources["openenv.yaml"] = int(match.group(1))
@@ -647,12 +645,13 @@ def check_pyproject_toml() -> None:
 # §4  Main
 # ═══════════════════════════════════════════════════════════════════════════
 
+
 def main() -> int:
     """Run all validation checks and print summary."""
     skip_docker = "--skip-docker" in sys.argv
 
     print(f"\n{_BOLD}{'=' * 56}")
-    print(f"  PRE-SUBMISSION VALIDATION")
+    print("  PRE-SUBMISSION VALIDATION")
     print(f"{'=' * 56}{_NC}")
     print(f"  Project: {PROJECT_ROOT}")
     print(f"  Python:  {sys.executable}")
@@ -683,7 +682,7 @@ def main() -> int:
         print(f"  {_GREEN}{_BOLD}READY TO SUBMIT{_NC}")
     else:
         print(f"  {_RED}{_BOLD}FIX {_fail_count} FAILURE(S) BEFORE SUBMITTING{_NC}")
-        print(f"\n  Failures:")
+        print("\n  Failures:")
         for err in _errors:
             print(f"    - {err}")
 

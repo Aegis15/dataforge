@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Verify that the HF Space returns scores strictly in (0, 1)."""
 
+import http.cookiejar
 import json
 import sys
 import urllib.request
-import http.cookiejar
 
 BASE = "https://praneshrajan15-data-quality-env.hf.space"
 TASKS = [
@@ -12,6 +12,7 @@ TASKS = [
     "task_2_duplicate_detective",
     "task_3_integrity_auditor",
 ]
+
 
 def test_task(task_id: str) -> float:
     """Reset + finalize a task and return the score."""
@@ -42,7 +43,7 @@ def main():
     print("Score Range Validator")
     print("=" * 50)
     all_pass = True
-    
+
     for task_id in TASKS:
         try:
             score = test_task(task_id)
@@ -54,13 +55,13 @@ def main():
         except Exception as e:
             print(f"  [ERROR] {task_id}: {e}")
             all_pass = False
-    
+
     print("=" * 50)
     if all_pass:
         print("ALL SCORES STRICTLY IN (0, 1) — READY TO SUBMIT")
     else:
         print("SOME SCORES OUT OF RANGE — FIX NEEDED")
-    
+
     return 0 if all_pass else 1
 
 

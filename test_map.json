@@ -155,7 +155,10 @@
     "regression_tests": ["tests/regression/test_env.py"]
   },
   "dataforge/bench/groq_client.py": {
-    "direct_tests": ["tests/unit/test_bench_runner.py"],
+    "direct_tests": [
+      "tests/unit/test_bench_groq_client.py",
+      "tests/unit/test_bench_runner.py"
+    ],
     "regression_tests": ["tests/regression/test_env.py"]
   },
   "dataforge/bench/methods.py": {
@@ -211,6 +214,28 @@
   "dataforge/env/__init__.py": {
     "direct_tests": ["tests/integration/test_openenv_spec.py"],
     "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "scripts/data/collect_sft_trajectories.py": {
+    "direct_tests": ["tests/unit/test_sft_trajectories.py"],
+    "integration_tests": ["tests/integration/test_bench_workflow.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "scripts/data/validate_sft_readiness.py": {
+    "direct_tests": ["tests/unit/test_sft_readiness.py"]
+  },
+  "scripts/publish_model.py": {
+    "direct_tests": ["tests/unit/test_publish_model.py"]
+  },
+  "scripts/test_mapped.py": {
+    "direct_tests": ["tests/unit/test_test_mapped.py"]
+  },
+  "training/configs/sft_05b.yaml": {
+    "direct_tests": ["tests/unit/test_sft_notebook_contract.py"]
+  },
+  "training/kaggle/sft_warmup_kaggle.ipynb": {
+    "direct_tests": ["tests/unit/test_sft_notebook_contract.py"]
+  },
+  "training/MODEL_CARD_TEMPLATE.md": {
+    "direct_tests": ["tests/unit/test_publish_model.py", "tests/unit/test_sft_notebook_contract.py"]
   }
 }
-

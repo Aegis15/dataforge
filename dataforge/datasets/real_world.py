@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +16,9 @@ from dataforge.datasets.registry import DatasetMetadata, HeaderMismatch, get_dat
 
 class DatasetDownloadError(RuntimeError):
     """Raised when a real-world dataset cannot be downloaded or loaded from cache."""
+
+
+_LOGGER = logging.getLogger("dataforge.datasets.real_world")
 
 
 class GroundTruthCell(BaseModel):
@@ -57,7 +62,11 @@ def _read_cached_csv(path: Path) -> pd.DataFrame:
 
 def _download_bytes(url: str) -> bytes:
     """Download raw CSV bytes from an upstream source URL."""
-    with httpx.Client(timeout=60.0, follow_redirects=True) as client:
+    try:
+        timeout = float(os.environ.get("DATAFORGE_DOWNLOAD_TIMEOUT_S", "5"))
+    except ValueError:
+        timeout = 5.0
+    with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         response = client.get(url)
         response.raise_for_status()
     return response.content
@@ -67,8 +76,19 @@ def _download_to_cache(metadata: DatasetMetadata, dataset_dir: Path) -> None:
     """Download dirty/clean CSV files into the dataset cache directory."""
     dataset_dir.mkdir(parents=True, exist_ok=True)
     dirty_url, clean_url = metadata.source_urls
+    _LOGGER.info("dataset_download_start name=%s dir=%s", metadata.name, dataset_dir)
     (dataset_dir / "dirty.csv").write_bytes(_download_bytes(dirty_url))
     (dataset_dir / "clean.csv").write_bytes(_download_bytes(clean_url))
+    _LOGGER.info("dataset_download_complete name=%s dir=%s", metadata.name, dataset_dir)
+
+
+def _load_embedded_dataset(name: str) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+    root = Path(__file__).parent / "embedded" / name
+    dirty_path = root / "dirty.csv"
+    clean_path = root / "clean.csv"
+    if not dirty_path.exists() or not clean_path.exists():
+        return None
+    return _read_cached_csv(dirty_path), _read_cached_csv(clean_path)
 
 
 def _manual_download_message(metadata: DatasetMetadata, dataset_dir: Path, cause: Exception) -> str:
@@ -153,16 +173,26 @@ def load_real_world_dataset(
     dirty_path = dataset_dir / "dirty.csv"
     clean_path = dataset_dir / "clean.csv"
 
+    dirty_df: pd.DataFrame | None = None
+    clean_df: pd.DataFrame | None = None
+
     if not dirty_path.exists() or not clean_path.exists():
+        _LOGGER.info("dataset_cache_miss name=%s dir=%s", name, dataset_dir)
         try:
             _download_to_cache(metadata, dataset_dir)
         except Exception as exc:  # pragma: no cover - exercised through tests via monkeypatch
-            raise DatasetDownloadError(
-                _manual_download_message(metadata, dataset_dir, exc)
-            ) from exc
+            fallback = _load_embedded_dataset(name)
+            if fallback is None:
+                raise DatasetDownloadError(
+                    _manual_download_message(metadata, dataset_dir, exc)
+                ) from exc
+            dirty_df, clean_df = fallback
+    else:
+        _LOGGER.info("dataset_cache_hit name=%s dir=%s", name, dataset_dir)
 
-    dirty_df = _read_cached_csv(dirty_path)
-    clean_df = _read_cached_csv(clean_path)
+    if dirty_df is None or clean_df is None:
+        dirty_df = _read_cached_csv(dirty_path)
+        clean_df = _read_cached_csv(clean_path)
 
     if len(dirty_df.index) != len(clean_df.index):
         raise ValueError(f"Dataset '{name}' dirty/clean row counts do not match.")

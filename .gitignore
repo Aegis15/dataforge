@@ -20,3 +20,6 @@ DESIGN_PARTNERS.md
 .hf-space-repo/
 .hf-space-stage-plan/
 .wrangler/
+data/sft_traj/*.jsonl
+!data/sft_traj/.gitkeep
+training/kaggle/.ipynb_checkpoints/

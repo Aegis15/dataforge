@@ -39,10 +39,17 @@ class TestRunAgentComparison:
                 cache_root=tmp_path / "cache",
             )
 
-    def test_runner_writes_json_and_skips_unconfigured_llm(self, tmp_path: Path) -> None:
+    def test_runner_writes_json_and_skips_unconfigured_llm(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         cache_root = tmp_path / "cache"
         output_json = tmp_path / "eval" / "results" / "agent_comparison.json"
         _populate_cache(cache_root)
+
+        # Force a non-Groq provider and neutralize any local .env GROQ_API_KEY.
+        # load_dotenv() in the runner will not override existing env vars by default.
+        monkeypatch.setenv("DATAFORGE_LLM_PROVIDER", "gemini")
+        monkeypatch.setenv("GROQ_API_KEY", "")
 
         result = run_agent_comparison(
             methods=["heuristic", "llm_zeroshot"],

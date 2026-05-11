@@ -12,6 +12,82 @@ Format for every entry:
 
 ---
 
+## 2026-05-10 - Add a hard SFT readiness gate before Kaggle
+**Context**: The Kaggle notebook can fail late or publish incomplete artifacts
+when the HF dataset repo is missing, the local trajectory JSONL is empty, chunk
+keys are duplicated, package pins drift, or evaluation fails after an early
+upload.
+**Alternatives**:
+- Trust the notebook alone. Pros: fewer files. Cons: failures happen inside a
+  scarce GPU runtime and are harder to diagnose.
+- Add notebook-only assertions. Pros: catches some problems. Cons: still
+  burns Kaggle startup time and does not protect local handoff quality.
+- Add a local preflight gate plus notebook checks. Pros: catches bad handoffs
+  before Kaggle, keeps run-all behavior, and prevents incomplete model cards.
+  Cons: one more command in the workflow.
+**Decision**: validate `expert_v1` locally with
+`scripts/data/validate_sft_readiness.py`, enforce exact pins and non-empty
+train/held-out split assumptions, and publish from the notebook only after
+numeric evaluation metrics exist.
+**Reasoning**: the Kaggle step should be a compute execution step, not the
+first place basic data and packaging invariants are discovered. A local gate is
+the cheapest way to make failures deterministic and actionable.
+**Reviewed with**: SPEC_sft_warmup.md and the 2026-05-10 Kaggle failure audit.
+**Reversal criteria**: if the workflow moves to a managed trainer with its own
+artifact validation and atomic publishing, collapse the local gate into that
+system while preserving the same checks.
+
+---
+
+## 2026-05-02 - Collect Week 9 SFT data as chunk-level trajectories
+**Context**: Week 9 needs a Kaggle-free-tier SFT warmup dataset from Groq ReAct
+teacher runs. Treating each full benchmark episode as one "trajectory" would
+make the stated 2,000-trajectory target incompatible with the free-tier request
+budget because each episode spans many row chunks.
+**Alternatives**:
+- Full-episode records. Pros: simple naming. Cons: budget math does not close
+  and one record contains too much heterogeneous context for SFT.
+- Chunk-level records keyed by `(task_id, seed, chunk_index)`. Pros: matches
+  the existing ReAct chunk loop, supports idempotent resume, and yields compact
+  chat examples. Cons: episode-level quality filtering must be applied before
+  writing chunk records.
+- Synthetic fixture-only records. Pros: cheap and deterministic. Cons: misses
+  the real-world Hospital / Flights / Beers distribution targeted by Week 9.
+**Decision**: collect chunk-level `expert_v1` JSONL records from real-world
+DataForge-Bench-light windows and retain only chunks from episodes with F1 >=
+0.6.
+**Reasoning**: chunk-level records are the only way to honor the Groq request
+budget, keep examples trainable on a 0.5B model, and preserve auditable
+tool-use provenance.
+**Reviewed with**: SPEC_sft_warmup.md and the Week 9 implementation plan.
+**Reversal criteria**: if later training shows chunk-local examples do not
+teach cross-chunk repair strategy, introduce a second hierarchical dataset
+format while keeping `expert_v1` for warmup SFT.
+
+---
+
+## 2026-05-02 - Resolve Week 9 HF repos from the authenticated user
+**Context**: The original prompt used `<you>/DataForge-0.5B-SFT`, which is not
+run-all reproducible in Kaggle and invites users to edit notebook cells.
+**Alternatives**:
+- Hardcode a maintainer namespace. Pros: simple for one maintainer. Cons:
+  breaks forks and external readers.
+- Ask the notebook user to edit `<you>`. Pros: obvious. Cons: violates the
+  run-all without modification requirement.
+- Resolve `HF_TOKEN` with `whoami` and derive dataset/model repo names. Pros:
+  reproducible, fork-friendly, and scriptable. Cons: requires a write-capable
+  HF token.
+**Decision**: use `HF_TOKEN` plus `HfApi.whoami()` to derive
+`<hf_user>/dataforge-sft-trajectories` and `<hf_user>/DataForge-0.5B-SFT`.
+**Reasoning**: automatic repo resolution is the narrowest way to make the
+notebook self-contained while still publishing into the runner's namespace.
+**Reviewed with**: SPEC_sft_warmup.md.
+**Reversal criteria**: if HF changes token introspection semantics or the
+workflow moves to organization-owned releases, add an explicit `--repo-id`
+override while keeping `auto` as the default.
+
+---
+
 ## 2026-04-19 - Ship an honest scaffold before feature code
 **Context**: the repository needed a clean DataForge monorepo foundation
 without pretending the future implementation already exists.

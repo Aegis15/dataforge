@@ -2,25 +2,20 @@
 
 ## Reproduction
 
-`dataforge bench --methods random,heuristic,llm_zeroshot,llm_react --datasets hospital,flights,beers --seeds 3`
+`dataforge bench --methods llm_zeroshot --datasets hospital --seeds 1`
 
 ## Configuration
 
-- Methods: random, heuristic, llm_zeroshot, llm_react
-- Datasets: hospital, flights, beers
-- Seeds: 3
+- Methods: llm_zeroshot
+- Datasets: hospital
+- Seeds: 1
 - Free-tier quota units: `max(llm_calls / 1000, (prompt_tokens + completion_tokens) / 100000)`
-
-Skipped methods in this reproduced run: DATAFORGE_LLM_PROVIDER must be set to groq.
 
 ## Cross-Dataset Local Results
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units |
 | --- | --- | --- | --- | --- | --- |
-| heuristic | 0.0000 | 0.0000 | 0.0000 | 134.33 | 0.0000 |
-| llm_react | Skipped | Skipped | Skipped | Skipped | Skipped |
-| llm_zeroshot | Skipped | Skipped | Skipped | Skipped | Skipped |
-| random | 0.0038 | 0.0003 | 0.0005 | 150.33 | 0.0000 |
+| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 |
 
 ## Per-Dataset Local Results
 
@@ -28,28 +23,7 @@ Skipped methods in this reproduced run: DATAFORGE_LLM_PROVIDER must be set to gr
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units |
 | --- | --- | --- | --- | --- | --- |
-| random | 0.0065 +/- 0.0113 | 0.0007 +/- 0.0012 | 0.0012 +/- 0.0021 | 51.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| heuristic | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 40.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| llm_zeroshot | Skipped | Skipped | Skipped | Skipped | Skipped |
-| llm_react | Skipped | Skipped | Skipped | Skipped | Skipped |
-
-### Flights
-
-| Method | Precision | Recall | F1 | Avg Steps | Quota Units |
-| --- | --- | --- | --- | --- | --- |
-| random | 0.0050 +/- 0.0087 | 0.0002 +/- 0.0003 | 0.0004 +/- 0.0007 | 200.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| heuristic | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 93.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| llm_zeroshot | Skipped | Skipped | Skipped | Skipped | Skipped |
-| llm_react | Skipped | Skipped | Skipped | Skipped | Skipped |
-
-### Beers
-
-| Method | Precision | Recall | F1 | Avg Steps | Quota Units |
-| --- | --- | --- | --- | --- | --- |
-| random | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 200.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| heuristic | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 270.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| llm_zeroshot | Skipped | Skipped | Skipped | Skipped | Skipped |
-| llm_react | Skipped | Skipped | Skipped | Skipped | Skipped |
+| llm_zeroshot | 0.2500 +/- 0.0000 | 0.3333 +/- 0.0000 | 0.2857 +/- 0.0000 | 2.0000 +/- 0.0000 | 0.0053 +/- 0.0000 |
 
 ## Citation-Only SOTA Reference
 

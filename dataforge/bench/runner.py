@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -102,6 +103,8 @@ def run_agent_comparison(
     _validate_inputs(methods, datasets, seeds)
 
     estimated_calls = estimate_llm_calls(methods=methods, datasets=datasets, seeds=seeds)
+    # Validate call budget before any client instantiation or dataset loads that could
+    # trigger network access in tests with environment variables set.
     validate_estimated_calls(
         estimated_calls=estimated_calls,
         really_run_big_bench=really_run_big_bench,
@@ -116,16 +119,45 @@ def run_agent_comparison(
 
     llm_methods_requested = any(method.startswith("llm_") for method in methods)
     skip_reason = _llm_skip_reason() if llm_methods_requested else None
-    client = (
-        GroqBenchClient(api_key=os.environ["GROQ_API_KEY"])
-        if llm_methods_requested and skip_reason is None
-        else None
-    )
+    client = None
+    if llm_methods_requested and skip_reason is None:
+        # Allow env-driven tuning for tiny CI checks.
+        model = os.environ.get("DATAFORGE_GROQ_MODEL", "llama-3.3-70b-versatile")
+        try:
+            min_interval_s = float(os.environ.get("DATAFORGE_GROQ_MIN_INTERVAL_S", "1.0"))
+        except ValueError:
+            min_interval_s = 1.0
+        try:
+            timeout_s = float(os.environ.get("DATAFORGE_GROQ_TIMEOUT_S", "30"))
+        except ValueError:
+            timeout_s = 30.0
+        try:
+            max_tokens = int(os.environ.get("DATAFORGE_GROQ_MAX_TOKENS", "256"))
+        except ValueError:
+            max_tokens = 256
+        try:
+            max_retries = int(os.environ.get("DATAFORGE_GROQ_MAX_RETRIES", "3"))
+        except ValueError:
+            max_retries = 3
+        client = GroqBenchClient(
+            api_key=os.environ["GROQ_API_KEY"],
+            model=model,
+            min_interval_s=min_interval_s,
+            max_tokens=max_tokens,
+            max_retries=max_retries,
+            timeout_s=timeout_s,
+        )
 
     for dataset_name in datasets:
         dataset = loaded_datasets[dataset_name]
         for method in methods:
             for seed in range(seeds):
+                if os.environ.get("DATAFORGE_BENCH_VERBOSE"):
+                    print(
+                        f"[dataforge bench] start method={method} dataset={dataset_name} seed={seed}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 if method == "random":
                     result = run_random_episode(dataset, seed=seed)
                 elif method == "heuristic":
@@ -159,6 +191,12 @@ def run_agent_comparison(
                 if method == "heuristic":
                     result = result.model_copy(update={"seed": seed})
                 records.append(result)
+                if os.environ.get("DATAFORGE_BENCH_VERBOSE"):
+                    print(
+                        f"[dataforge bench] done  method={method} dataset={dataset_name} seed={seed} status={result.status}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
 
     aggregates: list[AggregateBenchmarkResult] = aggregate_seed_results(
         records, seeds_requested=seeds

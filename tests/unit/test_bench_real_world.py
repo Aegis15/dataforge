@@ -80,7 +80,25 @@ class TestRealWorldLoader:
         assert dataset.metadata.name == "beers"
         assert len(dataset.ground_truth) == 2
 
-    def test_cache_miss_raises_manual_download_error(
+    def test_cache_miss_uses_embedded_fallback_when_available(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        cache_root = tmp_path / "cache"
+
+        def _fail_download(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("network blocked")
+
+        monkeypatch.setattr("dataforge.datasets.real_world._download_to_cache", _fail_download)
+
+        dataset = load_real_world_dataset("hospital", cache_root=cache_root)
+
+        assert dataset.metadata.name == "hospital"
+        assert len(dataset.ground_truth) == 2
+        assert not (cache_root / "real_world" / "hospital" / "dirty.csv").exists()
+
+    def test_cache_miss_without_embedded_fallback_raises_manual_download_error(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
@@ -93,11 +111,11 @@ class TestRealWorldLoader:
         monkeypatch.setattr("dataforge.datasets.real_world._download_to_cache", _fail_download)
 
         with pytest.raises(DatasetDownloadError) as exc_info:
-            load_real_world_dataset("hospital", cache_root=cache_root)
+            load_real_world_dataset("flights", cache_root=cache_root)
 
         message = str(exc_info.value)
-        assert "hospital" in message
+        assert "flights" in message
         assert "dirty.csv" in message
         assert "clean.csv" in message
-        assert str(cache_root / "real_world" / "hospital") in message
+        assert str(cache_root / "real_world" / "flights") in message
         assert "1." in message and "2." in message

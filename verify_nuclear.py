@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Nuclear verification: check that obs.reward (which the evaluator reads) 
+"""Nuclear verification: check that obs.reward (which the evaluator reads)
 is STRICTLY in (0, 1) for ALL observations across ALL tasks.
 
 Note: reward_delta is a per-step RL signal and CAN be negative — not checked here.
 The evaluator only reads the top-level 'reward' field via serialize_observation()."""
 
-import sys
 import os
+import sys
+
 sys.path.insert(0, os.path.dirname(__file__))
 
 from models import DataQualityAction
@@ -18,13 +19,14 @@ TASKS = [
     "task_3_integrity_auditor",
 ]
 
+
 def check_strict(value, label):
     """Return True if value is strictly in (0, 1)."""
     if not isinstance(value, (int, float)):
-        print("    FAIL: {}: not a number: {}".format(label, value))
+        print(f"    FAIL: {label}: not a number: {value}")
         return False
     if value <= 0.0 or value >= 1.0:
-        print("    FAIL: {}: {} (must be strictly in (0, 1))".format(label, value))
+        print(f"    FAIL: {label}: {value} (must be strictly in (0, 1))")
         return False
     return True
 
@@ -44,9 +46,9 @@ def test_scenario(task_id, scenario_name, actions):
         action = DataQualityAction(**action_data)
         obs = env.step(action)
 
-        step_label = "step_{}_{}".format(i+1, action_data.get("action_type"))
+        step_label = "step_{}_{}".format(i + 1, action_data.get("action_type"))
         # Only check obs.reward (evaluator reads this via serialize_observation)
-        if not check_strict(obs.reward, "{}.reward".format(step_label)):
+        if not check_strict(obs.reward, f"{step_label}.reward"):
             all_ok = False
 
         if obs.done:
@@ -66,24 +68,32 @@ def main():
     # Scenario 1: Zero-work finalize (produces minimum score)
     print("\n--- SCENARIO 1: Zero-work finalize (minimum score) ---")
     for task_id in TASKS:
-        ok = test_scenario(task_id, "zero-work", [
-            {"action_type": "finalize"},
-        ])
+        ok = test_scenario(
+            task_id,
+            "zero-work",
+            [
+                {"action_type": "finalize"},
+            ],
+        )
         status = "PASS" if ok else "FAIL"
-        print("  [{}] {}".format(status, task_id))
+        print(f"  [{status}] {task_id}")
         if not ok:
             all_pass = False
 
     # Scenario 2: Inspect-only, then finalize
     print("\n--- SCENARIO 2: Inspect + finalize ---")
     for task_id in TASKS:
-        ok = test_scenario(task_id, "inspect-finalize", [
-            {"action_type": "inspect", "row_indices": [0, 1, 2]},
-            {"action_type": "inspect", "row_indices": [3, 4, 5]},
-            {"action_type": "finalize"},
-        ])
+        ok = test_scenario(
+            task_id,
+            "inspect-finalize",
+            [
+                {"action_type": "inspect", "row_indices": [0, 1, 2]},
+                {"action_type": "inspect", "row_indices": [3, 4, 5]},
+                {"action_type": "finalize"},
+            ],
+        )
         status = "PASS" if ok else "FAIL"
-        print("  [{}] {}".format(status, task_id))
+        print(f"  [{status}] {task_id}")
         if not ok:
             all_pass = False
 
@@ -104,29 +114,41 @@ def main():
             )
             obs = env.step(action)
 
-            if not check_strict(obs.reward, "step_{}.reward".format(i+1)):
+            if not check_strict(obs.reward, f"step_{i + 1}.reward"):
                 ok = False
 
             if obs.done:
                 break
 
         status = "PASS" if ok else "FAIL"
-        print("  [{}] {} (stopped at step {}, done={})".format(
-            status, task_id, i+1, obs.done
-        ))
+        print(f"  [{status}] {task_id} (stopped at step {i + 1}, done={obs.done})")
         if not ok:
             all_pass = False
 
     # Scenario 4: Wrong diagnose + finalize (negative reward_deltas)
     print("\n--- SCENARIO 4: Wrong diagnose + finalize ---")
     for task_id in TASKS:
-        ok = test_scenario(task_id, "wrong-diagnose", [
-            {"action_type": "diagnose", "row_index": 0, "column_name": "fake_col", "issue_type": "format_error"},
-            {"action_type": "diagnose", "row_index": 0, "column_name": "fake_col2", "issue_type": "format_error"},
-            {"action_type": "finalize"},
-        ])
+        ok = test_scenario(
+            task_id,
+            "wrong-diagnose",
+            [
+                {
+                    "action_type": "diagnose",
+                    "row_index": 0,
+                    "column_name": "fake_col",
+                    "issue_type": "format_error",
+                },
+                {
+                    "action_type": "diagnose",
+                    "row_index": 0,
+                    "column_name": "fake_col2",
+                    "issue_type": "format_error",
+                },
+                {"action_type": "finalize"},
+            ],
+        )
         status = "PASS" if ok else "FAIL"
-        print("  [{}] {}".format(status, task_id))
+        print(f"  [{status}] {task_id}")
         if not ok:
             all_pass = False
 

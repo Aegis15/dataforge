@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Deep investigation: test what HF Space actually returns for every task."""
 
+import http.cookiejar
 import json
 import urllib.request
-import http.cookiejar
 
 BASE = "https://praneshrajan15-data-quality-env.hf.space"
 TASKS = [
@@ -62,9 +62,9 @@ def test_task_max_steps(task_id):
     last_resp = None
     for i in range(100):
         try:
-            r = post(opener, "/step", {
-                "action": {"action_type": "inspect", "row_indices": [i % 50]}
-            })
+            r = post(
+                opener, "/step", {"action": {"action_type": "inspect", "row_indices": [i % 50]}}
+            )
             last_resp = r
             if r.get("done"):
                 break
@@ -93,18 +93,21 @@ for task_id in TASKS:
         r = result["final_reward"]
         ok = r is not None and 0.0 < r < 1.0
         status = "PASS" if ok else "FAIL"
-        print("  [{status}] {task}: reward={r}, done={d}, cum={c}".format(
-            status=status, task=task_id,
-            r=result["final_reward"],
-            d=result["final_done"],
-            c=result["obs_cumulative_reward"],
-        ))
+        print(
+            "  [{status}] {task}: reward={r}, done={d}, cum={c}".format(
+                status=status,
+                task=task_id,
+                r=result["final_reward"],
+                d=result["final_done"],
+                c=result["obs_cumulative_reward"],
+            )
+        )
         if result["reset_reward"] == 0.0:
-            print("    WARNING: reset reward is exactly 0.0 (done={d})".format(
-                d=result["reset_done"]
-            ))
+            print(
+                "    WARNING: reset reward is exactly 0.0 (done={d})".format(d=result["reset_done"])
+            )
     except Exception as e:
-        print("  [ERROR] {task}: {err}".format(task=task_id, err=str(e)[:200]))
+        print(f"  [ERROR] {task_id}: {str(e)[:200]}")
 
 # Test 2: Max-steps auto-finalize
 print("\n--- SCENARIO 2: Max-steps auto-finalize ---")
@@ -114,14 +117,17 @@ for task_id in TASKS:
         r = result.get("final_reward")
         ok = r is not None and 0.0 < r < 1.0
         status = "PASS" if ok else "FAIL"
-        print("  [{status}] {task}: reward={r}, done={d}, cum={c}".format(
-            status=status, task=task_id,
-            r=result.get("final_reward"),
-            d=result.get("final_done"),
-            c=result.get("obs_cumulative_reward"),
-        ))
+        print(
+            "  [{status}] {task}: reward={r}, done={d}, cum={c}".format(
+                status=status,
+                task=task_id,
+                r=result.get("final_reward"),
+                d=result.get("final_done"),
+                c=result.get("obs_cumulative_reward"),
+            )
+        )
     except Exception as e:
-        print("  [ERROR] {task}: {err}".format(task=task_id, err=str(e)[:200]))
+        print(f"  [ERROR] {task_id}: {str(e)[:200]}")
 
 # Test 3: Check the raw reset response
 print("\n--- SCENARIO 3: Raw reset observation ---")
@@ -130,13 +136,11 @@ for task_id in TASKS:
         cj = http.cookiejar.CookieJar()
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
         r = post(opener, "/reset", {"task_id": task_id})
-        print("  {task}: TOP-LEVEL keys={keys}".format(
-            task=task_id, keys=sorted(r.keys())
-        ))
+        print(f"  {task_id}: TOP-LEVEL keys={sorted(r.keys())}")
         print("    done={d}, reward={r}".format(d=r.get("done"), r=r.get("reward")))
         if r.get("reward") == 0.0:
             print("    *** RESET REWARD IS 0.0 ***")
     except Exception as e:
-        print("  [ERROR] {task}: {err}".format(task=task_id, err=str(e)[:200]))
+        print(f"  [ERROR] {task_id}: {str(e)[:200]}")
 
 print("\n" + "=" * 60)

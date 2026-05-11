@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 _ALWAYS_COLLECT: tuple[str, ...] = (
     "direct_tests",
@@ -22,6 +23,7 @@ _ALWAYS_COLLECT: tuple[str, ...] = (
 )
 _BENCH_COLLECT: tuple[str, ...] = ("benchmark_tests",)
 _ALL_KNOWN_KEYS: frozenset[str] = frozenset(_ALWAYS_COLLECT + _BENCH_COLLECT)
+_PYTEST_CMD: tuple[str, ...] = (sys.executable, "-m", "pytest")
 
 
 def _validate_paths(tests: list[str]) -> list[str]:
@@ -36,7 +38,7 @@ def _validate_paths(tests: list[str]) -> list[str]:
 
 def _load_mapping(map_path: Path) -> dict[str, object]:
     """Load the test mapping file from disk."""
-    return json.loads(map_path.read_text(encoding="utf-8"))
+    return cast(dict[str, object], json.loads(map_path.read_text(encoding="utf-8")))
 
 
 def main(changed_file: str, *, include_bench: bool = False, validate_only: bool = False) -> int:
@@ -90,7 +92,7 @@ def main(changed_file: str, *, include_bench: bool = False, validate_only: bool 
     entry = mapping.get(changed_file)
     if entry is None:
         print(f"WARN: no mapping for {changed_file} - running full suite.")
-        return subprocess.call(["pytest", "tests/", "-x"])
+        return subprocess.call([*_PYTEST_CMD, "tests/", "-x"])
 
     if not isinstance(entry, dict):
         print(f"ERROR: mapping for {changed_file} must be an object.", file=sys.stderr)
@@ -108,7 +110,7 @@ def main(changed_file: str, *, include_bench: bool = False, validate_only: bool 
 
     if not tests:
         print(f"WARN: mapping for {changed_file} has no test files - running full suite.")
-        return subprocess.call(["pytest", "tests/", "-x"])
+        return subprocess.call([*_PYTEST_CMD, "tests/", "-x"])
 
     missing = _validate_paths(tests)
     if validate_only:
@@ -129,7 +131,7 @@ def main(changed_file: str, *, include_bench: bool = False, validate_only: bool 
     print(f"Running {len(existing_tests)} mapped test file(s) for {changed_file}:")
     for test_path in existing_tests:
         print(f"  - {test_path}")
-    return subprocess.call(["pytest", *existing_tests, "-x", "-v"])
+    return subprocess.call([*_PYTEST_CMD, *existing_tests, "-x", "-v"])
 
 
 if __name__ == "__main__":

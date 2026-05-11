@@ -53,6 +53,21 @@ NOT in core `pyproject.toml` runtime deps — see DECISIONS.md):
 - `python-multipart` — multipart form parsing for CSV upload in the playground.
 
 
+Training-only dependencies (scoped to the `train` extra and pinned for Kaggle in
+`training/configs/sft_05b.yaml`):
+- `transformers` - Qwen2.5 model/tokenizer loading and generation.
+- `trl` - SFTTrainer for supervised chat fine-tuning.
+- `accelerate` - device placement and mixed-precision training support.
+- `peft` - LoRA adapter configuration, saving, and merge.
+- `bitsandbytes` - 4-bit QLoRA quantization on Kaggle GPU runtimes.
+- `datasets` - JSONL trajectory loading and train/held-out splitting.
+- `huggingface_hub` - authenticated dataset/model repo downloads and uploads.
+
+Week 9 has an explicit handoff gate before Kaggle:
+`scripts/data/validate_sft_readiness.py` validates the local `expert_v1` JSONL,
+the exact package pins, duplicate chunk keys, minimum record count, teacher
+metadata, and episode-level F1 floor before the notebook is launched.
+
 ## 4. Week 2 boundaries
 
 - **L1 detectors**: 3 implemented (`type_mismatch`, `decimal_shift`, `fd_violation`).

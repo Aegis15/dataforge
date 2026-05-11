@@ -44,12 +44,15 @@ dev = [
     "types-PyYAML",
 ]
 train = [
-    "transformers>=4.44",
-    "datasets>=2.20",
-    "trl>=1.0",
-    "accelerate>=0.33",
-    "peft>=0.12",
-    "bitsandbytes>=0.43",
+    "trl==1.3.0",
+    "transformers==5.7.0",
+    "accelerate==1.13.0",
+    "peft==0.19.1",
+    "bitsandbytes==0.49.2",
+    "datasets==4.8.5",
+    "huggingface_hub==1.13.0",
+    "pyyaml==6.0.3",
+    "pandas==2.3.3",
 ]
 eval = [
     "matplotlib>=3.9",
@@ -57,8 +60,9 @@ eval = [
 ]
 playground = [
     "fastapi>=0.111",
-    "uvicorn[standard]>=0.30",
+    "uvicorn[standard]>=0.35",
     "python-multipart>=0.0.9",
+    "slowapi>=0.1.9",
 ]
 openenv = [
     "openenv-core[core]>=0.2.2",
@@ -89,6 +93,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "data_quality_env/**/*.py" = ["B007", "B027", "E402", "E731", "F401", "F541", "F841", "I001", "N", "RET", "SIM", "UP"]
+"training/kaggle/sft_warmup_kaggle.ipynb" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"

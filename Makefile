@@ -11,7 +11,7 @@ ifndef PYTHON
 PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python)
 endif
 
-.PHONY: help setup setup-all lint format type test test-mapped coverage bench bench-free mutation clean
+.PHONY: help setup setup-all lint format type test test-mapped sft-preflight coverage bench bench-free mutation clean lock uv-lock
 
 help:
 	@echo "DataForge dev targets"
@@ -22,11 +22,14 @@ help:
 	@echo "  type          Run mypy --strict on core + shipped Week 5 Python paths"
 	@echo "  test          Run the full test suite"
 	@echo "  test-mapped   Run tests for a changed source file (FILE=path)"
+	@echo "  sft-preflight Validate SFT JSONL/config before launching Kaggle"
 	@echo "  coverage      Run tests with coverage (fails at <90%)"
 	@echo "  bench         Run pytest-benchmark suites"
 	@echo "  bench-free    Run the real-world benchmark scripts and regenerate reports"
 	@echo "  mutation      Run mutmut on dataforge/ (target: >=85%)"
 	@echo "  clean         Remove caches"
+	@echo "  lock          Generate pip-tools constraints (optional)"
+	@echo "  uv-lock       Generate uv.lock if 'uv' is installed (optional)"
 
 setup:
 	$(PYTHON) -m pip install -e ".[dev]"
@@ -36,21 +39,24 @@ setup-all:
 	$(PYTHON) -m pip install -e ".[all]"
 
 lint:
-	$(PYTHON) -m ruff check dataforge data_quality_env tests scripts/ci scripts/playground playground/api/app.py
-	$(PYTHON) -m ruff format --check dataforge data_quality_env tests scripts/ci scripts/playground playground/api/app.py
+	$(PYTHON) -m ruff check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff format --check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
 
 format:
-	$(PYTHON) -m ruff format dataforge data_quality_env tests scripts/ci scripts/playground playground/api/app.py
-	$(PYTHON) -m ruff check --fix dataforge data_quality_env tests scripts/ci scripts/playground playground/api/app.py
+	$(PYTHON) -m ruff format dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff check --fix dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
 
 type:
-	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/playground/build_samples.py scripts/playground/stage_space.py
+	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/publish_model.py
 
 test:
 	$(PYTHON) -m pytest tests/ -x -v
 
 test-mapped:
 	$(PYTHON) scripts/test_mapped.py $(FILE)
+
+sft-preflight:
+	$(PYTHON) scripts/data/validate_sft_readiness.py
 
 coverage:
 	$(PYTHON) -m pytest tests/ --cov=dataforge --cov-report=term-missing --cov-report=html --cov-fail-under=90
@@ -70,3 +76,23 @@ mutation:
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov build dist *.egg-info
 	find . -type d -name __pycache__ -exec rm -rf {} +
+
+lock:
+	@if command -v pip-compile >/dev/null 2>&1; then \
+	  mkdir -p requirements; \
+	  pip-compile --resolver=backtracking --allow-unsafe --strip-extras -o requirements/constraints-base.txt requirements/in/base.in; \
+	  pip-compile --resolver=backtracking --allow-unsafe --strip-extras -o requirements/constraints-dev.txt requirements/in/dev.in; \
+	  pip-compile --resolver=backtracking --allow-unsafe --strip-extras -o requirements/constraints-train.txt requirements/in/train.in; \
+	  pip-compile --resolver=backtracking --allow-unsafe --strip-extras -o requirements/constraints-playground.txt requirements/in/playground.in; \
+	  echo "Constraints generated under requirements/*.txt"; \
+	else \
+	  echo "pip-compile not found; install with 'pip install pip-tools'"; \
+	fi
+
+uv-lock:
+	@if command -v uv >/dev/null 2>&1; then \
+	  uv lock; \
+	  echo "uv.lock generated"; \
+	else \
+	  echo "uv not found; install from https://github.com/astral-sh/uv"; \
+	fi
