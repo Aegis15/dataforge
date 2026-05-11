@@ -42,6 +42,7 @@ dev = [
     "mypy>=1.10",
     "pandas-stubs>=2.2",
     "types-PyYAML",
+    "huggingface_hub==1.13.0",
 ]
 train = [
     "trl==1.3.0",
