@@ -95,6 +95,16 @@ class TestMethodHelpers:
         assert repairs[0].new_value == "4.5"
         assert chunk_row_indices(2) == ((0,), (1,))
 
+    def test_extract_json_object_tolerates_line_comments(self) -> None:
+        payload = _extract_json_object(
+            '{"repairs":[{"row":1,"column":"Score","new_value":"4.5" // decimal shift\n'
+            ',"reason":"fix"}]}'
+        )
+        assert payload is not None
+
+        repairs = _repairs_from_payload(payload)
+        assert repairs[0].new_value == "4.5"
+
 
 class TestBenchmarkMethods:
     """Method-level behavior for random and LLM-backed baselines."""

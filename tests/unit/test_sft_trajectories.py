@@ -9,6 +9,7 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
+from dataforge.bench.core import BenchmarkRepair
 from dataforge.bench.groq_client import GroqCompletion
 from dataforge.datasets.real_world import GroundTruthCell, RealWorldDataset
 from dataforge.datasets.registry import DatasetMetadata
@@ -17,6 +18,7 @@ from scripts.data.collect_sft_trajectories import (
     RuntimeDeadline,
     TrajectoryKey,
     _build_parser,
+    _repairs_for_rows,
     _resolve_collection_settings,
     collect_episode_trajectories,
     ensure_ready_for_push,
@@ -223,6 +225,17 @@ def test_deadline_stops_before_stub_client_is_called() -> None:
 def test_push_readiness_gate_refuses_missing_jsonl(tmp_path: Path) -> None:
     with pytest.raises(SftReadinessError, match="Missing trajectory JSONL"):
         ensure_ready_for_push(output=tmp_path / "missing.jsonl", ready_min_records=32)
+
+
+def test_repairs_for_rows_filters_context_row_repairs() -> None:
+    repairs = [
+        BenchmarkRepair(row=0, column="Score", new_value="5", reason="context"),
+        BenchmarkRepair(row=1, column="Score", new_value="4.5", reason="target"),
+    ]
+
+    filtered = _repairs_for_rows(repairs, (1,))
+
+    assert filtered == [repairs[1]]
 
 
 def test_collect_episode_filters_low_f1() -> None:

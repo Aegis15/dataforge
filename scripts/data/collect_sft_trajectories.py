@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -429,6 +430,14 @@ def _score_for_rows(
     return score_repairs(chunk_truth, repairs)
 
 
+def _repairs_for_rows(
+    repairs: list[BenchmarkRepair], row_indices: tuple[int, ...]
+) -> list[BenchmarkRepair]:
+    """Keep only repairs that target the active chunk rows."""
+    allowed_rows = set(row_indices)
+    return [repair for repair in repairs if repair.row in allowed_rows]
+
+
 def _diagnosis_from_payloads(payloads: list[dict[str, Any]]) -> list[Any]:
     """Extract lightweight diagnostic text from ReAct payloads."""
     diagnosis: list[Any] = []
@@ -469,10 +478,12 @@ def _collect_chunk(
     """Run the constrained ReAct loop for one chunk and return an auditable record."""
     task_id = f"{dataset.metadata.name}:{difficulty}"
     chunk_payload = _chunk_records(dataset, row_indices)
+    context_payload = _chunk_records(dataset, tuple(range(len(dataset.dirty_df.index))))
     schema_summary = {
         "dataset": dataset.metadata.name,
         "columns": list(dataset.canonical_columns),
         "chunk_rows": len(row_indices),
+        "target_row_indices": list(row_indices),
         "difficulty": difficulty,
         "seed": seed,
     }
@@ -481,8 +492,18 @@ def _collect_chunk(
             "role": "system",
             "content": (
                 "You are benchmarking tabular data cleaning with a constrained tool loop. "
-                "Respond with one JSON action object. Allowed actions: "
-                "inspect_rows, column_stats, submit_repairs, finish."
+                "Use the full context rows to infer local patterns, but submit repairs only "
+                "for the target row indices. Look for misspellings, placeholder values, and "
+                "numeric scale errors such as a score written as 45 when neighboring scores "
+                "use a 0-5 scale; repair that kind of value by inserting the missing decimal "
+                "point, not by rounding to a neighboring integer. For placeholder phone or ID "
+                "values, infer the replacement from same-group local sequences only when the "
+                "pattern is clear. If any target cell is visibly wrong, prefer submit_repairs "
+                "over finish. Return only one JSON action object with no prose, markdown, or "
+                "comments. Allowed actions: "
+                "inspect_rows, column_stats, submit_repairs, finish. submit_repairs must use "
+                '{"action":"submit_repairs","repairs":[{"row":0,"column":"Column",'
+                '"new_value":"value","reason":"why"}]}.'
             ),
         },
         {
@@ -490,7 +511,8 @@ def _collect_chunk(
             "content": json.dumps(
                 {
                     "schema_summary": schema_summary,
-                    "rows": chunk_payload,
+                    "target_rows": chunk_payload,
+                    "context_rows": context_payload,
                 },
                 sort_keys=True,
             ),
@@ -546,7 +568,11 @@ def _collect_chunk(
             if action == "inspect_rows":
                 requested_rows = first_payload.get("row_indices", [])
                 safe_rows = (
-                    [row for row in requested_rows if isinstance(row, int) and row in row_indices]
+                    [
+                        row
+                        for row in requested_rows
+                        if isinstance(row, int) and 0 <= row < len(dataset.dirty_df.index)
+                    ]
                     if isinstance(requested_rows, list)
                     else []
                 )
@@ -617,6 +643,7 @@ def _collect_chunk(
                     if second_payload.get("action") == "submit_repairs":
                         repairs.extend(_repairs_from_payload(second_payload))
 
+    repairs = _repairs_for_rows(repairs, row_indices)
     chunk_score = _score_for_rows(dataset.ground_truth, repairs, row_indices)
     record = {
         "schema_version": SCHEMA_VERSION,
@@ -626,7 +653,11 @@ def _collect_chunk(
         "difficulty": difficulty,
         "seed": seed,
         "chunk_index": chunk_index,
-        "state": {"schema_summary": schema_summary, "rows": chunk_payload},
+        "state": {
+            "schema_summary": schema_summary,
+            "target_rows": chunk_payload,
+            "context_rows": context_payload,
+        },
         "tool_calls": tool_calls,
         "diagnosis": _diagnosis_from_payloads(payloads),
         "fix": [repair.model_dump(mode="json") for repair in repairs],
@@ -884,6 +915,10 @@ def push_trajectory_dataset(
 
 def ensure_ready_for_push(*, output: Path, ready_min_records: int) -> None:
     """Refuse to push partial or invalid trajectory datasets to Hugging Face."""
+    root = Path(__file__).resolve().parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+
     from scripts.data.validate_sft_readiness import validate_sft_readiness
 
     validate_sft_readiness(jsonl=output, min_records=ready_min_records)

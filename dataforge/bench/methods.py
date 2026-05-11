@@ -151,6 +151,40 @@ def _column_stats(
     return stats
 
 
+def _strip_json_line_comments(text: str) -> str:
+    """Remove JavaScript-style line comments outside JSON strings."""
+    result: list[str] = []
+    in_string = False
+    escaped = False
+    index = 0
+    while index < len(text):
+        char = text[index]
+        next_char = text[index + 1] if index + 1 < len(text) else ""
+        if in_string:
+            result.append(char)
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            index += 1
+            continue
+        if char == '"':
+            in_string = True
+            result.append(char)
+            index += 1
+            continue
+        if char == "/" and next_char == "/":
+            index += 2
+            while index < len(text) and text[index] not in "\r\n":
+                index += 1
+            continue
+        result.append(char)
+        index += 1
+    return "".join(result)
+
+
 def _extract_json_object(text: str) -> dict[str, object] | None:
     """Parse the first JSON object found in an LLM response string."""
     stripped = text.strip()
@@ -158,6 +192,7 @@ def _extract_json_object(text: str) -> dict[str, object] | None:
         stripped = stripped.strip("`")
         if stripped.lower().startswith("json"):
             stripped = stripped[4:].strip()
+    stripped = _strip_json_line_comments(stripped)
     decoder = json.JSONDecoder()
     for offset, char in enumerate(stripped):
         if char != "{":
