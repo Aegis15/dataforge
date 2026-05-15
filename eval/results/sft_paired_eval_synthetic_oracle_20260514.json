@@ -1,0 +1,25 @@
+{
+  "base": {
+    "failure_taxonomy": {},
+    "macro_f1": 0.0,
+    "parse_success_rate": 1.0,
+    "path": "C:\\Users\\Pranesh\\OneDrive\\Music\\OpenEnv RL\\dataforge-evals\\reports\\qwen-base-synthetic-oracle.json",
+    "per_dataset_f1": {
+      "synthetic": 0.0
+    }
+  },
+  "f1_delta": 0.0,
+  "parse_gate_passed": true,
+  "quality_gate_passed": false,
+  "regression_gate_passed": true,
+  "release_decision": "pipeline_or_diagnostic_only",
+  "sft": {
+    "failure_taxonomy": {},
+    "macro_f1": 0.0,
+    "parse_success_rate": 1.0,
+    "path": "C:\\Users\\Pranesh\\OneDrive\\Music\\OpenEnv RL\\dataforge-evals\\reports\\dataforge-sft-synthetic-oracle.json",
+    "per_dataset_f1": {
+      "synthetic": 0.0
+    }
+  }
+}

@@ -1,54 +1,120 @@
 # DataForge
 
-DataForge currently ships a real Week 3 CLI for CSV profiling and repair.
+DataForge is a CLI-first data-quality repair toolkit for tabular data. It
+detects common CSV issues, proposes deterministic repairs, checks proposed
+changes through safety and verification gates, and records applied changes in a
+reversible transaction log.
 
-This repository now includes shipped detectors, deterministic repairers,
-constitutional safety gating, SMT-backed structural verification, reversible
-transaction logs, real-world benchmark infrastructure, and a Week 9 Kaggle SFT
-warmup workflow. The hosted playground, warehouse integrations, and production
-trained model family remain future work.
+The current repository is an alpha implementation. It also contains the
+OpenEnv-compatible training environment, the SFT warmup workflow, a local MCP
+server package, and playground/demo sources. Warehouse integrations and
+production model-quality claims remain future work.
 
 ## Current Status
 
-- `dataforge profile`, `dataforge repair`, `dataforge revert`, and `dataforge bench`
-- Three shipped detectors: `type_mismatch`, `decimal_shift`, `fd_violation`
-- Three shipped repairers with safety + verifier gating in the apply path
-- Reversible transaction logs with byte-identical revert via source snapshots
-- Benchmark/report generation infrastructure for Hospital / Flights / Beers
-- Week 9 SFT warmup scripts for collecting expert trajectories and publishing a
-  Kaggle-trained 0.5B checkpoint
-- `Makefile` targets for setup, lint, type-checking, and tests
-- CI plus unit / integration / property / adversarial coverage
+Shipped in the current worktree:
+
+- `dataforge profile`, `dataforge repair`, `dataforge revert`, and
+  `dataforge bench`
+- Three detector families: `type_mismatch`, `decimal_shift`, `fd_violation`
+- Matching deterministic repairers wired through SafetyFilter -> SMTVerifier
+- Reversible transaction journals with immutable source snapshots
+- Real-world benchmark harness for Hospital, Flights, and Beers
+- OpenEnv-compatible HTTP environment with eight typed actions, including
+  read-only `ROOT_CAUSE`
+- Causal root-cause analyzer for cascading data-quality errors
+- Standalone `dataforge-mcp` package exposing DataForge tools over MCP
+- Week 9 SFT oracle trajectory workflow, readiness gate, Kaggle notebook, and
+  release verifier
+- Separate Gradio model-demo Space source for the published 0.5B SFT smoke
+  checkpoint
+
+Not shipped yet:
+
+- warehouse-native or external adapter packages
+- a hosted product domain
+- A production-quality trained model family
+- Autonomous repair in the playground or model demo
+
+## Quickstart
+
+```bash
+python -m pip install -e ".[dev]"
+dataforge profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
+dataforge repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
+dataforge bench --methods llm_zeroshot --datasets hospital --seeds 1
+```
+
+To apply repairs, use `--apply`. Applied repairs write a transaction journal and
+source snapshot before mutating the CSV, so they can be reverted:
+
+```bash
+dataforge repair path/to/file.csv --schema path/to/schema.yaml --apply
+dataforge revert <txn-id>
+```
 
 ## Week 9 SFT Warmup
 
-The Week 9 workflow trains a warmup checkpoint from chunk-level expert
-trajectories without committing generated API-derived data to git. Start with
-the laptop-safe smoke preset; it is network-bound, uses no local GPU training,
-prints progress during Groq calls, and refuses to push partial data that cannot
-pass the readiness gate.
+The current SFT workflow builds split-safe `expert_v1` trajectory records from
+dirty/clean CSV diffs. Exact repairs in the primary dataset are labeled
+`oracle_from_clean_diff`, not inferred from Groq, Cerebras, or Gemini teacher
+guesses. Clean train chunks are retained as `finish` examples so the model
+learns when no repair is justified.
 
 ```powershell
-$env:DATAFORGE_LLM_PROVIDER="groq"
-$env:GROQ_API_KEY="..."
 $env:HF_TOKEN="..."
-
-.\.venv\Scripts\python.exe scripts\data\collect_sft_trajectories.py --preset smoke --push-to-hub
+.\.venv\Scripts\python.exe scripts\data\build_oracle_sft_trajectories.py
 .\.venv\Scripts\python.exe scripts\data\validate_sft_readiness.py
 ```
 
-This writes ignored local JSONL at `data/sft_traj/expert_v1.jsonl` and can push
-the dataset artifacts to `<hf_user>/dataforge-sft-trajectories`. Upload
-`training/kaggle/sft_warmup_kaggle.ipynb` to Kaggle only after the readiness
-check passes and `HF_TOKEN` is configured. The notebook validates the dataset
-again before training, evaluates the merged checkpoint, and publishes
-`<hf_user>/DataForge-0.5B-SFT` only after numeric metrics are written.
+This writes local ignored JSONL at `data/sft_traj/expert_v1.jsonl` and an
+auditable row split at `data/sft_traj/split_manifest.json`. Push the dataset
+bundle only after the readiness gate passes:
 
-Use `--preset full` only after the smoke path works; the full collector restores
-the larger multi-dataset run shape and can take thousands of Groq requests.
+```powershell
+$env:HF_TOKEN="..."
+.\.venv\Scripts\python.exe scripts\data\build_oracle_sft_trajectories.py --push-to-hub --hf-dataset-repo Praneshrajan15/dataforge-sft-trajectories
+```
 
-The notebook prints base-vs-SFT held-out F1 when run; this README does not
-claim a model-quality result until those metrics are generated.
+The published smoke checkpoint is
+`Praneshrajan15/DataForge-0.5B-SFT`, with trajectories at
+`Praneshrajan15/dataforge-sft-trajectories`. It proves the dataset, Kaggle
+training, merge, evaluation, and Hub upload path. It is not a model-quality
+claim. Verify release artifacts before citing them:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\model\verify_sft_release.py --output eval\results\sft_release_v0_smoke.json
+.\.venv\Scripts\python.exe scripts\model\verify_sft_release.py --min-dataset-records 272 --require-sha-metrics --output eval\results\sft_release_contract_v2_20260515.json
+```
+
+## MCP Server
+
+The nested `dataforge-mcp/` package is a standalone distribution that exposes
+DataForge through local MCP clients:
+
+```bash
+cd dataforge-mcp
+python -m pip install -e ".[dev]"
+dataforge-mcp serve
+```
+
+Tools: `dataforge_profile`, `dataforge_detect_errors`,
+`dataforge_verify_fix`, `dataforge_apply_repairs`, and `dataforge_revert`.
+The default transport is stdio. Streamable HTTP is available for local
+experiments.
+
+## Playground And Model Demo
+
+- `playground/api/` is the API backend for the CSV playground. It is staged into
+  a Hugging Face Docker Space.
+- `playground/web/` is the static browser UI deployed through Cloudflare
+  Workers Static Assets.
+- `playground-model/` is a separate Gradio Space demo for the published
+  `DataForge-0.5B-SFT` smoke checkpoint. It accepts small CSV snippets and is
+  intentionally limited to demo use.
+
+The playground does not persist uploaded files and does not call an LLM unless a
+backend provider key is explicitly configured.
 
 ## Benchmark Results
 
@@ -71,33 +137,24 @@ make type
 make test
 ```
 
-Verification works on Linux, macOS, or Windows (with Git Bash as the
-shell substrate for GNU Make). Requires Python 3.11 or 3.12
-(`requires-python = ">=3.11,<3.13"`).
+Verification works on Linux, macOS, and Windows with Git Bash available for GNU
+Make recipes. Python support is `>=3.11,<3.13`.
 
-### Windows-specific setup
+Windows setup:
 
 ```powershell
-# Install Python 3.12 and GNU Make if not present
 winget install -e --id Python.Python.3.12
 winget install -e --id ezwinports.make
-
-# Create and activate a project venv
 py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-
-# Install dependencies and verify
 python -m pip install -e ".[all]"
 make lint && make type && make test
 ```
 
-Git for Windows provides the Bash implementation the Makefile uses on Windows.
-Do not rely on `C:\Windows\System32\bash.exe` (WSL).
-
 ## Environment Variables
 
-Future provider keys belong in a root `.env` file that is gitignored and meant
-to be loaded with `python-dotenv`.
+Provider keys belong in a root `.env` file, which is gitignored and loaded with
+`python-dotenv` where needed.
 
 - `GROQ_API_KEY`
 - `GEMINI_API_KEY`
@@ -105,18 +162,26 @@ to be loaded with `python-dotenv`.
 - `OPENROUTER_API_KEY`
 - `HF_TOKEN`
 
+## When DataForge Is The Wrong Tool
+
+Do not use DataForge for streaming data, very large warehouse tables, regulated
+workflows where every fix must be human-authored, strict low-latency SLAs, or
+teams already well served by maintained Great Expectations/dbt suites. DataForge
+is currently best suited to local CSV profiling, repair experiments, benchmark
+runs, and training/evaluation research.
+
 ## Repository Docs
 
-- [.cursor/rules/dataforge.md](.cursor/rules/dataforge.md) — always-applied rules
-- [ARCHITECTURE.md](ARCHITECTURE.md) — system diagram and dependency justification
-- [DECISIONS.md](DECISIONS.md) — technical decision log
-- [CONTRIBUTING.md](CONTRIBUTING.md) — workflow and code standards
-- [CLAUDE.md](CLAUDE.md) — living knowledge base for Cursor sessions
-- [CURSOR_MASTER.md](CURSOR_MASTER.md) — full context and prompt pack
-- [META_CONTEXT.md](META_CONTEXT.md) — meta-context (read before writing code)
-- [FILE_STRUCTURE.md](FILE_STRUCTURE.md) — canonical target directory tree
-- [SECURITY.md](SECURITY.md) — vulnerability reporting policy
-- [specs/SPEC_TEMPLATE.md](specs/SPEC_TEMPLATE.md) — spec template for new modules
+- [.cursor/rules/dataforge.md](.cursor/rules/dataforge.md) - always-applied contribution rules
+- [ARCHITECTURE.md](ARCHITECTURE.md) - current system architecture and dependencies
+- [DECISIONS.md](DECISIONS.md) - technical decision log
+- [CONTRIBUTING.md](CONTRIBUTING.md) - workflow and code standards
+- [CLAUDE.md](CLAUDE.md) - living gotcha log for agent sessions
+- [CURSOR_MASTER.md](CURSOR_MASTER.md) - context and prompt pack
+- [META_CONTEXT.md](META_CONTEXT.md) - project meta-context
+- [FILE_STRUCTURE.md](FILE_STRUCTURE.md) - current and planned directory map
+- [SECURITY.md](SECURITY.md) - vulnerability reporting policy
+- [specs/SPEC_TEMPLATE.md](specs/SPEC_TEMPLATE.md) - template for new module specs
 
 ## License
 

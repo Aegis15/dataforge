@@ -1,0 +1,45 @@
+{
+  "dataset": {
+    "files": [
+      ".gitattributes",
+      "MODEL_CARD_TEMPLATE.md",
+      "README.md",
+      "expert_v1.jsonl",
+      "sft_05b.yaml"
+    ],
+    "repo_id": "Praneshrajan15/dataforge-sft-trajectories",
+    "repo_type": "dataset",
+    "sha": "654efb858934735f1cd3be8eb648abe4de2be480"
+  },
+  "dataset_readme_checked": true,
+  "dataset_records": 272,
+  "metrics": {
+    "base_f1": 0.0,
+    "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "dataset_repo": "Praneshrajan15/dataforge-sft-trajectories",
+    "kaggle_hours": 0.971,
+    "model_license": "apache-2.0",
+    "model_name": "DataForge-0.5B-SFT",
+    "repo_id": "Praneshrajan15/DataForge-0.5B-SFT",
+    "sft_f1": 0.0,
+    "teacher_model": "llama-3.3-70b-versatile",
+    "training_examples": 245
+  },
+  "model": {
+    "files": [
+      ".gitattributes",
+      "README.md",
+      "chat_template.jinja",
+      "config.json",
+      "generation_config.json",
+      "model.safetensors",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "training_metrics.json"
+    ],
+    "repo_id": "Praneshrajan15/DataForge-0.5B-SFT",
+    "repo_type": "model",
+    "sha": "dceb2413349ff4938baddab9a43175b44d39dedb"
+  },
+  "model_readme_checked": true
+}

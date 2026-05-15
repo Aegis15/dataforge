@@ -1,36 +1,57 @@
-# CLAUDE.md — DataForge living knowledge base
+# CLAUDE.md - DataForge Living Knowledge Base
 
-This file accumulates gotchas, decisions, and context that should survive
-across Cursor sessions. Append to the bottom with the date.
+This file accumulates gotchas, decisions, and context that should survive across
+Cursor, Claude, and Codex sessions. Append new discoveries to the bottom with
+the date.
 
-## Project conventions
+## Project Conventions
 
 - Python 3.11 / 3.12. `pyproject.toml` pins `requires-python = ">=3.11,<3.13"`.
-- Package layout: the top-level `dataforge/` package exports the public API.
-  Submodules are internal; tests import from the top level where feasible.
-- CLI uses Typer. Each subcommand is its own module in `dataforge/cli/`.
-- Rich is used for ALL user-facing output. Never `print()` in library code.
+- The top-level `dataforge/` package exports the product API. Root-level legacy
+  wrappers exist only for compatibility.
+- CLI commands live in `dataforge/cli/` and are registered in
+  `dataforge/cli/__init__.py`.
+- Rich is used for user-facing CLI output. Do not use `print()` in library code.
+- `data_quality_env/` is the frozen legacy compatibility package.
 
-## Known gotchas
+## Known Gotchas
 
-- `pandas.read_csv` with `dtype=str` is the safest default for messy CSVs.
-  Type inference via pandas is too eager and loses precision on monetary values.
-- Z3 `Real` variables do NOT represent floating-point; they are mathematical
-  reals. For IEEE-754 behavior, use `FP`.
-- TRL v1+ manages `remove_unused_columns` internally in `GRPOConfig` — do NOT
-  hand-set it as older tutorials suggest. Access non-prompt reward-function
-  columns via the `**kwargs` pattern (every dataset column is passed as a kwarg).
-- `causal-learn`'s PC algorithm does NOT accept NaN. Impute or drop rows first.
-- OpenEnv's 0.1 spec uses `step() / reset() / state()` as the primary API
-  (not `close()` — that appears in later RFCs and is not yet stable). Match the
-  current `meta-pytorch/OpenEnv` repo, not blog-post descriptions.
+- `pandas.read_csv(..., dtype=str)` is the safest default for messy CSVs. Pandas
+  type inference can lose precision on monetary or identifier-like values.
+- Z3 `Real` variables are mathematical reals, not IEEE-754 floats. Use `FP` only
+  when actual floating-point behavior matters.
+- TRL v1+ manages `remove_unused_columns` internally in `GRPOConfig`; do not
+  hand-set it from older tutorials.
+- `causal-learn` PC does not accept NaN values. Impute or drop missing values
+  before discovery.
+- OpenEnv's current primary API is `reset()`, `step()`, and `state()`. The local
+  server also exposes `close()` for compatibility.
 
-## Performance notes
+## 2026-05-15 Notes
 
-- Detector pass on a 10k-row CSV should finish in < 2 seconds. If yours is
-  slower, profile with `py-spy record` first; don't guess.
-- SMT verification scales poorly if you add EVERY FD as a universal quantifier
-  over N² row pairs. Use `ForAll` with bound variables, not concrete loops.
-- Rich tables render slowly for > 500 rows. Paginate or summarize.
+- The environment action space is now eight actions. `ROOT_CAUSE` is read-only
+  and returns analyzer-backed root indices; it does not authorize repairs.
+- `R_ROOT_CAUSE` is a small dense bonus and only applies when task metadata
+  exposes root labels.
+- `dataforge-mcp/` is a nested standalone package. Keep MCP transport
+  dependencies out of core `dataforge`.
+- The SFT oracle workflow reserves held-out rows before chunking. Held-out rows
+  must not appear in target rows, context rows, normalization candidates, fixes,
+  or messages.
+- The published 0.5B SFT checkpoint is smoke-release evidence, not a quality
+  milestone. Do not describe it as deployment-ready unless verifier metrics
+  show a real held-out gain and the docs are updated with that evidence.
+- The Gradio model demo is separate from the CSV playground. It caps inputs at
+  50 parsed data rows and may return malformed or incorrect model output.
+- Hugging Face ZeroGPU is selected in Space settings. Do not document unsupported
+  README frontmatter keys for hardware selection.
 
-## Append-only from here onward
+## Performance Notes
+
+- Detector pass on a 10k-row CSV should finish in under 2 seconds.
+- SMT verification can become expensive if FDs are expanded into concrete row
+  pairs. Prefer symbolic constraints where possible.
+- Rich tables are slow for large output. Summarize or paginate beyond a few
+  hundred rows.
+
+## Append-Only From Here Onward

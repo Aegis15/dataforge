@@ -1,43 +1,43 @@
 # Security Policy
 
-## Reporting a vulnerability
+## Reporting A Vulnerability
 
-If you discover a security vulnerability in DataForge, **please do not open
-a public GitHub issue.** Instead, contact the maintainer privately (use the
-email listed in `pyproject.toml`, or open a [draft security advisory](https://docs.github.com/en/code-security/security-advisories/working-with-repository-security-advisories/creating-a-repository-security-advisory)
-on GitHub).
+Please do not open a public issue for security vulnerabilities. Contact the
+maintainer privately or open a draft GitHub security advisory.
 
 Include:
 
-1. A description of the vulnerability and the attack scenario.
-2. Steps to reproduce (minimal example preferred).
-3. The version(s) affected (or commit hash).
-4. Any suggested fix, if you have one.
+1. A description of the vulnerability and attack scenario.
+2. Steps to reproduce.
+3. Affected version or commit hash.
+4. Suggested fix, if you have one.
 
-We will acknowledge receipt within 48 hours and aim to release a patch
-within 7 days for critical issues.
+We aim to acknowledge reports within 48 hours and patch critical issues within
+7 days.
 
-## Scope
+## In Scope
 
-The following are in scope:
+- `dataforge/` CLI and library code
+- `dataforge-mcp/` local MCP server package
+- `playground/api/` backend
+- safety filter and SMT verifier
+- transaction log integrity and revert behavior
+- provider-call paths that could leak user data or API keys
 
-- The `dataforge` CLI and library (`dataforge/` package).
-- The playground API (`playground/api/`).
-- The safety filter and SMT verifier (`dataforge/safety/`, `dataforge/verifier/`).
-- Transaction log integrity (`dataforge/transactions/`).
+## Out Of Scope
 
-The following are **out of scope** (but still appreciated):
+- Third-party dependencies, except where DataForge configuration makes an issue
+  exploitable
+- Static playground frontend issues that do not expose secrets or user data
+- Generated local cache or staging directories
 
-- Third-party dependencies (report upstream; mention here if relevant).
-- The static playground frontend (no secrets, no auth).
-
-## Supported versions
+## Supported Versions
 
 | Version | Supported |
 | ------- | --------- |
-| 0.x.x   | ✅ Latest only |
+| 0.x.x | Latest only |
 
-## Disclosure policy
+## Disclosure
 
-We follow coordinated disclosure. We will credit reporters in the
+DataForge follows coordinated disclosure. Reporters are credited in the
 `CHANGELOG.md` entry for the fix unless anonymity is requested.

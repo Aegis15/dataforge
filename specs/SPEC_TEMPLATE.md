@@ -1,69 +1,90 @@
 # SPEC: <component-name>
 
-> Status: Draft | Reviewed | Frozen
-> Owner: <your-handle>
+> Status: Draft | Reviewed | Accepted | Superseded
+> Owner: <handle>
 > Last updated: YYYY-MM-DD
 
-## 1. Purpose (2 sentences)
+## 1. Purpose
 
-## 2. Outcomes (measurable, binary pass/fail)
+Describe the component in one or two concrete sentences. State the user or
+system problem it solves.
 
-- [ ] <measurable outcome 1>
-- [ ] <measurable outcome 2>
+## 2. Outcomes
+
+- [ ] <measurable pass/fail outcome>
+- [ ] <measurable pass/fail outcome>
 
 ## 3. Scope
 
 **IN**:
-- <explicit list of what this component must do>
 
-**OUT** (explicitly excluded, to prevent scope creep):
-- <things that sound related but are not this component's job>
+- <behavior this component must own>
+
+**OUT**:
+
+- <related behavior intentionally excluded>
 
 ## 4. Constraints
 
-- Performance: <e.g., "p95 latency < 200ms on 10k-row schemas">
-- Compatibility: <e.g., "Python 3.11+, works on Linux / macOS / WSL">
-- Backward compatibility: <e.g., "must not break existing regression tests">
+- Compatibility: Python `>=3.11,<3.13` unless a narrower surface requires more.
+- Safety: applied repairs must preserve SafetyFilter -> SMTVerifier ->
+  transaction-log ordering.
+- Backward compatibility: existing regression tests must pass unchanged unless a
+  spec and decision explicitly justify changing them.
+- Documentation: public behavior changes require updates to `README.md`,
+  `ARCHITECTURE.md`, and/or the relevant runbook.
 
-## 5. Prior decisions (locked — require new spec to change)
+## 5. Prior Decisions
 
-- <architectural commitment 1>
-- <architectural commitment 2>
+- <link or name the relevant `DECISIONS.md` entry>
+- <state any invariant this spec must not change>
 
-## 6. Task breakdown (atomic sub-tasks)
+## 6. Task Breakdown
 
 ### 6.1 <task name>
-- Acceptance: <binary pass/fail>
+
+- Acceptance: <binary pass/fail criterion>
 - Depends on: <list or "none">
-- Estimated complexity: S / M / L
+- Estimated complexity: S | M | L
 
 ### 6.2 <task name>
-...
+
+- Acceptance: <binary pass/fail criterion>
+- Depends on: <list or "none">
+- Estimated complexity: S | M | L
 
 ## 7. Verification
 
-- Unit tests: `tests/unit/test_<module>.py`
-- Integration tests: `tests/integration/test_<module>_integration.py`
-- Property tests: `tests/property/test_<module>_properties.py`
-- Benchmarks: `tests/benchmarks/bench_<module>.py`
-- Coverage target: ≥ 90% line, ≥ 80% branch
-- Mutation score target: ≥ 85% (run with `mutmut run --paths-to-mutate dataforge/<module>`)
+Use the narrowest relevant checks while developing, then broaden before handoff.
 
-## 8. Acceptance gate (ALL must be TRUE to mark SPEC complete)
+- Unit tests: `tests/unit/test_<module>.py`
+- Integration tests: `tests/integration/test_<surface>.py`
+- Property tests, benchmark tests, or adversarial tests when the behavior
+  affects safety, reversibility, performance, or provider boundaries
+- Mapped gate: `make test-mapped FILE=<source_file>`
+- Standard gates: `make lint`, `make type`, `make test`
+- Documentation gate when docs change: `python scripts/ci/readme_truth.py`
+
+## 8. Acceptance Gate
 
 - [ ] All Section 2 outcomes are met.
-- [ ] All Section 6 tasks have "passes".
-- [ ] Coverage thresholds (Section 7) are met.
-- [ ] No test in `tests/regression/` fails.
-- [ ] `DECISIONS.md` has an entry for any non-obvious choice made during build.
-- [ ] README's benchmark table (if applicable) is updated with reproducible numbers.
+- [ ] All required tests pass.
+- [ ] No regression test fails.
+- [ ] Public interfaces and docs are updated.
+- [ ] `DECISIONS.md` records any non-obvious architecture/product choice.
 
-## Appendix A — Toy cases (write the FIRST failing tests from these)
+## Appendix A - Toy Cases
+
+Write the first failing tests from concrete toy cases.
 
 ### Case A.1: <short name>
+
 Input: <concrete input>
 Expected output: <concrete output>
-Reasoning: <why this case matters — what bug would a failure here indicate?>
+Reasoning: <what bug this catches>
 
 ### Case A.2: <short name>
-...
+
+Input: <concrete input>
+Expected output: <concrete output>
+Reasoning: <what bug this catches>

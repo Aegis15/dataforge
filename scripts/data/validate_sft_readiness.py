@@ -21,8 +21,16 @@ from scripts.data.collect_sft_trajectories import validate_trajectory_record  # 
 
 DEFAULT_CONFIG = Path("training/configs/sft_05b.yaml")
 DEFAULT_JSONL = Path("data/sft_traj/expert_v1.jsonl")
+DEFAULT_SPLIT_MANIFEST = Path("data/sft_traj/split_manifest.json")
 DEFAULT_MIN_RECORDS = 32
 DEFAULT_HOLDOUT_RECORDS = 100
+EXPECTED_TRL_PIN = "trl==1.4.0"
+EXPECTED_T4_TRAINING = {
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "max_seq_length": 1024,
+    "loss_type": "chunked_nll",
+}
 
 
 class SftReadinessError(RuntimeError):
@@ -36,10 +44,16 @@ class SftReadinessReport:
     records: int
     train_records: int
     heldout_records: int
+    train_rows: int
+    heldout_rows: int
     datasets: tuple[str, ...]
     difficulties: tuple[str, ...]
     teacher_model: str
+    collection_methods: tuple[str, ...]
     package_count: int
+    split_manifest_present: bool = False
+    split_manifest_train_rows: int = 0
+    split_manifest_eval_rows: int = 0
 
 
 def _as_mapping(value: object, *, name: str) -> dict[str, Any]:
@@ -70,11 +84,53 @@ def load_config(path: Path) -> dict[str, Any]:
         raise SftReadinessError(
             "Kaggle package pins must be exact. Unpinned entries: " + ", ".join(map(str, unpinned))
         )
+    if EXPECTED_TRL_PIN not in packages:
+        raise SftReadinessError(
+            f"Kaggle config must pin {EXPECTED_TRL_PIN} for loss_type='chunked_nll'."
+        )
 
     training = _as_mapping(config["training"], name="training")
     if training.get("fp16") is not True or training.get("bf16") is not False:
         raise SftReadinessError("Kaggle config must use fp16=True and bf16=False.")
+    stale_settings = {
+        key: training.get(key)
+        for key, expected in EXPECTED_T4_TRAINING.items()
+        if training.get(key) != expected
+    }
+    if stale_settings:
+        raise SftReadinessError(
+            "Kaggle T4 training settings are stale. Expected "
+            f"{EXPECTED_T4_TRAINING}; got {stale_settings}."
+        )
+    _validate_dataset_readme(path=path, config=config)
     return config
+
+
+def _validate_dataset_readme(*, path: Path, config: dict[str, Any]) -> None:
+    """Check that the dataset README agrees with core config filenames and provenance."""
+    readme = path.parent.parent / "DATASET_README.md"
+    if not readme.exists():
+        if path == DEFAULT_CONFIG:
+            raise SftReadinessError(f"Missing dataset README: {readme}")
+        return
+    text = readme.read_text(encoding="utf-8")
+    repos = _as_mapping(config["repos"], name="repos")
+    trajectory_filename = str(repos.get("trajectory_filename", "expert_v1.jsonl"))
+    if trajectory_filename not in text:
+        raise SftReadinessError(
+            f"{readme} must document configured trajectory file {trajectory_filename!r}."
+        )
+    split_manifest_filename = str(repos.get("split_manifest_filename", "split_manifest.json"))
+    if split_manifest_filename not in text:
+        raise SftReadinessError(
+            f"{readme} must document configured split manifest {split_manifest_filename!r}."
+        )
+    collection_methods = _collection_methods(config)
+    missing_methods = [method for method in collection_methods if method not in text]
+    if missing_methods:
+        raise SftReadinessError(
+            f"{readme} must document collection method(s): {', '.join(missing_methods)}."
+        )
 
 
 def load_jsonl_records(path: Path) -> list[dict[str, Any]]:
@@ -100,6 +156,16 @@ def load_jsonl_records(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def load_split_manifest(path: Path | None) -> dict[str, Any] | None:
+    """Load an optional split manifest for oracle records."""
+    if path is None:
+        return None
+    if not path.exists():
+        raise SftReadinessError(f"Missing split manifest: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return _as_mapping(payload, name=str(path))
+
+
 def _split_sizes(record_count: int, holdout_records: int) -> tuple[int, int]:
     """Return deterministic train/held-out sizes matching the Kaggle notebook."""
     test_size = min(holdout_records, max(1, record_count // 10))
@@ -111,10 +177,256 @@ def _split_sizes(record_count: int, holdout_records: int) -> tuple[int, int]:
     return train_size, test_size
 
 
+def _collection_methods(config: dict[str, Any]) -> set[str]:
+    """Return configured collection methods, defaulting to legacy ReAct records."""
+    collection = _as_mapping(config["collection"], name="collection")
+    raw_methods = collection.get("collection_methods")
+    if raw_methods is None:
+        return {"llm_react_chunk"}
+    if not isinstance(raw_methods, list) or not raw_methods:
+        raise SftReadinessError("collection.collection_methods must be a non-empty list.")
+    methods: set[str] = set()
+    for method in raw_methods:
+        if not isinstance(method, str) or not method.strip():
+            raise SftReadinessError("collection.collection_methods entries must be strings.")
+        methods.add(method)
+    return methods
+
+
+def _oracle_teacher_key(config: dict[str, Any]) -> tuple[str, str]:
+    """Return the configured oracle provider/model pair."""
+    collection = _as_mapping(config["collection"], name="collection")
+    oracle = collection.get("oracle", {})
+    oracle_config = _as_mapping(oracle, name="collection.oracle") if oracle else {}
+    provider = str(oracle_config.get("provider", "oracle"))
+    model = str(oracle_config.get("model", "clean-diff-v1"))
+    return provider, model
+
+
+def _rows_from_payload(rows: object, *, name: str) -> set[int]:
+    """Extract integer row ids from serialized prompt rows."""
+    if not isinstance(rows, list):
+        raise SftReadinessError(f"{name} must be a list.")
+    row_ids: set[int] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise SftReadinessError(f"{name} entries must be mappings.")
+        raw_row = row.get("_row")
+        try:
+            row_ids.add(int(str(raw_row)))
+        except (TypeError, ValueError) as exc:
+            raise SftReadinessError(f"{name} entries must include integer _row values.") from exc
+    return row_ids
+
+
+def _rows_from_repairs(repairs: object, *, name: str) -> set[int]:
+    """Extract integer row ids from serialized fixes or candidates."""
+    if not isinstance(repairs, list):
+        raise SftReadinessError(f"{name} must be a list.")
+    row_ids: set[int] = set()
+    for repair in repairs:
+        if not isinstance(repair, dict):
+            raise SftReadinessError(f"{name} entries must be mappings.")
+        row = repair.get("row")
+        if not isinstance(row, int):
+            raise SftReadinessError(f"{name} entries must include integer row values.")
+        row_ids.add(row)
+    return row_ids
+
+
+def _oracle_eval_rows(record: dict[str, Any], *, index: int) -> set[int]:
+    """Return held-out row ids recorded for an oracle trajectory."""
+    provenance = _as_mapping(record["provenance"], name=f"record {index} provenance")
+    raw_eval_rows = provenance.get("eval_rows")
+    if not isinstance(raw_eval_rows, list) or not all(isinstance(row, int) for row in raw_eval_rows):
+        raise SftReadinessError(
+            f"Record {index} oracle provenance must include integer eval_rows."
+        )
+    return set(cast(list[int], raw_eval_rows))
+
+
+def _validate_oracle_no_eval_leak(record: dict[str, Any], *, index: int) -> tuple[set[int], set[int]]:
+    """Reject oracle records that expose held-out rows anywhere in the SFT example."""
+    eval_rows = _oracle_eval_rows(record, index=index)
+    if not eval_rows:
+        raise SftReadinessError(f"Record {index} oracle provenance has no held-out rows.")
+    state = _as_mapping(record["state"], name=f"record {index} state")
+    provenance = _as_mapping(record["provenance"], name=f"record {index} provenance")
+    if state.get("split") != "train" or provenance.get("split") != "train":
+        raise SftReadinessError(f"Record {index} oracle record must be marked split='train'.")
+    exposed_rows = set()
+    exposed_rows.update(
+        _rows_from_payload(state.get("target_rows"), name=f"record {index} target_rows")
+    )
+    exposed_rows.update(
+        _rows_from_payload(state.get("context_rows"), name=f"record {index} context_rows")
+    )
+    exposed_rows.update(_rows_from_repairs(record.get("fix"), name=f"record {index} fix"))
+    candidates = state.get("normalization_candidates", [])
+    if candidates:
+        exposed_rows.update(
+            _rows_from_repairs(candidates, name=f"record {index} normalization_candidates")
+        )
+        fix_values = {
+            (repair["row"], repair["column"], repair["new_value"])
+            for repair in record.get("fix", [])
+            if isinstance(repair, dict)
+            and isinstance(repair.get("row"), int)
+            and isinstance(repair.get("column"), str)
+            and isinstance(repair.get("new_value"), str)
+        }
+        leaked_candidates = []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            key = (
+                candidate.get("row"),
+                candidate.get("column"),
+                candidate.get("suggested_value"),
+            )
+            if key in fix_values:
+                leaked_candidates.append(key)
+        if leaked_candidates:
+            raise SftReadinessError(
+                "Record "
+                f"{index} leaks oracle clean labels through normalization_candidates: "
+                f"{leaked_candidates[:5]}"
+            )
+    leaked = sorted(exposed_rows & eval_rows)
+    if leaked:
+        raise SftReadinessError(
+            f"Record {index} leaks held-out eval row(s) into SFT payload: {leaked[:10]}"
+        )
+    return exposed_rows, eval_rows
+
+
+def _assert_manifest_has_no_label_fields(value: object, *, path: str = "manifest") -> None:
+    """Reject split manifests that accidentally contain clean labels or repairs."""
+    forbidden = {
+        "clean",
+        "clean_value",
+        "ground_truth",
+        "new_value",
+        "normalization_candidates",
+        "repairs",
+        "suggested_value",
+    }
+    if isinstance(value, dict):
+        for key, child in value.items():
+            key_text = str(key)
+            if key_text in forbidden:
+                raise SftReadinessError(
+                    f"Split manifest leaks label-bearing field {path}.{key_text!s}."
+                )
+            _assert_manifest_has_no_label_fields(child, path=f"{path}.{key_text}")
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _assert_manifest_has_no_label_fields(child, path=f"{path}[{index}]")
+
+
+def _manifest_row_entries(entries: object, *, name: str) -> set[int]:
+    """Parse manifest row entries and verify their dirty-row hash shape."""
+    if not isinstance(entries, list):
+        raise SftReadinessError(f"{name} must be a list.")
+    rows: set[int] = set()
+    for index, entry in enumerate(entries):
+        item = _as_mapping(entry, name=f"{name}[{index}]")
+        row = item.get("row")
+        digest = item.get("dirty_row_sha256")
+        if not isinstance(row, int):
+            raise SftReadinessError(f"{name}[{index}].row must be an integer.")
+        if (
+            not isinstance(digest, str)
+            or len(digest) != 64
+            or any(char not in "0123456789abcdef" for char in digest)
+        ):
+            raise SftReadinessError(
+                f"{name}[{index}].dirty_row_sha256 must be a lowercase SHA-256 hex digest."
+            )
+        if row in rows:
+            raise SftReadinessError(f"{name} contains duplicate row id {row}.")
+        rows.add(row)
+    return rows
+
+
+def _split_manifest_rows(
+    manifest: dict[str, Any],
+) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
+    """Return train/eval row maps after validating split-manifest structure."""
+    _assert_manifest_has_no_label_fields(manifest)
+    if manifest.get("schema_version") != "split_manifest_v1":
+        raise SftReadinessError("Split manifest schema_version must be split_manifest_v1.")
+    if manifest.get("collection_method") != "oracle_from_clean_diff":
+        raise SftReadinessError("Split manifest collection_method must be oracle_from_clean_diff.")
+    raw_datasets = manifest.get("datasets")
+    if not isinstance(raw_datasets, list) or not raw_datasets:
+        raise SftReadinessError("Split manifest must include a non-empty datasets list.")
+    train_by_dataset: dict[str, set[int]] = {}
+    eval_by_dataset: dict[str, set[int]] = {}
+    for index, raw_dataset in enumerate(raw_datasets):
+        dataset_entry = _as_mapping(raw_dataset, name=f"split_manifest.datasets[{index}]")
+        dataset = dataset_entry.get("dataset")
+        if not isinstance(dataset, str) or not dataset:
+            raise SftReadinessError(f"split_manifest.datasets[{index}].dataset must be a string.")
+        if dataset in train_by_dataset:
+            raise SftReadinessError(f"Split manifest contains duplicate dataset {dataset!r}.")
+        train_rows = _manifest_row_entries(
+            dataset_entry.get("train"), name=f"split_manifest.{dataset}.train"
+        )
+        eval_rows = _manifest_row_entries(
+            dataset_entry.get("eval"), name=f"split_manifest.{dataset}.eval"
+        )
+        if train_rows & eval_rows:
+            raise SftReadinessError(
+                f"Split manifest dataset {dataset!r} has rows in both train and eval."
+            )
+        if dataset_entry.get("train_rows") != len(train_rows):
+            raise SftReadinessError(f"Split manifest dataset {dataset!r} train_rows mismatch.")
+        if dataset_entry.get("eval_rows") != len(eval_rows):
+            raise SftReadinessError(f"Split manifest dataset {dataset!r} eval_rows mismatch.")
+        train_by_dataset[dataset] = train_rows
+        eval_by_dataset[dataset] = eval_rows
+    return train_by_dataset, eval_by_dataset
+
+
+def _validate_record_against_manifest(
+    record: dict[str, Any],
+    *,
+    index: int,
+    manifest_train: dict[str, set[int]],
+    manifest_eval: dict[str, set[int]],
+) -> None:
+    """Ensure an oracle record agrees with the published split manifest."""
+    dataset = str(record["dataset"])
+    if dataset not in manifest_train or dataset not in manifest_eval:
+        raise SftReadinessError(f"Record {index} dataset {dataset!r} is absent from split manifest.")
+    eval_rows = _oracle_eval_rows(record, index=index)
+    if eval_rows != manifest_eval[dataset]:
+        raise SftReadinessError(
+            f"Record {index} oracle eval rows disagree with split_manifest.json."
+        )
+    state = _as_mapping(record["state"], name=f"record {index} state")
+    exposed_rows = set()
+    exposed_rows.update(
+        _rows_from_payload(state.get("target_rows"), name=f"record {index} target_rows")
+    )
+    exposed_rows.update(
+        _rows_from_payload(state.get("context_rows"), name=f"record {index} context_rows")
+    )
+    exposed_rows.update(_rows_from_repairs(record.get("fix"), name=f"record {index} fix"))
+    outside_train = sorted(exposed_rows - manifest_train[dataset])
+    if outside_train:
+        raise SftReadinessError(
+            f"Record {index} exposes rows outside the split manifest train set: "
+            f"{outside_train[:10]}"
+        )
+
+
 def validate_records(
     records: list[dict[str, Any]],
     *,
     config: dict[str, Any],
+    split_manifest: dict[str, Any] | None = None,
     min_records: int = DEFAULT_MIN_RECORDS,
     holdout_records: int = DEFAULT_HOLDOUT_RECORDS,
 ) -> SftReadinessReport:
@@ -133,11 +445,38 @@ def validate_records(
     expected_schema = str(collection["schema_version"])
     expected_min_f1 = float(collection["min_episode_f1"])
     expected_teacher = str(collection["teacher_model"])
+    expected_provider = collection.get("teacher_provider")
+    allowed_methods = _collection_methods(config)
+    oracle_teacher = _oracle_teacher_key(config)
+    accepted_teachers = collection.get("accepted_teachers")
+    allowed_teachers: set[tuple[str | None, str]] = set()
+    if isinstance(expected_provider, str):
+        allowed_teachers.add((expected_provider, expected_teacher))
+    else:
+        allowed_teachers.add((None, expected_teacher))
+    if isinstance(accepted_teachers, list):
+        for raw_teacher in accepted_teachers:
+            if not isinstance(raw_teacher, dict):
+                raise SftReadinessError("collection.accepted_teachers entries must be mappings.")
+            provider = raw_teacher.get("provider")
+            model = raw_teacher.get("model")
+            if not isinstance(provider, str) or not isinstance(model, str):
+                raise SftReadinessError(
+                    "collection.accepted_teachers entries require provider and model strings."
+                )
+            allowed_teachers.add((provider, model))
 
     trajectory_ids: set[str] = set()
     chunk_keys: set[tuple[str, int, int]] = set()
     datasets: set[str] = set()
     difficulties: set[str] = set()
+    collection_methods: set[str] = set()
+    train_row_ids: set[tuple[str, int]] = set()
+    heldout_row_ids: set[tuple[str, int]] = set()
+    manifest_train: dict[str, set[int]] = {}
+    manifest_eval: dict[str, set[int]] = {}
+    if split_manifest is not None:
+        manifest_train, manifest_eval = _split_manifest_rows(split_manifest)
     for index, record in enumerate(records, start=1):
         if record["schema_version"] != expected_schema:
             raise SftReadinessError(
@@ -165,10 +504,43 @@ def validate_records(
             )
 
         teacher = _as_mapping(record["teacher"], name=f"record {index} teacher")
-        if str(teacher.get("model", "")) != expected_teacher:
+        provenance = _as_mapping(record["provenance"], name=f"record {index} provenance")
+        collection_method = str(provenance.get("collection_method", "llm_react_chunk"))
+        if collection_method not in allowed_methods:
             raise SftReadinessError(
-                f"Record {index} teacher model {teacher.get('model')!r} does not match "
-                f"config teacher_model={expected_teacher!r}."
+                f"Record {index} collection_method={collection_method!r}; "
+                f"expected one of {sorted(allowed_methods)}."
+            )
+        collection_methods.add(collection_method)
+        record_provider = teacher.get("provider")
+        record_model = str(teacher.get("model", ""))
+        record_teacher_key = (
+            str(record_provider)
+            if isinstance(record_provider, str) and isinstance(expected_provider, str)
+            else None,
+            record_model,
+        )
+        if collection_method == "oracle_from_clean_diff":
+            if (str(record_provider), record_model) != oracle_teacher:
+                raise SftReadinessError(
+                    f"Record {index} oracle teacher {(record_provider, record_model)!r} "
+                    f"does not match configured {oracle_teacher!r}."
+                )
+            exposed_rows, heldout_rows = _validate_oracle_no_eval_leak(record, index=index)
+            if split_manifest is not None:
+                _validate_record_against_manifest(
+                    record,
+                    index=index,
+                    manifest_train=manifest_train,
+                    manifest_eval=manifest_eval,
+                )
+            dataset = str(record["dataset"])
+            train_row_ids.update((dataset, row) for row in exposed_rows)
+            heldout_row_ids.update((dataset, row) for row in heldout_rows)
+        elif record_teacher_key not in allowed_teachers:
+            raise SftReadinessError(
+                f"Record {index} teacher {record_teacher_key!r} does not match "
+                f"configured accepted teachers."
             )
         if not record.get("messages"):
             raise SftReadinessError(f"Record {index} has no chat messages.")
@@ -179,14 +551,30 @@ def validate_records(
     packages = cast(
         list[str], _as_mapping(config["environment"], name="environment")["pip_packages"]
     )
+    if split_manifest is not None and "oracle_from_clean_diff" in collection_methods:
+        configured_datasets = set(datasets)
+        missing_manifest_datasets = configured_datasets - set(manifest_train)
+        if missing_manifest_datasets:
+            raise SftReadinessError(
+                "Split manifest is missing oracle dataset(s): "
+                + ", ".join(sorted(missing_manifest_datasets))
+            )
+    manifest_train_rows = sum(len(rows) for rows in manifest_train.values())
+    manifest_eval_rows = sum(len(rows) for rows in manifest_eval.values())
     return SftReadinessReport(
         records=len(records),
         train_records=train_size,
         heldout_records=test_size,
+        train_rows=manifest_train_rows or len(train_row_ids),
+        heldout_rows=manifest_eval_rows or len(heldout_row_ids),
         datasets=tuple(sorted(datasets)),
         difficulties=tuple(sorted(difficulties)),
         teacher_model=expected_teacher,
+        collection_methods=tuple(sorted(collection_methods)),
         package_count=len(packages),
+        split_manifest_present=split_manifest is not None,
+        split_manifest_train_rows=manifest_train_rows,
+        split_manifest_eval_rows=manifest_eval_rows,
     )
 
 
@@ -194,15 +582,18 @@ def validate_sft_readiness(
     *,
     jsonl: Path = DEFAULT_JSONL,
     config_path: Path = DEFAULT_CONFIG,
+    split_manifest: Path | None = None,
     min_records: int = DEFAULT_MIN_RECORDS,
     holdout_records: int = DEFAULT_HOLDOUT_RECORDS,
 ) -> SftReadinessReport:
     """Validate the local SFT handoff and return a compact report."""
     config = load_config(config_path)
     records = load_jsonl_records(jsonl)
+    manifest = load_split_manifest(split_manifest)
     return validate_records(
         records,
         config=config,
+        split_manifest=manifest,
         min_records=min_records,
         holdout_records=holdout_records,
     )
@@ -213,6 +604,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--jsonl", type=Path, default=DEFAULT_JSONL)
     parser.add_argument("--config", dest="config_path", type=Path, default=DEFAULT_CONFIG)
+    parser.add_argument("--split-manifest", type=Path, default=DEFAULT_SPLIT_MANIFEST)
     parser.add_argument("--min-records", type=int, default=DEFAULT_MIN_RECORDS)
     parser.add_argument("--holdout-records", type=int, default=DEFAULT_HOLDOUT_RECORDS)
     return parser
@@ -224,6 +616,7 @@ def main(argv: list[str] | None = None) -> int:
     report = validate_sft_readiness(
         jsonl=args.jsonl,
         config_path=args.config_path,
+        split_manifest=args.split_manifest,
         min_records=args.min_records,
         holdout_records=args.holdout_records,
     )
@@ -233,9 +626,13 @@ def main(argv: list[str] | None = None) -> int:
     table.add_row("Trajectory records", str(report.records))
     table.add_row("Train records", str(report.train_records))
     table.add_row("Held-out records", str(report.heldout_records))
+    table.add_row("Train rows seen", str(report.train_rows))
+    table.add_row("Held-out rows reserved", str(report.heldout_rows))
     table.add_row("Datasets", ", ".join(report.datasets))
     table.add_row("Difficulties", ", ".join(report.difficulties))
     table.add_row("Teacher model", report.teacher_model)
+    table.add_row("Collection methods", ", ".join(report.collection_methods))
+    table.add_row("Split manifest", "present" if report.split_manifest_present else "not checked")
     table.add_row("Pinned packages", str(report.package_count))
     Console().print(table)
     return 0

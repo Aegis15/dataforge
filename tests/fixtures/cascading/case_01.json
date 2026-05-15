@@ -1,0 +1,60 @@
+{
+  "case_id": "case_01",
+  "source": "procedural cascading fixture derived from legacy order-total cascade pattern",
+  "columns": [
+    "quantity",
+    "unit_price",
+    "discount_pct",
+    "order_total",
+    "invoice_total"
+  ],
+  "edges": [
+    {
+      "source": "quantity",
+      "target": "order_total",
+      "confidence": 0.95,
+      "provenance": "procedural_formula"
+    },
+    {
+      "source": "unit_price",
+      "target": "order_total",
+      "confidence": 0.95,
+      "provenance": "procedural_formula"
+    },
+    {
+      "source": "discount_pct",
+      "target": "order_total",
+      "confidence": 0.95,
+      "provenance": "procedural_formula"
+    },
+    {
+      "source": "order_total",
+      "target": "invoice_total",
+      "confidence": 0.95,
+      "provenance": "procedural_formula"
+    }
+  ],
+  "errors": [
+    {
+      "index": 0,
+      "row": 0,
+      "column": "discount_pct",
+      "issue_type": "decimal_shift"
+    },
+    {
+      "index": 1,
+      "row": 0,
+      "column": "order_total",
+      "issue_type": "formula_cascade"
+    },
+    {
+      "index": 2,
+      "row": 0,
+      "column": "invoice_total",
+      "issue_type": "formula_cascade"
+    }
+  ],
+  "root_indices": [
+    0
+  ]
+}

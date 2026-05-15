@@ -1,0 +1,379 @@
+ starting collection preset=full datasets=beers,flights difficulties=easy 
+seeds=24 teacher=cerebras:llama3.1-8b target=80 existing=37 request_budget=120 
+timeout_s=60.0 deadline_min=None
+ chunk start dataset=beers difficulty=easy seed=0 chunk=1/16 requests=0/120 
+accepted=37 elapsed=0.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=1 
+next_request=1 accepted=37 elapsed=0.3s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=1 
+requests=1/120 tokens=5354+512 accepted=37 elapsed=1.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=1 repairs=0 llm_calls=1
+accepted=37 elapsed=1.6s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=2/16 requests=1/120 
+accepted=37 elapsed=1.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=2 
+next_request=2 accepted=37 elapsed=1.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=2 
+requests=2/120 tokens=5340+332 accepted=37 elapsed=4.4s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=2 repairs=3 llm_calls=1
+accepted=37 elapsed=4.4s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=3/16 requests=2/120 
+accepted=37 elapsed=4.4s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=3 
+next_request=3 accepted=37 elapsed=4.5s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=3 
+requests=3/120 tokens=5364+293 accepted=37 elapsed=7.1s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=3 repairs=4 llm_calls=1
+accepted=37 elapsed=7.1s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=4/16 requests=3/120 
+accepted=37 elapsed=7.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=4 
+next_request=4 accepted=37 elapsed=7.2s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=4 
+requests=4/120 tokens=5362+512 accepted=37 elapsed=9.9s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=4 repairs=0 llm_calls=1
+accepted=37 elapsed=9.9s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=5/16 requests=4/120 
+accepted=37 elapsed=9.9s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=5 
+next_request=5 accepted=37 elapsed=10.0s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=5 
+requests=5/120 tokens=5355+280 accepted=37 elapsed=12.8s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=5 repairs=0 llm_calls=1
+accepted=37 elapsed=12.9s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=6/16 requests=5/120 
+accepted=37 elapsed=12.9s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=6 
+next_request=6 accepted=37 elapsed=13.0s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=6 
+requests=6/120 tokens=5341+474 accepted=37 elapsed=15.7s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=6 repairs=3 llm_calls=1
+accepted=37 elapsed=15.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=7/16 requests=6/120 
+accepted=37 elapsed=15.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=7 
+next_request=7 accepted=37 elapsed=15.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=7 
+requests=7/120 tokens=5348+244 accepted=37 elapsed=18.3s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=7 repairs=0 llm_calls=1
+accepted=37 elapsed=18.4s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=8/16 requests=7/120 
+accepted=37 elapsed=18.4s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=8 
+next_request=8 accepted=37 elapsed=18.5s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=8 
+requests=8/120 tokens=5344+354 accepted=37 elapsed=21.7s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=8 repairs=0 llm_calls=1
+accepted=37 elapsed=21.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=9/16 requests=8/120 
+accepted=37 elapsed=21.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=9 
+next_request=9 accepted=37 elapsed=21.8s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=9 
+requests=9/120 tokens=5349+512 accepted=37 elapsed=24.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=9 repairs=0 llm_calls=1
+accepted=37 elapsed=24.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=10/16 requests=9/120 
+accepted=37 elapsed=24.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=10 
+next_request=10 accepted=37 elapsed=24.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=10 
+requests=10/120 tokens=5345+292 accepted=37 elapsed=27.3s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=10 repairs=3 
+llm_calls=1 accepted=37 elapsed=27.4s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=11/16 requests=10/120 
+accepted=37 elapsed=27.4s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=11 
+next_request=11 accepted=37 elapsed=27.4s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=11 
+requests=11/120 tokens=5363+324 accepted=37 elapsed=30.1s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=11 repairs=3 
+llm_calls=1 accepted=37 elapsed=30.1s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=12/16 requests=11/120 
+accepted=37 elapsed=30.1s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=12 
+next_request=12 accepted=37 elapsed=30.2s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=12 
+requests=12/120 tokens=5363+324 accepted=37 elapsed=33.2s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=12 repairs=2 
+llm_calls=1 accepted=37 elapsed=33.2s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=13/16 requests=12/120 
+accepted=37 elapsed=33.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=13 
+next_request=13 accepted=37 elapsed=33.3s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=13 
+requests=13/120 tokens=5350+331 accepted=37 elapsed=35.9s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=13 repairs=3 
+llm_calls=1 accepted=37 elapsed=35.9s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=14/16 requests=13/120 
+accepted=37 elapsed=35.9s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=14 
+next_request=14 accepted=37 elapsed=36.0s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=14 
+requests=14/120 tokens=5358+330 accepted=37 elapsed=38.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=14 repairs=3 
+llm_calls=1 accepted=37 elapsed=38.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=15/16 requests=14/120 
+accepted=37 elapsed=38.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=15 
+next_request=15 accepted=37 elapsed=38.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=15 
+requests=15/120 tokens=5353+482 accepted=37 elapsed=41.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=15 repairs=3 
+llm_calls=1 accepted=37 elapsed=41.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=16/16 requests=15/120 
+accepted=37 elapsed=41.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=16 
+next_request=16 accepted=37 elapsed=41.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=16 
+requests=16/120 tokens=5345+249 accepted=37 elapsed=44.4s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=16 repairs=4 
+llm_calls=1 accepted=37 elapsed=44.4s
+ episode rejected dataset=beers difficulty=easy seed=0 accepted=37 
+elapsed=44.4s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=1/16 requests=16/120 
+accepted=37 elapsed=44.5s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=1 
+next_request=17 accepted=37 elapsed=44.6s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=1 
+requests=17/120 tokens=4396+512 accepted=37 elapsed=47.2s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=1 repairs=0 
+llm_calls=1 accepted=37 elapsed=47.2s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=2/16 requests=17/120 
+accepted=37 elapsed=47.3s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=2 
+next_request=18 accepted=37 elapsed=47.3s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=2 
+requests=18/120 tokens=4384+512 accepted=37 elapsed=50.0s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=2 repairs=0 
+llm_calls=1 accepted=37 elapsed=50.1s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=3/16 requests=18/120 
+accepted=37 elapsed=50.1s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=3 
+next_request=19 accepted=37 elapsed=50.1s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=3 
+requests=19/120 tokens=4388+512 accepted=37 elapsed=52.9s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=3 repairs=0 
+llm_calls=1 accepted=37 elapsed=52.9s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=4/16 requests=19/120 
+accepted=37 elapsed=52.9s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=4 
+next_request=20 accepted=37 elapsed=53.0s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=4 
+requests=20/120 tokens=4381+512 accepted=37 elapsed=55.7s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=4 repairs=0 
+llm_calls=1 accepted=37 elapsed=55.8s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=5/16 requests=20/120 
+accepted=37 elapsed=55.8s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=5 
+next_request=21 accepted=37 elapsed=55.8s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=5 
+requests=21/120 tokens=4381+512 accepted=37 elapsed=58.5s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=5 repairs=0 
+llm_calls=1 accepted=37 elapsed=58.5s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=6/16 requests=21/120 
+accepted=37 elapsed=58.5s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=6 
+next_request=22 accepted=37 elapsed=58.5s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=6 
+requests=22/120 tokens=4368+189 accepted=37 elapsed=61.2s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=6 repairs=4 
+llm_calls=1 accepted=37 elapsed=61.2s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=7/16 requests=22/120 
+accepted=37 elapsed=61.2s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=7 
+next_request=23 accepted=37 elapsed=61.2s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=7 
+requests=23/120 tokens=4380+512 accepted=37 elapsed=124.8s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=7 repairs=0 
+llm_calls=1 accepted=37 elapsed=124.8s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=8/16 requests=23/120 
+accepted=37 elapsed=124.8s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=8 
+next_request=24 accepted=37 elapsed=124.9s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=8 
+requests=24/120 tokens=4363+217 accepted=37 elapsed=127.8s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=8 repairs=5 
+llm_calls=1 accepted=37 elapsed=127.8s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=9/16 requests=24/120 
+accepted=37 elapsed=127.8s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=9 
+next_request=25 accepted=37 elapsed=127.9s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=9 
+requests=25/120 tokens=4369+512 accepted=37 elapsed=130.5s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=9 repairs=0 
+llm_calls=1 accepted=37 elapsed=130.6s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=10/16 requests=25/120
+accepted=37 elapsed=130.6s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=10 
+next_request=26 accepted=37 elapsed=130.7s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=10 
+requests=26/120 tokens=4369+512 accepted=37 elapsed=133.4s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=10 repairs=0 
+llm_calls=1 accepted=37 elapsed=133.5s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=11/16 requests=26/120
+accepted=37 elapsed=133.5s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=11 
+next_request=27 accepted=37 elapsed=133.5s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=11 
+requests=27/120 tokens=4380+512 accepted=37 elapsed=136.2s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=11 repairs=0 
+llm_calls=1 accepted=37 elapsed=136.2s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=12/16 requests=27/120
+accepted=37 elapsed=136.2s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=12 
+next_request=28 accepted=37 elapsed=136.2s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=12 
+requests=28/120 tokens=4358+396 accepted=37 elapsed=138.9s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=12 repairs=9 
+llm_calls=1 accepted=37 elapsed=139.0s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=13/16 requests=28/120
+accepted=37 elapsed=139.0s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=13 
+next_request=29 accepted=37 elapsed=139.0s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=13 
+requests=29/120 tokens=4381+371 accepted=37 elapsed=141.7s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=13 repairs=12 
+llm_calls=1 accepted=37 elapsed=141.7s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=14/16 requests=29/120
+accepted=37 elapsed=141.7s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=14 
+next_request=30 accepted=37 elapsed=141.8s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=14 
+requests=30/120 tokens=4370+192 accepted=37 elapsed=144.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=14 repairs=4 
+llm_calls=1 accepted=37 elapsed=144.3s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=15/16 requests=30/120
+accepted=37 elapsed=144.4s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=15 
+next_request=31 accepted=37 elapsed=144.4s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=15 
+requests=31/120 tokens=4386+227 accepted=37 elapsed=146.9s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=15 repairs=8 
+llm_calls=1 accepted=37 elapsed=147.0s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=16/16 requests=31/120
+accepted=37 elapsed=147.0s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=16 
+next_request=32 accepted=37 elapsed=147.0s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=16 
+requests=32/120 tokens=4366+272 accepted=37 elapsed=150.1s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=16 repairs=6 
+llm_calls=1 accepted=37 elapsed=150.2s
+ episode rejected dataset=flights difficulty=easy seed=0 accepted=37 
+elapsed=150.2s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=1/16 requests=32/120 
+accepted=37 elapsed=150.3s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=1 
+next_request=33 accepted=37 elapsed=150.4s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=1 
+requests=33/120 tokens=5247+512 accepted=37 elapsed=153.3s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=1 repairs=0 llm_calls=1
+accepted=37 elapsed=153.3s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=2/16 requests=33/120 
+accepted=37 elapsed=153.3s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=2 
+next_request=34 accepted=37 elapsed=153.4s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=2 
+requests=34/120 tokens=5264+512 accepted=37 elapsed=156.3s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=2 repairs=0 llm_calls=1
+accepted=37 elapsed=156.3s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=3/16 requests=34/120 
+accepted=37 elapsed=156.3s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=3 
+next_request=35 accepted=37 elapsed=156.4s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=3 
+requests=35/120 tokens=5264+512 accepted=37 elapsed=159.3s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=3 repairs=0 llm_calls=1
+accepted=37 elapsed=159.3s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=4/16 requests=35/120 
+accepted=37 elapsed=159.4s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=4 
+next_request=36 accepted=37 elapsed=159.4s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=4 
+requests=36/120 tokens=5250+281 accepted=37 elapsed=162.1s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=4 repairs=0 llm_calls=1
+accepted=37 elapsed=162.1s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=5/16 requests=36/120 
+accepted=37 elapsed=162.2s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=5 
+next_request=37 accepted=37 elapsed=162.2s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=5 
+requests=37/120 tokens=5246+512 accepted=37 elapsed=164.9s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=5 repairs=0 llm_calls=1
+accepted=37 elapsed=165.0s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=6/16 requests=37/120 
+accepted=37 elapsed=165.0s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=6 
+next_request=38 accepted=37 elapsed=165.0s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=6 
+requests=38/120 tokens=5247+512 accepted=37 elapsed=167.8s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=6 repairs=0 llm_calls=1
+accepted=37 elapsed=167.9s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=7/16 requests=38/120 
+accepted=37 elapsed=167.9s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=7 
+next_request=39 accepted=37 elapsed=167.9s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=7 
+requests=39/120 tokens=5242+512 accepted=37 elapsed=170.7s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=7 repairs=0 llm_calls=1
+accepted=37 elapsed=170.8s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=8/16 requests=39/120 
+accepted=37 elapsed=170.8s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=8 
+next_request=40 accepted=37 elapsed=170.8s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=8 
+requests=40/120 tokens=5246+512 accepted=37 elapsed=173.5s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=8 repairs=0 llm_calls=1
+accepted=37 elapsed=173.5s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=9/16 requests=40/120 
+accepted=37 elapsed=173.6s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=9 
+next_request=41 accepted=37 elapsed=173.6s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=9 
+requests=41/120 tokens=5243+451 accepted=37 elapsed=176.3s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=9 repairs=3 llm_calls=1
+accepted=37 elapsed=176.4s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=10/16 requests=41/120 
+accepted=37 elapsed=176.4s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=10 
+next_request=42 accepted=37 elapsed=176.4s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=10 
+requests=42/120 tokens=5242+393 accepted=37 elapsed=179.6s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=10 repairs=3 
+llm_calls=1 accepted=37 elapsed=179.7s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=11/16 requests=42/120 
+accepted=37 elapsed=179.7s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=11 
+next_request=43 accepted=37 elapsed=179.8s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=11 
+requests=43/120 tokens=5247+386 accepted=37 elapsed=182.4s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=11 repairs=7 
+llm_calls=1 accepted=37 elapsed=182.5s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=12/16 requests=43/120 
+accepted=37 elapsed=182.5s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=12 
+next_request=44 accepted=37 elapsed=182.5s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=12 
+requests=44/120 tokens=5245+512 accepted=37 elapsed=185.3s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=12 repairs=0 
+llm_calls=1 accepted=37 elapsed=185.4s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=13/16 requests=44/120 
+accepted=37 elapsed=185.4s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=13 
+next_request=45 accepted=37 elapsed=185.5s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=13 
+requests=45/120 tokens=5246+512 accepted=37 elapsed=189.6s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=13 repairs=0 
+llm_calls=1 accepted=37 elapsed=189.7s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=14/16 requests=45/120 
+accepted=37 elapsed=189.7s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=14 
+next_request=46 accepted=37 elapsed=189.8s
+ api done    phase=first dataset=beers difficulty=easy seed=1 chunk=14 
+requests=46/120 tokens=5251+512 accepted=37 elapsed=192.5s
+ chunk done  dataset=beers difficulty=easy seed=1 chunk=14 repairs=0 
+llm_calls=1 accepted=37 elapsed=192.6s
+ chunk start dataset=beers difficulty=easy seed=1 chunk=15/16 requests=46/120 
+accepted=37 elapsed=192.6s
+ api start   phase=first dataset=beers difficulty=easy seed=1 chunk=15 
+next_request=47 accepted=37 elapsed=192.6s

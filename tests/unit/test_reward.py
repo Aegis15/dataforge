@@ -17,6 +17,7 @@ from dataforge.env.reward import (
     R_FIX,
     R_FIX_PARTIAL,
     R_JUSTIFY_BONUS,
+    R_ROOT_CAUSE,
     R_TYPE_BONUS,
     SPAM_THRESHOLD,
     EpisodeMetrics,
@@ -44,6 +45,9 @@ class TestRewardConstants:
 
     def test_r_explore(self) -> None:
         assert R_EXPLORE == 0.01
+
+    def test_r_root_cause(self) -> None:
+        assert R_ROOT_CAUSE == 0.10
 
     def test_p_false_pos(self) -> None:
         assert P_FALSE_POS == -0.05

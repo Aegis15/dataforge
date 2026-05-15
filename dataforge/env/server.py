@@ -92,6 +92,7 @@ async def metadata() -> dict[str, Any]:
             "STAT_TEST",
             "PATTERN_MATCH",
             "HYPOTHESIS",
+            "ROOT_CAUSE",
             "DIAGNOSE",
             "FIX",
         ],

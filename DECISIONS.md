@@ -12,6 +12,109 @@ Format for every entry:
 
 ---
 
+## 2026-05-15 - Treat canonical human docs as the documentation source of truth
+**Context**: The repository now contains generated Hugging Face staging mirrors,
+local logs, cache directories, and canonical human-authored docs. A full docs
+refresh needs to update the real source documents without hand-editing generated
+deployment copies that can be recreated by scripts.
+**Alternatives**:
+- Edit every Markdown and text file. Pros: every visible copy can be updated in
+  one sweep. Cons: generated mirrors drift from their staging scripts and create
+  noisy churn.
+- Update only the files named in the prompt. Pros: smallest edit set. Cons:
+  leaves stale claims in adjacent docs that readers actually use.
+- Update canonical human-facing docs and leave generated/staged mirrors alone.
+  Pros: keeps documentation truthful while preserving reproducible deployment
+  artifacts. Cons: generated mirrors need regeneration when their canonical
+  source changes.
+**Decision**: refresh canonical human-facing docs only; do not hand-edit
+`.hf-space-repo/`, `.hf-space-stage/`, `.hf-space-stage-plan/`, caches, logs, or
+other generated mirrors.
+**Reasoning**: documentation should have one source of truth per surface.
+Deployment mirrors are outputs, not places to make product decisions.
+**Reviewed with**: 2026-05-15 documentation refresh plan.
+**Reversal criteria**: if a staging directory becomes the only source consumed
+by a deployment and cannot be regenerated from canonical files, promote that
+file to documented source status and update this decision.
+
+---
+
+## 2026-05-15 - Package DataForge MCP as a nested standalone distribution
+**Context**: Week 11 needs `dataforge-mcp` to be installable by MCP clients
+without folding MCP transport concerns into the core `dataforge` package.
+**Alternatives**:
+- Add MCP commands to the root `dataforge` package. Pros: fewer package files.
+  Cons: adds transport dependencies to the core runtime and weakens integration
+  package evidence.
+- Create a sibling repository immediately. Pros: mirrors the long-term target.
+  Cons: harder to test atomically with the current dirty worktree.
+- Create `dataforge-mcp/` as a nested standalone package. Pros: keeps a separate
+  PyPI artifact while letting CI test it against the local DataForge source.
+  Cons: release workflow must build from a subdirectory.
+**Decision**: create `dataforge-mcp/` inside this repository as a standalone
+package that relies on `dataforge` and `mcp`.
+**Reasoning**: this is the narrowest path to a real integration package without
+polluting the core dependency graph or requiring a repo split before the
+implementation is proven.
+**Reviewed with**: `specs/SPEC_mcp_server.md`.
+**Reversal criteria**: if the integration gains independent release cadence or
+external contributors, split `dataforge-mcp/` into its own repository while
+preserving the same package metadata and tool contracts.
+
+---
+
+## 2026-05-15 - Correct ZeroGPU docs for the model demo Space
+**Context**: The Week 11 prompt referred to stale ZeroGPU infrastructure details
+and an unsupported README field for hardware selection, but current Hugging
+Face documentation describes Gradio-only ZeroGPU with dynamic shared GPU
+allocation and supported Space config keys such as `sdk` and `app_file`.
+**Alternatives**:
+- Repeat the original prompt literally. Pros: minimal editing. Cons: commits
+  stale or unsupported deployment claims.
+- Omit ZeroGPU specifics entirely. Pros: avoids drift. Cons: users need to know
+  queue and quota behavior before trying the demo.
+- Document the current supported contract and instruct maintainers to select
+  ZeroGPU in Space settings. Pros: accurate and actionable. Cons: slightly less
+  terse than the original prompt.
+**Decision**: use valid Gradio Space frontmatter and document ZeroGPU selection,
+queueing, quota, and model-loading behavior in prose.
+**Reasoning**: DataForge documentation should not claim infrastructure details
+that official upstream docs no longer support.
+**Reviewed with**: `specs/SPEC_model_space.md`.
+**Reversal criteria**: if Hugging Face adds a supported README configuration key
+for accelerator selection or changes ZeroGPU allocation behavior again, update
+the Space README and spec
+together.
+
+---
+
+## 2026-05-15 - Expand environment action space to include ROOT_CAUSE
+**Context**: Week 10 adds causal root-cause analysis for cascading data-quality
+errors. The Week 6 environment spec locked seven typed actions, but root-cause
+analysis is a distinct read-only diagnostic operation rather than a hypothesis,
+diagnosis, or fix.
+**Alternatives**:
+- Reuse `HYPOTHESIS`. Pros: no action-space change. Cons: mixes free-form
+  scratchpad claims with analyzer-backed observations and makes reward credit
+  ambiguous.
+- Add `ROOT_CAUSE` as an eighth typed action. Pros: explicit interface,
+  structured observations, and a narrow reward hook. Cons: supersedes the
+  previous seven-action assumption.
+- Fold root cause into `DIAGNOSE`. Pros: fewer action types. Cons: row/column
+  diagnosis and causal minimization have different inputs and semantics.
+**Decision**: add `ROOT_CAUSE(error_indices: list[int])` as the eighth typed
+environment action.
+**Reasoning**: cascading errors need a first-class read-only analyzer result
+without pretending the agent authored the causal explanation. The explicit
+action also lets training distinguish "found an issue" from "found the minimal
+upstream cause."
+**Reviewed with**: `specs/SPEC_causal_root_cause.md` and the Week 10 plan.
+**Reversal criteria**: if training shows the eighth action materially worsens
+exploration without improving downstream fix quality, fold it into a richer
+`DIAGNOSE` observation while preserving the analyzer API.
+
+---
+
 ## 2026-05-10 - Add a hard SFT readiness gate before Kaggle
 **Context**: The Kaggle notebook can fail late or publish incomplete artifacts
 when the HF dataset repo is missing, the local trajectory JSONL is empty, chunk
@@ -67,12 +170,13 @@ format while keeping `expert_v1` for warmup SFT.
 ---
 
 ## 2026-05-02 - Resolve Week 9 HF repos from the authenticated user
-**Context**: The original prompt used `<you>/DataForge-0.5B-SFT`, which is not
-run-all reproducible in Kaggle and invites users to edit notebook cells.
+**Context**: The original prompt used a placeholder owner namespace for the
+model repo, which is not run-all reproducible in Kaggle and invites users to
+edit notebook cells.
 **Alternatives**:
 - Hardcode a maintainer namespace. Pros: simple for one maintainer. Cons:
   breaks forks and external readers.
-- Ask the notebook user to edit `<you>`. Pros: obvious. Cons: violates the
+- Ask the notebook user to edit a placeholder owner. Pros: obvious. Cons: violates the
   run-all without modification requirement.
 - Resolve `HF_TOKEN` with `whoami` and derive dataset/model repo names. Pros:
   reproducible, fork-friendly, and scriptable. Cons: requires a write-capable

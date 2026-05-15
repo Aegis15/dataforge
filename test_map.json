@@ -215,6 +215,22 @@
     "direct_tests": ["tests/integration/test_openenv_spec.py"],
     "regression_tests": ["tests/regression/test_env.py"]
   },
+  "dataforge/causal/dag.py": {
+    "direct_tests": ["tests/unit/test_causal_root_cause.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/causal/pc.py": {
+    "direct_tests": ["tests/unit/test_causal_root_cause.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/causal/root_cause.py": {
+    "direct_tests": ["tests/unit/test_causal_root_cause.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/causal/__init__.py": {
+    "direct_tests": ["tests/unit/test_causal_root_cause.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
   "scripts/data/collect_sft_trajectories.py": {
     "direct_tests": ["tests/unit/test_sft_trajectories.py"],
     "integration_tests": ["tests/integration/test_bench_workflow.py"],
@@ -222,6 +238,12 @@
   },
   "scripts/data/validate_sft_readiness.py": {
     "direct_tests": ["tests/unit/test_sft_readiness.py"]
+  },
+  "scripts/model/verify_sft_release.py": {
+    "direct_tests": ["tests/unit/test_sft_release_verifier.py"]
+  },
+  "scripts/model/publish_dataset_readme.py": {
+    "direct_tests": ["tests/unit/test_sft_release_verifier.py"]
   },
   "scripts/publish_model.py": {
     "direct_tests": ["tests/unit/test_publish_model.py"]
@@ -237,5 +259,25 @@
   },
   "training/MODEL_CARD_TEMPLATE.md": {
     "direct_tests": ["tests/unit/test_publish_model.py", "tests/unit/test_sft_notebook_contract.py"]
+  },
+  "training/DATASET_README.md": {
+    "direct_tests": ["tests/unit/test_sft_trajectories.py", "tests/unit/test_sft_release_verifier.py"]
+  },
+  "playground-model/app.py": {
+    "direct_tests": ["tests/unit/test_model_space_contract.py"]
+  },
+  "playground-model/README.md": {
+    "direct_tests": ["tests/unit/test_model_space_contract.py"]
+  },
+  "playground-model/requirements.txt": {
+    "direct_tests": ["tests/unit/test_model_space_contract.py"]
+  },
+  "dataforge-mcp/dataforge_mcp/tools.py": {
+    "direct_tests": ["dataforge-mcp/tests/test_tools.py"],
+    "integration_tests": ["dataforge-mcp/tests/test_server_integration.py"]
+  },
+  "dataforge-mcp/dataforge_mcp/server.py": {
+    "direct_tests": ["dataforge-mcp/tests/test_tools.py"],
+    "integration_tests": ["dataforge-mcp/tests/test_server_integration.py"]
   }
 }

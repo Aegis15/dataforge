@@ -38,7 +38,7 @@ and human-readable explanations.
 - LLM-based detection (detectors are pure)
 - Automatic FD mining/discovery (comes in later weeks)
 - Repair proposals (that's the repairer layer)
-- PII detection (separate detector, Week 2+)
+- PII detection (separate detector, future work)
 - Outlier detection beyond decimal shifts (separate detector)
 - Encoding error detection (separate detector)
 
@@ -98,8 +98,10 @@ and human-readable explanations.
 
 - Unit tests: `tests/unit/test_base.py`, `tests/unit/test_type_mismatch.py`, `tests/unit/test_decimal_shift.py`, `tests/unit/test_fd_violation.py`
 - Integration tests: `tests/unit/test_cli_profile.py` (end-to-end through CLI)
-- Property tests: TBD (Week 2 — Hypothesis-based fuzzing of detector inputs)
-- Benchmarks: `tests/benchmarks/bench_detectors.py` (TBD — Week 2)
+- Property tests: covered indirectly by repair/revert and reward property tests;
+  dedicated detector fuzzing remains future work.
+- Benchmarks: detector-specific benchmarks remain future work; current benchmark
+  coverage runs through `dataforge bench`.
 - Coverage target: >= 90% line, >= 80% branch
 - Mutation score target: >= 85%
 

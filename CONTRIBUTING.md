@@ -1,67 +1,70 @@
-# Contributing to DataForge
+# Contributing To DataForge
 
-Thank you for considering a contribution to DataForge. This document
-explains the process and standards.
+Thank you for considering a contribution to DataForge. This document explains
+the process and standards for the current alpha repository.
 
-## Before you start
+## Before You Start
 
-1. **Read** `.cursor/rules/dataforge.md` — the always-applied rules.
-2. **Read** `CLAUDE.md` — gotchas and conventions.
-3. **Check** `specs/QUESTIONS.md` — your question may already be there.
+1. Read `.cursor/rules/dataforge.md`.
+2. Read `CLAUDE.md`.
+3. Check the relevant spec under `specs/`.
+4. Check `specs/QUESTIONS.md` for unresolved design questions.
 
 ## Workflow
 
-1. **Fork** the repo and create a branch from `main`.
-2. **Find (or write) the spec** for your change in `specs/SPEC_<module>.md`.
-   If no spec exists, open an issue proposing one before writing code.
-3. **Write the failing test first.** See `specs/SPEC_TEMPLATE.md § Appendix A`
-   for the test-case format.
-4. **Implement** the minimum code to make the test pass.
-5. **Run the gates:**
-   ```bash
-   make lint && make type && make test-mapped FILE=<your_source_file>
-   pytest tests/regression/ -x
-   ```
-6. **Commit** with a [Conventional Commit](https://www.conventionalcommits.org/)
-   message (≤ 72 char subject).
-7. **Open a PR** against `main`. The PR description should reference the spec
-   and explain *why*, not just *what*.
+1. Create a branch from `main`.
+2. Find or write the spec for your change in `specs/SPEC_<module>.md`.
+3. Write the failing test first for behavior changes.
+4. Implement the smallest change that satisfies the spec.
+5. Run the relevant gates:
 
-## Code standards
+```bash
+make lint
+make type
+make test-mapped FILE=<your_source_file>
+python -m pytest tests/regression/ -x
+```
 
-- Python 3.11 / 3.12 (`requires-python = ">=3.11,<3.13"`). Use modern syntax (`dict | None`, not `Optional[Dict]`).
-- Type hints on every parameter and return value. `mypy --strict` must pass.
-- Google-style docstrings with one-line summary, Args, Returns, Raises.
-- `dataforge/` is the canonical product package. `data_quality_env/` is a compatibility package; never reintroduce a repo-root `__init__.py` or make the repository root importable.
-- No `print()` in library code — use `logging`. CLI output uses `rich`.
-- No global mutable state. No silent catch-all exceptions.
-- No TODO/FIXME in merged code. Open an issue instead.
+6. Update documentation if public behavior, commands, interfaces, or release
+   evidence changed.
+7. Commit with a Conventional Commit message.
 
-## Adding a dependency
+## Code Standards
 
-Before adding any dependency to `pyproject.toml`, you must:
+- Python 3.11 / 3.12 (`requires-python = ">=3.11,<3.13"`).
+- Type hints on every public parameter and return value.
+- Useful Google-style docstrings for public functions, classes, and modules.
+- `dataforge/` is the canonical product package.
+- `data_quality_env/` is a compatibility package; do not make the repository
+  root importable.
+- No `print()` in library code; use `logging`. CLI output uses `rich`.
+- No global mutable state and no silent catch-all exceptions.
+- No TODO/FIXME comments in merged code.
 
-1. Justify it in one sentence in `ARCHITECTURE.md § Dependencies`.
-2. If you cannot justify it in one sentence, you don't need it.
+## Documentation Standards
 
-## Tests
+- `README.md` is the public truth source.
+- Do not claim unshipped integrations, hosted domains, or model-quality wins.
+- Generated Hugging Face staging mirrors are deployment artifacts, not canonical
+  docs.
+- Metrics must point to a committed script, result artifact, or verifier output.
 
-- **Never delete or weaken an existing test.** If a test is wrong: open an
-  issue, update the spec, update the test — in that order.
-- **Never skip a flaky test.** Diagnose and fix it.
-- Coverage target: ≥ 90% line, ≥ 80% branch.
-- Mutation score target: ≥ 85%.
+## Adding A Dependency
 
-## Reporting bugs
+Before adding a dependency to `pyproject.toml`, justify it in
+`ARCHITECTURE.md`. If it belongs only to MCP, playground, or model demo code,
+keep it scoped to that package/surface instead of core runtime dependencies.
+
+## Reporting Bugs
 
 Open a GitHub issue with:
 
-1. What you expected to happen.
-2. What actually happened (include the full traceback).
+1. What you expected.
+2. What happened, including the traceback.
 3. The command and version (`dataforge --version`).
 4. A minimal reproducer if possible.
 
-## Code of conduct
+## Conduct
 
-Be respectful, be constructive, be specific. We don't have a formal CoC
-document yet, but the bar is: would you say this in a code review at work?
+Be respectful, constructive, and specific. The standard is a useful code review
+at work: direct, kind, and grounded in evidence.

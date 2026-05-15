@@ -1,93 +1,99 @@
 # DataForge Architecture
 
-Week 2 note: reversible CSV repair now ships with `dataforge repair` and
-`dataforge revert`, backed by append-only transaction journals, immutable
-source snapshots, and thin safety / verifier gates. The full agent loop and
-constraint-aware safety stack remain future work.
+Last updated: 2026-05-15.
 
-## 1. System overview
+DataForge is organized around a local, auditable repair pipeline:
 
-The long-term product shape is:
+```text
+CSV/schema -> detectors -> repairers -> SafetyFilter -> SMTVerifier -> transaction log -> data
+```
 
-`CLI -> agent loop -> detectors -> repairers -> safety filter -> SMT verifier -> transaction log -> data`
+The same core package is reused by the CLI, benchmark harness, OpenEnv
+environment, playground API, and MCP server. Demo and training surfaces are kept
+separate from the core runtime so the CLI remains installable without model or
+web dependencies.
 
-Week 2 ships: L1 detectors, repairers for the first 3 detector families, and
-the CLI `profile`, `repair`, and `revert` commands.
+## Current Layers
 
-## 2. Layered structure
+- **CLI and terminal UI**: Typer commands in `dataforge/cli/` with Rich output.
+  Current commands are `profile`, `repair`, `revert`, and `bench`.
+- **Detectors**: pure pandas-based detector classes for `type_mismatch`,
+  `decimal_shift`, and `fd_violation`.
+- **Repairers**: deterministic proposal generators for the shipped detector
+  families. LLM fallback is optional and explicit where supported.
+- **Safety**: constitutional safety rules compiled from YAML and enforced before
+  writes.
+- **Verification**: Z3-backed SMT checks plus typed verifier gates.
+- **Transactions**: append-only JSONL journals, immutable source snapshots,
+  post-state hash guards, and byte-for-byte revert.
+- **Benchmarks**: Hospital, Flights, and Beers loaders, local method runners,
+  quota accounting, and markdown report generation.
+- **OpenEnv environment**: HTTP and in-process environment with eight typed
+  actions: `INSPECT_ROWS`, `SQL_QUERY`, `STAT_TEST`, `PATTERN_MATCH`,
+  `HYPOTHESIS`, `DIAGNOSE`, `FIX`, and `ROOT_CAUSE`.
+- **Causal analyzer**: column-level DAG construction, FD-prior PC discovery,
+  and minimal root-set analysis for cascading errors.
+- **Playground**: FastAPI backend staged into a Hugging Face Docker Space and a
+  static frontend deployed through Cloudflare Workers Static Assets.
+- **Training and model demos**: SFT trajectory builders, readiness/release
+  verifiers, Kaggle notebook, dataset/model card templates, and a separate
+  Gradio model-demo Space.
+- **MCP integration**: nested standalone `dataforge-mcp/` package exposing
+  structured DataForge tools over stdio by default.
 
-- **L1 - Detectors** ✅ (partial): pure functions over tabular data, no LLM calls.
-  - `type_mismatch` — flags values whose type conflicts with column majority.
-  - `decimal_shift` — flags power-of-10 outliers in numeric columns.
-  - `fd_violation` — flags rows violating declared functional dependencies.
-- **L2 - Agent loop / repair orchestration** ✅ (partial): issue-to-fix routing,
-  deterministic repairers, and optional cache-backed fd-violation fallback.
-- **L3 - Safety filter** ✅ (thin Week 2 gate): typed allow/deny gate that blocks
-  conflicting writes before apply. Constitutional policy enforcement is deferred.
-- **L4 - SMT verifier** ✅ (thin Week 2 gate): typed accept/reject gate that
-  validates structural applicability before apply. Full constraint reasoning is deferred.
-- **L5 - Transaction layer** ✅ (partial): append-only JSONL journals,
-  immutable source snapshots, post-state hash guard, and byte-exact revert.
-- **L6 - Integrations**: adapters for dbt, Airbyte, warehouses, and MCP. (not started)
+## Dependency Guidance
 
-## 3. Dependency guidance
+Core runtime dependencies in `pyproject.toml`:
 
-The root `pyproject.toml` carries the planned dependency set for the first
-substantive implementation wave. New dependencies should still be justified in
-this document before they are added to the authoritative package config.
+- `pandas` and `pyarrow` - CSV/tabular data handling.
+- `pydantic` - typed issue, fix, schema, environment, and MCP result models.
+- `typer` and `rich` - CLI application and terminal output.
+- `pyyaml` - schema and constitution loading.
+- `z3-solver` - SMT verification.
+- `networkx` - causal DAG representation and reachability.
+- `causal-learn` - PC causal discovery after missing-value cleanup.
+- `hyppo` and `scipy` - independence tests used by causal discovery.
+- `httpx`, `tenacity`, and `python-dotenv` - optional provider clients and
+  environment loading.
+- `sqlglot` and `duckdb` - read-only SQL parsing/execution inside the
+  environment.
 
-Current active dependencies (Week 2):
-- `pandas` — DataFrame handling for detectors.
-- `pydantic` — Issue, Schema, FunctionalDependency models with validation.
-- `typer` + `rich` — CLI application and terminal output.
-- `pyyaml` — Schema YAML parsing.
-- `httpx` + `tenacity` — LLM provider HTTP client with retry logic.
-- `numpy` — Numeric computations in DecimalShiftDetector.
-- `pandas-stubs` — strict typing support for pandas under `mypy --strict`.
+Optional extras:
 
-Playground-only dependencies (scoped to `playground/api/requirements.txt`,
-NOT in core `pyproject.toml` runtime deps — see DECISIONS.md):
-- `fastapi` — async web framework for the stateless playground REST API.
-- `uvicorn` — ASGI server for the HF Docker Space (single-worker).
-- `slowapi` — IP-based rate limiting on playground POST endpoints.
-- `python-multipart` — multipart form parsing for CSV upload in the playground.
+- `dev` - pytest, ruff, mypy, Hypothesis, benchmark, and Hub tooling.
+- `train` - pinned Kaggle SFT stack (`trl`, `transformers`, `accelerate`,
+  `peft`, `bitsandbytes`, `datasets`, `huggingface_hub`).
+- `eval` - plotting libraries for evaluation summaries.
+- `playground` - FastAPI, Uvicorn, multipart upload, and rate limiting.
+- `openenv` - OpenEnv protocol dependency.
+- `all` - aggregate development install.
 
+Scoped non-core dependencies:
 
-Training-only dependencies (scoped to the `train` extra and pinned for Kaggle in
-`training/configs/sft_05b.yaml`):
-- `transformers` - Qwen2.5 model/tokenizer loading and generation.
-- `trl` - SFTTrainer for supervised chat fine-tuning.
-- `accelerate` - device placement and mixed-precision training support.
-- `peft` - LoRA adapter configuration, saving, and merge.
-- `bitsandbytes` - 4-bit QLoRA quantization on Kaggle GPU runtimes.
-- `datasets` - JSONL trajectory loading and train/held-out splitting.
-- `huggingface_hub` - authenticated dataset/model repo downloads and uploads.
+- `dataforge-mcp/pyproject.toml` depends on `dataforge` and `mcp`; MCP transport
+  dependencies are not part of the core package.
+- `playground-model/requirements.txt` contains Gradio/Spaces/model-demo
+  dependencies only.
+- `playground/api/requirements.txt` contains the hosted playground API stack.
 
-Week 9 has an explicit handoff gate before Kaggle:
-`scripts/data/validate_sft_readiness.py` validates the local `expert_v1` JSONL,
-the exact package pins, duplicate chunk keys, minimum record count, teacher
-metadata, and episode-level F1 floor before the notebook is launched.
+## Safety Invariant
 
-## 4. Week 2 boundaries
+Every applied repair must follow this order:
 
-- **L1 detectors**: 3 implemented (`type_mismatch`, `decimal_shift`, `fd_violation`).
-  All are pure, no LLM calls, no I/O beyond receiving a DataFrame.
-- **Repairers**: 3 implemented (`type_mismatch`, `decimal_shift`, `fd_violation`).
-  `type_mismatch` and `decimal_shift` are deterministic; `fd_violation` prefers
-  deterministic majority rules and uses cache-backed LLM fallback only when allowed.
-- **CLI**:
-  - `dataforge profile <csv> [--schema <yaml>]`
-  - `dataforge repair <csv> [--schema <yaml>] [--dry-run | --apply]`
-  - `dataforge revert <txn_id>`
-- **Transaction layer**: `dataforge repair --apply` writes the transaction journal
-  and source snapshot before mutating the CSV. `dataforge revert` restores the
-  original bytes only when the current file matches the recorded post-state hash.
-- **Safety / verifier gates**: Week 2 ships thin typed gates so the apply path
-  already follows the final architecture shape without pretending the full policy
-  or SMT stack is done.
-- **Provider stub**: `dataforge.agent.providers` implements `groq` and `gemini`
-  HTTP clients with retry logic. Only `fd_violation` repair may call them, and
-  only with explicit permission plus cache-backed reuse.
-- **Tests**: 118 tests, including property coverage for byte-identical revert.
-- **Regression suite**: `tests/regression/test_env.py` remains the stable
-  baseline; never modified without an auditable spec/issue path.
+```text
+proposed fix -> SafetyFilter -> SMTVerifier -> transaction journal/snapshot -> disk mutation
+```
+
+Dry-run paths may stop before mutation, but they should still exercise the same
+proposal, safety, and verification logic where feasible. The MCP server and
+playground API must preserve this invariant instead of bypassing the CLI.
+
+## Release Boundaries
+
+- `dataforge` is the core CLI/library package.
+- `dataforge-mcp` is a nested standalone package with its own PyPI release flow
+  from `dataforge-mcp-v*` tags.
+- SFT datasets and checkpoints are Hugging Face artifacts verified by
+  `scripts/model/verify_sft_release.py`.
+- Generated Space staging directories are deployment artifacts, not canonical
+  documentation sources.

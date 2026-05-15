@@ -39,15 +39,15 @@ setup-all:
 	$(PYTHON) -m pip install -e ".[all]"
 
 lint:
-	$(PYTHON) -m ruff check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
-	$(PYTHON) -m ruff format --check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff format --check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
 
 format:
-	$(PYTHON) -m ruff format dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
-	$(PYTHON) -m ruff check --fix dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff format dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff check --fix dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
 
 type:
-	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/publish_model.py
+	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
 
 test:
 	$(PYTHON) -m pytest tests/ -x -v

@@ -1,35 +1,37 @@
 ---
 title: DataForge Playground
-emoji: 📊
+emoji: chart_with_upwards_trend
 colorFrom: blue
 colorTo: green
 sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Upload a CSV, profile and dry-run-repair it in your browser.
+short_description: Upload a CSV, profile it, and dry-run repairs in your browser.
 ---
 
-# DataForge Playground
+# DataForge Playground API
 
-API backend for the hosted DataForge Playground. The browser UI is deployed to
-Cloudflare Workers Static Assets; this Space serves the stateless CSV
-profiling and dry-run repair endpoints.
+This is the API backend for the DataForge playground. The browser UI is deployed
+separately through Cloudflare Workers Static Assets; this Hugging Face Docker
+Space serves stateless CSV profiling and dry-run repair endpoints.
 
-**What it does:**
+## What It Does
 
-- **Profile**: Detects type mismatches, decimal shifts, and functional
-  dependency violations using heuristic detectors.
-- **Repair (Dry Run)**: Proposes fixes through the full Safety → Verifier →
-  Transaction pipeline, returning an ephemeral transaction journal.
+- Profile: detects type mismatches, decimal shifts, and functional dependency
+  violations.
+- Repair dry run: proposes fixes through SafetyFilter -> SMTVerifier and
+  returns an ephemeral transaction receipt without persisting user data.
+- Samples: serves small deterministic CSV examples for the static frontend.
 
-**What it does NOT do:**
+## What It Does Not Do
 
-- No data is persisted. Your file is processed in memory and discarded.
-- No cookies, no analytics of file contents.
-- No LLM calls by default (opt-in only, requires a configured key).
+- It does not persist uploaded files.
+- It does not use cookies or analytics for file contents.
+- It does not call an LLM by default.
+- It does not perform autonomous production repair.
 
-## Run locally instead
+## Run Locally
 
 ```bash
 python -m pip install -e ".[dev]"
@@ -39,6 +41,6 @@ uvicorn playground.api.app:app --reload --port 7860
 
 ## Source
 
-- Main repository: [github.com/Praneshrajan15/data-quality-env](https://github.com/Praneshrajan15/data-quality-env)
+- Main repository: `github.com/Praneshrajan15/data-quality-env`
 - Spec: `specs/SPEC_playground.md`
 - License: Apache-2.0

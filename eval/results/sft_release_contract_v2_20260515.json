@@ -1,0 +1,77 @@
+{
+  "dataset": {
+    "files": [
+      ".gitattributes",
+      "MODEL_CARD_TEMPLATE.md",
+      "README.md",
+      "expert_v1.jsonl",
+      "sft_05b.yaml",
+      "split_manifest.json"
+    ],
+    "repo_id": "Praneshrajan15/dataforge-sft-trajectories",
+    "repo_type": "dataset",
+    "sha": "78bc49fe15d68a491d8fff6995c329e67a10093c"
+  },
+  "dataset_readme_checked": true,
+  "dataset_records": 272,
+  "dataset_sha_metric_checked": true,
+  "metrics": {
+    "base_eval": {
+      "dataset_f1": {
+        "beers": 0.0,
+        "flights": 0.0,
+        "hospital": 0.0191
+      },
+      "macro_f1": 0.0064,
+      "mean_f1": 0.0065
+    },
+    "base_f1": 0.0064,
+    "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "config_sha256": "93ace3c9d384d798fd62f60b151196cf74bf3e510c7682549f20ade92f85b7ff",
+    "dataset_records": 272,
+    "dataset_repo": "Praneshrajan15/dataforge-sft-trajectories",
+    "dataset_sha": "78bc49fe15d68a491d8fff6995c329e67a10093c",
+    "evaluation_chunk_width": 4,
+    "evaluation_max_new_tokens": 1024,
+    "heldout_examples": 27,
+    "kaggle_hours": 0.658,
+    "model_license": "apache-2.0",
+    "model_name": "DataForge-0.5B-SFT",
+    "quality_milestone": false,
+    "release_status": "pipeline_complete_no_heldout_gain",
+    "repo_id": "Praneshrajan15/DataForge-0.5B-SFT",
+    "sft_eval": {
+      "dataset_f1": {
+        "beers": 0.0,
+        "flights": 0.0,
+        "hospital": 0.0191
+      },
+      "macro_f1": 0.0064,
+      "mean_f1": 0.0065
+    },
+    "sft_f1": 0.0064,
+    "split_manifest_sha256": "dc47b3a5736c99c7147b4b6dc239a654055279a35b1026f6a23eb9f2a29dc5a6",
+    "teacher_model": "llama-3.3-70b-versatile",
+    "training_examples": 245,
+    "trajectory_sha256": "33a49d90a200ddb970cd7af3049dac3bc8e50deb5696255e7b38fa7252240c96"
+  },
+  "model": {
+    "files": [
+      ".gitattributes",
+      "README.md",
+      "chat_template.jinja",
+      "config.json",
+      "generation_config.json",
+      "model.safetensors",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "training_metrics.json"
+    ],
+    "repo_id": "Praneshrajan15/DataForge-0.5B-SFT",
+    "repo_type": "model",
+    "sha": "1422a5776b53f9823b6b037bad68f0edade46168"
+  },
+  "model_readme_checked": true,
+  "quality_milestone": false,
+  "release_status": "pipeline_complete_no_heldout_gain"
+}

@@ -1,6 +1,6 @@
 """Typed tool-use action models for the DataForge RL environment.
 
-This module defines a discriminated union of 7 action types that an RL agent
+This module defines a discriminated union of 8 action types that an RL agent
 can submit to the DataForge environment. Each action is a standalone Pydantic
 model with its own validation rules, preventing cross-model field pollution.
 
@@ -13,6 +13,7 @@ Action Types:
     STAT_TEST     — Run a statistical test on a column.
     PATTERN_MATCH — Evaluate a regex pattern against column values.
     HYPOTHESIS    — Record a causal-root claim for credit.
+    ROOT_CAUSE    — Analyze selected detected errors for minimal roots.
     DIAGNOSE      — Flag a suspected issue at (row, column).
     FIX           — Propose a corrected value for a diagnosed issue.
 
@@ -37,6 +38,7 @@ __all__ = [
     "Hypothesis",
     "InspectRows",
     "PatternMatch",
+    "RootCause",
     "SqlQuery",
     "StatTest",
     "parse_action",
@@ -179,6 +181,32 @@ class Hypothesis(BaseModel):
     model_config = {"frozen": True}
 
 
+class RootCause(BaseModel):
+    """Analyze selected detected errors for minimal causal roots.
+
+    Args:
+        action_type: Must be ``"ROOT_CAUSE"``.
+        error_indices: Zero-based indices into the episode's detected issue list.
+
+    Example::
+
+        >>> RootCause(action_type="ROOT_CAUSE", error_indices=[0, 1])
+    """
+
+    action_type: Literal["ROOT_CAUSE"]
+    error_indices: list[int] = Field(min_length=1, description="Detected issue indices.")
+
+    @field_validator("error_indices")
+    @classmethod
+    def _validate_error_indices(cls, v: list[int]) -> list[int]:
+        """Validate that all error indices are non-negative."""
+        if any(i < 0 for i in v):
+            raise ValueError("All error indices must be >= 0")
+        return v
+
+    model_config = {"frozen": True}
+
+
 class Diagnose(BaseModel):
     """Flag a suspected data-quality issue at a specific (row, column).
 
@@ -243,7 +271,7 @@ class Fix(BaseModel):
 # ═══════════════════════════════════════════════════════════════════════════
 
 Action = Annotated[
-    InspectRows | SqlQuery | StatTest | PatternMatch | Hypothesis | Diagnose | Fix,
+    InspectRows | SqlQuery | StatTest | PatternMatch | Hypothesis | RootCause | Diagnose | Fix,
     Field(discriminator="action_type"),
 ]
 """Discriminated union of all valid DataForge environment actions."""
@@ -301,6 +329,12 @@ def _normalize_action(raw: dict[str, Any]) -> dict[str, Any]:
             normalized["affected_rows"] = [0]
         if root_column is not None and "root_cause_type" not in normalized:
             normalized["root_cause_type"] = root_column
+    if (
+        action_type == "ROOT_CAUSE"
+        and "indices" in normalized
+        and "error_indices" not in normalized
+    ):
+        normalized["error_indices"] = normalized["indices"]
     if action_type == "FIX":
         if "proposed_value" in normalized and "new_value" not in normalized:
             normalized["new_value"] = normalized["proposed_value"]

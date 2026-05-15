@@ -29,6 +29,7 @@ from dataforge.agent.tool_actions import (
     Hypothesis,
     InspectRows,
     PatternMatch,
+    RootCause,
     SqlQuery,
     StatTest,
     parse_action,
@@ -41,6 +42,7 @@ from dataforge.env.reward import (
     P_INVALID,
     P_WRONG_FIX,
     R_EXPLORE,
+    R_ROOT_CAUSE,
     EpisodeMetrics,
     RewardEngine,
 )
@@ -133,6 +135,8 @@ class DataForgeEnv:
         self._tool_history: list[ToolResult] = []
         self._reward_engine = RewardEngine()
         self._schema_info: dict[str, str] = {}
+        self._causal_dag_cache: Any = None
+        self._root_cause_labels: set[int] = set()
 
     # ── Core API ──────────────────────────────────────────────────────────
 
@@ -156,6 +160,8 @@ class DataForgeEnv:
         self._inspected_rows = set()
         self._scratchpad.reset()
         self._tool_history = []
+        self._causal_dag_cache = None
+        self._root_cause_labels = set()
         self._noisy = noisy
         self._noise_rng = random.Random(seed if seed is not None else 0) if noisy else None
 
@@ -283,6 +289,8 @@ class DataForgeEnv:
             return self._handle_pattern(action)
         if isinstance(action, Hypothesis):
             return self._handle_hypothesis(action)
+        if isinstance(action, RootCause):
+            return self._handle_root_cause(action)
         if isinstance(action, Diagnose):
             return self._handle_diagnose(action)
         if isinstance(action, Fix):
@@ -501,6 +509,40 @@ class DataForgeEnv:
         data = {"recorded": True, "root_cause_credit": credit}
         return ToolResult(action_type="HYPOTHESIS", success=True, data=data), credit
 
+    def _handle_root_cause(self, action: RootCause) -> tuple[ToolResult, float]:
+        """Handle ROOT_CAUSE: analyze detected issues for minimal roots."""
+        if not self._found_issues:
+            return ToolResult(
+                action_type="ROOT_CAUSE",
+                success=False,
+                error={"verdict": "error", "reason": "No detected issues are available"},
+            ), P_INVALID
+
+        invalid = [idx for idx in action.error_indices if idx >= len(self._found_issues)]
+        if invalid:
+            return ToolResult(
+                action_type="ROOT_CAUSE",
+                success=False,
+                error={
+                    "verdict": "error",
+                    "reason": f"Detected issue indices out of range: {invalid}",
+                },
+            ), P_INVALID
+
+        from dataforge.causal.pc import discover_causal_dag
+        from dataforge.causal.root_cause import CausalRootCauseAnalyzer, evidence_from_issue
+
+        if self._causal_dag_cache is None:
+            self._causal_dag_cache = discover_causal_dag(self._df).dag
+
+        selected = [
+            evidence_from_issue(index, self._found_issues[index]) for index in action.error_indices
+        ]
+        result = CausalRootCauseAnalyzer(self._causal_dag_cache).analyze(selected)
+        data = result.model_dump(mode="json")
+        reward = self._root_cause_reward(set(result.root_indices))
+        return ToolResult(action_type="ROOT_CAUSE", success=True, data=data), reward
+
     def _handle_diagnose(self, action: Diagnose) -> tuple[ToolResult, float]:
         """Handle DIAGNOSE: score against ground truth."""
         if action.row < 0 or action.row >= len(self._df):
@@ -543,6 +585,12 @@ class DataForgeEnv:
         return ToolResult(
             action_type="DIAGNOSE", success=True, data={"result": "false_positive"}
         ), P_FALSE_POS
+
+    def _root_cause_reward(self, root_indices: set[int]) -> float:
+        """Return root-cause bonus only when task labels are available."""
+        if not self._root_cause_labels:
+            return 0.0
+        return R_ROOT_CAUSE if root_indices == self._root_cause_labels else 0.0
 
     def _handle_fix(self, action: Fix) -> tuple[ToolResult, float]:
         """Handle FIX: validate through safety/SMT, then score."""

@@ -1,4 +1,4 @@
-"""Collect Week 9 chunk-level SFT trajectories from the Groq ReAct benchmark."""
+"""Collect Week 9 chunk-level SFT trajectories from a ReAct teacher."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import dataclass
@@ -17,7 +18,13 @@ from pydantic import BaseModel, Field
 from rich.console import Console
 
 from dataforge.bench.core import BenchmarkRepair, RepairScore, score_repairs
-from dataforge.bench.groq_client import GroqBenchClient, GroqCompletion
+from dataforge.bench.groq_client import (
+    CerebrasBenchClient,
+    GeminiBenchClient,
+    GroqBenchClient,
+    GroqCompletion,
+    ProviderRequestError,
+)
 from dataforge.bench.methods import (
     _chunk_records,
     _column_stats,
@@ -29,12 +36,18 @@ from dataforge.datasets.real_world import GroundTruthCell, RealWorldDataset, loa
 
 Difficulty = Literal["easy", "medium"]
 Preset = Literal["smoke", "full"]
+TeacherProvider = Literal["groq", "cerebras", "gemini"]
+FlightsRepairMode = Literal["strict", "verified"]
+NormalizationCandidate = dict[str, str | int]
 
 SCHEMA_VERSION = "expert_v1"
 DEFAULT_DATASETS: tuple[str, ...] = ("hospital", "flights", "beers")
 DEFAULT_DIFFICULTIES: tuple[Difficulty, ...] = ("easy", "medium")
 DEFAULT_OUTPUT = Path("data/sft_traj/expert_v1.jsonl")
 DEFAULT_DATASET_REPO_NAME = "dataforge-sft-trajectories"
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_CEREBRAS_MODEL = "llama3.1-8b"
+DEFAULT_GEMINI_MODEL = "gemini-3.1-pro-preview"
 LIGHT_WINDOW_SIZES: dict[str, int] = {"easy": 48, "medium": 96}
 
 
@@ -68,11 +81,16 @@ class CollectionSettings:
     min_episode_f1: float
     max_total_requests: int
     daily_request_budget: int
-    groq_model: str
-    groq_max_tokens: int
+    teacher_provider: TeacherProvider
+    teacher_model: str
+    teacher_max_tokens: int
     min_interval_s: float
-    groq_timeout_s: float
-    groq_max_retries: int
+    teacher_timeout_s: float
+    teacher_max_retries: int
+    teacher_max_retry_after_s: float
+    context_window_rows: int | None
+    flights_repair_mode: FlightsRepairMode
+    flights_verifier_model: str | None
     max_runtime_min: float | None
     progress_every_chunks: int
     ready_min_records: int
@@ -110,7 +128,11 @@ FULL_DEFAULTS = PresetDefaults(
 
 
 class CompletionClient(Protocol):
-    """Minimal protocol shared by GroqBenchClient and tests."""
+    """Minimal protocol shared by benchmark teacher clients and tests."""
+
+    @property
+    def provider(self) -> str:
+        """Return the teacher provider identifier."""
 
     @property
     def model(self) -> str:
@@ -143,7 +165,7 @@ class BudgetGuard:
             raise ValueError("requests must be positive")
         if self.used_requests + requests > self.max_total_requests:
             raise RuntimeError(
-                "Groq request budget exhausted before collection completed "
+                "Teacher request budget exhausted before collection completed "
                 f"({self.used_requests + requests}>{self.max_total_requests})."
             )
         if (
@@ -151,7 +173,7 @@ class BudgetGuard:
             and self.used_requests + requests > self.daily_request_budget
         ):
             raise RuntimeError(
-                "Groq daily request budget exhausted before collection completed "
+                "Teacher daily request budget exhausted before collection completed "
                 f"({self.used_requests + requests}>{self.daily_request_budget})."
             )
         self.used_requests += requests
@@ -174,12 +196,12 @@ class RuntimeDeadline:
             return
         if self.elapsed_s() >= self.max_runtime_s:
             minutes = self.max_runtime_s / 60
-            raise RuntimeError(f"Groq runtime deadline reached after {minutes:.1f} minutes.")
+            raise RuntimeError(f"Teacher runtime deadline reached after {minutes:.1f} minutes.")
 
 
 @dataclass(slots=True)
 class ProgressReporter:
-    """Small console progress reporter for long-running Groq collection."""
+    """Small console progress reporter for long-running teacher collection."""
 
     console: Console
     deadline: RuntimeDeadline
@@ -233,7 +255,7 @@ class ProgressReporter:
         chunk_index: int,
         budget: BudgetGuard,
     ) -> None:
-        """Print before one Groq request."""
+        """Print before one teacher request."""
         if not self._log_current_chunk:
             return
         self.console.print(
@@ -255,7 +277,7 @@ class ProgressReporter:
         prompt_tokens: int,
         completion_tokens: int,
     ) -> None:
-        """Print after one Groq request."""
+        """Print after one teacher request."""
         if not self._log_current_chunk:
             return
         self.console.print(
@@ -284,6 +306,26 @@ class ProgressReporter:
             f"dataset={dataset} difficulty={difficulty} seed={seed} "
             f"chunk={chunk_index + 1} repairs={repairs} llm_calls={llm_calls} "
             f"accepted={self.accepted_records} elapsed={self._elapsed()}"
+        )
+
+    def episode_score(
+        self,
+        *,
+        dataset: str,
+        difficulty: Difficulty,
+        seed: int,
+        score: RepairScore,
+        min_episode_f1: float,
+    ) -> None:
+        """Print the episode-level score used by the acceptance gate."""
+        if not self._enabled():
+            return
+        self.console.print(
+            "[sft] episode score "
+            f"dataset={dataset} difficulty={difficulty} seed={seed} "
+            f"precision={score.precision:.3f} recall={score.recall:.3f} "
+            f"f1={score.f1:.3f} threshold={min_episode_f1:.3f} "
+            f"elapsed={self._elapsed()}"
         )
 
 
@@ -407,8 +449,8 @@ def build_light_dataset(
                     column=cell.column,
                     dirty_value=cell.dirty_value,
                     clean_value=cell.clean_value,
-                )
             )
+        )
 
     metadata = dataset.metadata.model_copy(update={"n_rows": len(dirty_df.index)})
     return RealWorldDataset(
@@ -431,11 +473,333 @@ def _score_for_rows(
 
 
 def _repairs_for_rows(
-    repairs: list[BenchmarkRepair], row_indices: tuple[int, ...]
+    repairs: list[BenchmarkRepair],
+    row_indices: tuple[int, ...],
+    columns: tuple[str, ...] | None = None,
 ) -> list[BenchmarkRepair]:
     """Keep only repairs that target the active chunk rows."""
     allowed_rows = set(row_indices)
-    return [repair for repair in repairs if repair.row in allowed_rows]
+    allowed_columns = set(columns) if columns is not None else None
+    return [
+        repair
+        for repair in repairs
+        if repair.row in allowed_rows
+        and (allowed_columns is None or repair.column in allowed_columns)
+    ]
+
+
+def _context_row_indices(
+    total_rows: int,
+    row_indices: tuple[int, ...],
+    context_window_rows: int | None,
+) -> tuple[int, ...]:
+    """Return context rows for a chunk, optionally limited to a local window."""
+    if context_window_rows is None:
+        return tuple(range(total_rows))
+    if not row_indices:
+        return ()
+    start = max(0, min(row_indices) - context_window_rows)
+    end = min(total_rows, max(row_indices) + context_window_rows + 1)
+    return tuple(range(start, end))
+
+
+_NUMBER_RE = re.compile(r"[-+]?\d+(?:\.\d+)?")
+_TIME_RE = re.compile(r"\d{1,2}:\d{2}\s*(?:a\.m\.|p\.m\.)", re.IGNORECASE)
+_FLIGHT_TIME_ONLY_RE = re.compile(r"^\d{1,2}:\d{2}\s*(?:a\.m\.|p\.m\.)$", re.IGNORECASE)
+_FLIGHT_STATUS_RE = re.compile(
+    r"\s+(?:on\s+time|delayed|cancelled|canceled|arrived|departed|early|late)\b.*$",
+    re.IGNORECASE,
+)
+_FLIGHT_DATE_TOKEN_RE = re.compile(
+    r"\b(?:mon|tue|wed|thu|fri|sat|sun|jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\b"
+    r"|\d{1,2}[-/][A-Za-z]{3}[-/]\d{2,4}"
+    r"|[A-Za-z]{3}\s+\d{1,2},?\s+\d{2,4}",
+    re.IGNORECASE,
+)
+_FLIGHT_SCHEDULE_COLUMNS = {"sched_dep_time", "sched_arr_time"}
+_FLIGHT_TIME_COLUMNS = _FLIGHT_SCHEDULE_COLUMNS | {"act_dep_time", "act_arr_time"}
+_FLIGHT_SCHEDULE_FOR_ACTUAL = {
+    "act_dep_time": "sched_dep_time",
+    "act_arr_time": "sched_arr_time",
+}
+_FLIGHT_ACTUAL_FOR_SCHEDULE = {
+    "sched_dep_time": "act_dep_time",
+    "sched_arr_time": "act_arr_time",
+}
+
+
+def _normalize_number_text(value: str) -> str:
+    """Return a compact decimal string without a redundant `.0` suffix."""
+    number = float(value)
+    if number.is_integer():
+        return str(int(number))
+    return str(number).rstrip("0").rstrip(".")
+
+
+def _candidate(
+    *,
+    row: int,
+    column: str,
+    current_value: str,
+    suggested_value: str,
+    reason: str,
+) -> NormalizationCandidate:
+    """Build a dirty-data-only normalization candidate."""
+    return {
+        "row": row,
+        "column": column,
+        "current_value": current_value,
+        "suggested_value": suggested_value,
+        "reason": reason,
+    }
+
+
+def _candidate_with_tier(
+    *,
+    row: int,
+    column: str,
+    current_value: str,
+    suggested_value: str,
+    reason: str,
+    tier: str,
+) -> NormalizationCandidate:
+    """Build a normalization candidate with explicit provenance."""
+    candidate = _candidate(
+        row=row,
+        column=column,
+        current_value=current_value,
+        suggested_value=suggested_value,
+        reason=reason,
+    )
+    candidate["tier"] = tier
+    return candidate
+
+
+def _beers_candidate(row: int, column: str, raw_value: str) -> NormalizationCandidate | None:
+    """Return a high-confidence Beers normalization candidate."""
+    value = raw_value.strip()
+    if column == "ounces":
+        match = _NUMBER_RE.search(value)
+        if match and re.search(r"\boz\.?\b|\bounce\b", value, re.IGNORECASE):
+            normalized = _normalize_number_text(match.group(0))
+            if normalized != raw_value:
+                return _candidate(
+                    row=row,
+                    column=column,
+                    current_value=raw_value,
+                    suggested_value=normalized,
+                    reason="strip beer volume unit text",
+                )
+    if column == "abv" and value.endswith("%"):
+        normalized = value.rstrip("%").strip()
+        if normalized != raw_value:
+            return _candidate(
+                row=row,
+                column=column,
+                current_value=raw_value,
+                suggested_value=normalized,
+                reason="strip percent sign from ABV",
+            )
+    if column in {"ibu", "abv"} and value.upper() in {"N/A", "NA", "NULL", "NONE"}:
+        return _candidate(
+            row=row,
+            column=column,
+            current_value=raw_value,
+            suggested_value="",
+            reason="convert numeric placeholder to empty string",
+        )
+    return None
+
+
+def _clean_flight_time(value: str) -> str | None:
+    """Return the canonical time inside a Flights dirty time value."""
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if "(" in stripped or ")" in stripped:
+        return None
+    without_status = _FLIGHT_STATUS_RE.sub("", stripped).strip()
+    if without_status != stripped and _TIME_RE.fullmatch(without_status):
+        return without_status
+    if _FLIGHT_DATE_TOKEN_RE.search(stripped):
+        time_matches = _TIME_RE.findall(stripped)
+        if len(time_matches) == 1:
+            candidate = str(time_matches[0]).strip()
+            if candidate != stripped:
+                return candidate
+    return None
+
+
+def _flight_same_key(row: dict[str, str]) -> tuple[str, str]:
+    """Return a stable dirty-data key for matching nearby flight rows."""
+    return (row.get("src", ""), row.get("flight", ""))
+
+
+def _canonical_dirty_flight_time(value: str) -> str | None:
+    """Return a canonical dirty Flights time without inventing a correction."""
+    stripped = value.strip()
+    cleaned = _clean_flight_time(stripped)
+    if cleaned is not None:
+        return cleaned
+    if _FLIGHT_TIME_ONLY_RE.fullmatch(stripped):
+        return stripped
+    return None
+
+
+def _flight_time_minutes(value: str) -> int | None:
+    """Convert a canonical Flights time into minutes after midnight."""
+    stripped = value.strip().lower()
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})\s*(a\.m\.|p\.m\.)", stripped)
+    if match is None:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    meridiem = match.group(3)
+    if hour == 12:
+        hour = 0
+    if meridiem == "p.m.":
+        hour += 12
+    return hour * 60 + minute
+
+
+def _flight_time_distance_minutes(left: str, right: str) -> int | None:
+    """Return the shortest minute distance between two canonical Flights times."""
+    left_minutes = _flight_time_minutes(left)
+    right_minutes = _flight_time_minutes(right)
+    if left_minutes is None or right_minutes is None:
+        return None
+    distance = abs(left_minutes - right_minutes)
+    return min(distance, 24 * 60 - distance)
+
+
+def _flight_reference_value(
+    *,
+    rows_by_index: dict[int, dict[str, str]],
+    target_row: dict[str, str],
+    column: str,
+) -> str | None:
+    """Infer a blank flight time only when dirty references are unambiguous."""
+    target_key = _flight_same_key(target_row)
+    candidates: set[str] = set()
+    for row in rows_by_index.values():
+        if row is target_row or _flight_same_key(row) != target_key:
+            continue
+        cleaned = _canonical_dirty_flight_time(row.get(column, ""))
+        if cleaned:
+            candidates.add(cleaned)
+    if len(candidates) != 1:
+        return None
+    return str(next(iter(candidates)))
+
+
+def _flight_candidate(
+    row_index: int,
+    column: str,
+    raw_value: str,
+    *,
+    rows_by_index: dict[int, dict[str, str]],
+) -> NormalizationCandidate | None:
+    """Return a high-confidence Flights normalization candidate."""
+    if column not in _FLIGHT_TIME_COLUMNS:
+        return None
+    cleaned = _clean_flight_time(raw_value)
+    if cleaned is not None:
+        return _candidate_with_tier(
+            row=row_index,
+            column=column,
+            current_value=raw_value,
+            suggested_value=cleaned,
+            reason="extract canonical flight time",
+            tier="normalization",
+        )
+    target_row = rows_by_index[row_index]
+    paired_schedule_column = _FLIGHT_SCHEDULE_FOR_ACTUAL.get(column)
+    if paired_schedule_column is not None:
+        current_time = _canonical_dirty_flight_time(raw_value)
+        paired_schedule = _canonical_dirty_flight_time(target_row.get(paired_schedule_column, ""))
+        departure_distance = (
+            _flight_time_distance_minutes(current_time, paired_schedule)
+            if current_time is not None and paired_schedule is not None
+            else None
+        )
+        if (
+            column == "act_dep_time"
+            and current_time is not None
+            and paired_schedule is not None
+            and current_time != paired_schedule
+            and departure_distance is not None
+            and departure_distance <= 2
+        ):
+            return _candidate_with_tier(
+                row=row_index,
+                column=column,
+                current_value=raw_value,
+                suggested_value=paired_schedule,
+                reason="align near-identical actual departure with scheduled departure",
+                tier="intra_row_consistency",
+            )
+        if column == "act_arr_time" and raw_value.strip() == "" and paired_schedule is not None:
+            return _candidate_with_tier(
+                row=row_index,
+                column=column,
+                current_value=raw_value,
+                suggested_value=paired_schedule,
+                reason="fill blank actual arrival from scheduled arrival",
+                tier="intra_row_consistency",
+            )
+    if raw_value.strip() == "":
+        inferred = _flight_reference_value(
+            rows_by_index=rows_by_index,
+            target_row=target_row,
+            column=column,
+        )
+        if inferred is not None:
+            return _candidate_with_tier(
+                row=row_index,
+                column=column,
+                current_value=raw_value,
+                suggested_value=inferred,
+                reason="fill blank from identical dirty flight reference",
+                tier="dirty_reference",
+            )
+    return None
+
+
+def _normalization_candidates(
+    dataset: RealWorldDataset,
+    *,
+    row_indices: tuple[int, ...],
+    context_indices: tuple[int, ...],
+) -> list[NormalizationCandidate]:
+    """Return dirty-data-only candidate repairs for high-confidence patterns."""
+    reference_indices = (
+        tuple(range(len(dataset.dirty_df.index)))
+        if dataset.metadata.name == "flights"
+        else context_indices
+    )
+    rows_by_index = {
+        int(row["_row"]): row for row in _chunk_records(dataset, reference_indices)
+    }
+    candidates: list[NormalizationCandidate] = []
+    for row_index in row_indices:
+        row = rows_by_index.get(row_index)
+        if row is None:
+            continue
+        for column in dataset.canonical_columns:
+            raw_value = row.get(column, "")
+            candidate: NormalizationCandidate | None = None
+            if dataset.metadata.name == "beers":
+                candidate = _beers_candidate(row_index, column, raw_value)
+            elif dataset.metadata.name == "flights":
+                candidate = _flight_candidate(
+                    row_index,
+                    column,
+                    raw_value,
+                    rows_by_index=rows_by_index,
+                )
+            if candidate is not None:
+                candidates.append(candidate)
+    return candidates
 
 
 def _diagnosis_from_payloads(payloads: list[dict[str, Any]]) -> list[Any]:
@@ -456,11 +820,355 @@ def _diagnosis_from_payloads(payloads: list[dict[str, Any]]) -> list[Any]:
 
 
 def _completion_payload(completion: GroqCompletion) -> dict[str, Any] | None:
-    """Parse a Groq completion as a JSON object."""
+    """Parse a teacher completion as a JSON object."""
     parsed = _extract_json_object(completion.text)
     if parsed is None:
         return None
     return cast(dict[str, Any], parsed)
+
+
+def _repair_payload_issues(
+    payload: dict[str, Any],
+    *,
+    row_indices: tuple[int, ...],
+    columns: tuple[str, ...],
+    dataset_name: str,
+    normalization_candidates: list[NormalizationCandidate],
+    flights_repair_mode: FlightsRepairMode,
+    rows_by_index: dict[int, dict[str, str]] | None = None,
+) -> list[str]:
+    """Return compact validation issues for a submit_repairs payload."""
+    raw_repairs = payload.get("repairs")
+    if not isinstance(raw_repairs, list):
+        return ["submit_repairs must include a repairs list"]
+    allowed_rows = set(row_indices)
+    allowed_columns = set(columns)
+    allowed_candidate_repairs = _candidate_repair_keys(normalization_candidates)
+    issues: list[str] = []
+    for index, raw_repair in enumerate(raw_repairs):
+        if not isinstance(raw_repair, dict):
+            issues.append(f"repair {index} is not an object")
+            continue
+        row = raw_repair.get("row")
+        column = raw_repair.get("column")
+        new_value = raw_repair.get("new_value")
+        if not isinstance(row, int) or row not in allowed_rows:
+            issues.append(f"repair {index} row must be one of {sorted(allowed_rows)}")
+        if not isinstance(column, str) or column not in allowed_columns:
+            issues.append(f"repair {index} column must be an exact schema column")
+        if not isinstance(new_value, str):
+            issues.append(f"repair {index} new_value must be a string")
+        if dataset_name == "flights" and isinstance(row, int) and isinstance(column, str):
+            if isinstance(new_value, str) and (row, column, new_value) in allowed_candidate_repairs:
+                continue
+            if flights_repair_mode == "strict":
+                issues.append(f"repair {index} must match a Flights normalization candidate")
+            else:
+                issues.extend(
+                    _teacher_proposed_flights_issues(
+                        raw_repair,
+                        repair_index=index,
+                        rows_by_index=rows_by_index or {},
+                    )
+                )
+    return issues
+
+
+def _candidate_repair_keys(
+    normalization_candidates: list[NormalizationCandidate],
+) -> set[tuple[int, str, str]]:
+    """Return candidate keys that can be compared against submitted repairs."""
+    keys: set[tuple[int, str, str]] = set()
+    for candidate in normalization_candidates:
+        row = candidate.get("row")
+        column = candidate.get("column")
+        suggested_value = candidate.get("suggested_value")
+        if isinstance(row, int) and isinstance(column, str) and isinstance(suggested_value, str):
+            keys.add((row, column, suggested_value))
+    return keys
+
+
+def _raw_repair_key(raw_repair: dict[str, Any]) -> tuple[int, str, str] | None:
+    """Return a comparable repair key from a raw repair payload."""
+    row = raw_repair.get("row")
+    column = raw_repair.get("column")
+    new_value = raw_repair.get("new_value")
+    if isinstance(row, int) and isinstance(column, str) and isinstance(new_value, str):
+        return (row, column, new_value)
+    return None
+
+
+def _repair_key(repair: BenchmarkRepair) -> tuple[int, str, str]:
+    """Return a comparable repair key from a validated repair."""
+    return (repair.row, repair.column, repair.new_value)
+
+
+def _teacher_proposed_flights_issues(
+    raw_repair: dict[str, Any],
+    *,
+    repair_index: int,
+    rows_by_index: dict[int, dict[str, str]],
+) -> list[str]:
+    """Validate the shape and dirty-data plausibility of a teacher-only Flights repair."""
+    key = _raw_repair_key(raw_repair)
+    if key is None:
+        return []
+    row, column, new_value = key
+    row_payload = rows_by_index.get(row)
+    issues: list[str] = []
+    reason = raw_repair.get("reason")
+    evidence = raw_repair.get("evidence")
+    confidence = raw_repair.get("confidence")
+    if not isinstance(reason, str) or not reason.strip():
+        issues.append(f"repair {repair_index} reason must be a non-empty string")
+    if not (
+        isinstance(evidence, str) and evidence.strip()
+        or isinstance(evidence, list)
+        and all(isinstance(item, str) and item.strip() for item in evidence)
+    ):
+        issues.append(f"repair {repair_index} evidence must be a string or list of strings")
+    if not isinstance(confidence, int | float) or not 0.0 <= float(confidence) <= 1.0:
+        issues.append(f"repair {repair_index} confidence must be a number between 0 and 1")
+    if column not in _FLIGHT_SCHEDULE_COLUMNS:
+        issues.append(f"repair {repair_index} teacher proposal must target a blank schedule column")
+        return issues
+    if row_payload is None:
+        return issues
+    if row_payload.get(column, "").strip() != "":
+        issues.append(f"repair {repair_index} teacher proposal must target a blank Flights cell")
+    if _canonical_dirty_flight_time(new_value) != new_value.strip():
+        issues.append(f"repair {repair_index} new_value must be a canonical Flights time")
+    paired_actual_column = _FLIGHT_ACTUAL_FOR_SCHEDULE[column]
+    paired_actual = _canonical_dirty_flight_time(row_payload.get(paired_actual_column, ""))
+    distance = (
+        _flight_time_distance_minutes(new_value, paired_actual)
+        if paired_actual is not None
+        else None
+    )
+    if distance is None or distance > 90:
+        issues.append(
+            f"repair {repair_index} proposed schedule time must be within 90 minutes "
+            "of the paired dirty actual time"
+        )
+    return issues
+
+
+def _filter_flights_candidate_repairs(
+    repairs: list[BenchmarkRepair],
+    *,
+    dataset_name: str,
+    normalization_candidates: list[NormalizationCandidate],
+) -> tuple[list[BenchmarkRepair], int]:
+    """Keep only candidate-backed repairs for Flights."""
+    if dataset_name != "flights":
+        return repairs, 0
+    allowed_candidate_repairs = _candidate_repair_keys(normalization_candidates)
+    filtered = [
+        repair
+        for repair in repairs
+        if (repair.row, repair.column, repair.new_value) in allowed_candidate_repairs
+    ]
+    return filtered, len(repairs) - len(filtered)
+
+
+def _verification_payload_approvals(payload: dict[str, Any] | None) -> set[tuple[int, str, str]]:
+    """Parse approved repair keys from a verifier response."""
+    if payload is None:
+        return set()
+    raw_repairs = payload.get("repairs")
+    if raw_repairs is None:
+        raw_repairs = payload.get("approved_repairs")
+    if not isinstance(raw_repairs, list):
+        return set()
+    approvals: set[tuple[int, str, str]] = set()
+    for raw_repair in raw_repairs:
+        if not isinstance(raw_repair, dict):
+            continue
+        approved = raw_repair.get("approved", True)
+        if approved is False:
+            continue
+        key = _raw_repair_key(raw_repair)
+        if key is not None:
+            approvals.add(key)
+    return approvals
+
+
+def _verify_flights_repairs(
+    *,
+    repairs: list[BenchmarkRepair],
+    raw_repairs: list[dict[str, Any]],
+    dataset: RealWorldDataset,
+    row_indices: tuple[int, ...],
+    context_payload: list[dict[str, str]],
+    normalization_candidates: list[NormalizationCandidate],
+    verifier_client: CompletionClient | None,
+    budget: BudgetGuard,
+    deadline: RuntimeDeadline | None,
+    progress: ProgressReporter | None,
+    difficulty: Difficulty,
+    seed: int,
+    chunk_index: int,
+    messages: list[dict[str, str]],
+    warnings: list[str],
+) -> tuple[list[BenchmarkRepair], int, int, int, int, int, int]:
+    """Apply strict evidence and optional verifier approval to Flights repairs."""
+    if dataset.metadata.name != "flights":
+        return repairs, 0, 0, 0, 0, 0, 0
+    allowed_candidate_repairs = _candidate_repair_keys(normalization_candidates)
+    proposed_count = len(repairs)
+    candidate_repairs = [
+        repair for repair in repairs if _repair_key(repair) in allowed_candidate_repairs
+    ]
+    teacher_repairs = [
+        repair for repair in repairs if _repair_key(repair) not in allowed_candidate_repairs
+    ]
+    if not teacher_repairs or verifier_client is None:
+        dropped = proposed_count - len(candidate_repairs)
+        if dropped:
+            warnings.append("unsupported_flights_repairs_dropped")
+        return (
+            candidate_repairs,
+            proposed_count,
+            len(teacher_repairs),
+            len(candidate_repairs),
+            dropped,
+            0,
+            0,
+        )
+
+    teacher_keys = {_repair_key(repair) for repair in teacher_repairs}
+    raw_teacher_repairs = [
+        raw_repair
+        for raw_repair in raw_repairs
+        if (key := _raw_repair_key(raw_repair)) is not None and key in teacher_keys
+    ]
+    if deadline is not None:
+        deadline.raise_if_expired()
+    if progress is not None:
+        progress.api_start(
+            label="flights_verifier",
+            dataset=dataset.metadata.name,
+            difficulty=difficulty,
+            seed=seed,
+            chunk_index=chunk_index,
+            budget=budget,
+        )
+    budget.consume()
+    verifier_messages = [
+        {
+            "role": "system",
+            "content": (
+                "You are a strict Flights data-repair verifier. Return exactly one JSON object. "
+                "Approve only teacher_proposed repairs that are supported by dirty target/context "
+                "rows, target blank scheduled time cells, canonical time strings, and aviation "
+                "time consistency. Reject guesses, non-target rows, operational-note corrections, "
+                "and unsupported actual-time edits. Use "
+                '{"action":"verify_repairs","repairs":[{"row":0,"column":"sched_dep_time",'
+                '"new_value":"7:00 p.m.","approved":true,"reason":"why"}]}.'
+            ),
+        },
+        {
+            "role": "user",
+            "content": json.dumps(
+                {
+                    "target_row_indices": list(row_indices),
+                    "columns": list(dataset.canonical_columns),
+                    "context_rows": context_payload,
+                    "normalization_candidates": normalization_candidates,
+                    "teacher_proposed_repairs": raw_teacher_repairs,
+                },
+                sort_keys=True,
+            ),
+        },
+    ]
+    completion = verifier_client.complete(verifier_messages)
+    prompt_tokens = completion.prompt_tokens
+    completion_tokens = completion.completion_tokens
+    warnings.extend(completion.warnings)
+    if progress is not None:
+        progress.api_done(
+            label="flights_verifier",
+            dataset=dataset.metadata.name,
+            difficulty=difficulty,
+            seed=seed,
+            chunk_index=chunk_index,
+            budget=budget,
+            prompt_tokens=completion.prompt_tokens,
+            completion_tokens=completion.completion_tokens,
+        )
+    messages.append({"role": "user", "content": json.dumps({"flights_verifier": verifier_messages[1]}, sort_keys=True)})
+    messages.append({"role": "assistant", "content": completion.text})
+    approvals = _verification_payload_approvals(_completion_payload(completion))
+    verified_teacher_repairs = [
+        repair for repair in teacher_repairs if _repair_key(repair) in approvals
+    ]
+    verified_repairs = candidate_repairs + verified_teacher_repairs
+    dropped = proposed_count - len(verified_repairs)
+    if dropped:
+        warnings.append("unsupported_flights_repairs_dropped")
+    return (
+        verified_repairs,
+        proposed_count,
+        len(teacher_repairs),
+        len(verified_repairs),
+        dropped,
+        1,
+        prompt_tokens + completion_tokens,
+    )
+
+
+def _validation_feedback(
+    *,
+    payload: dict[str, Any] | None,
+    normalization_candidates: list[NormalizationCandidate],
+    row_indices: tuple[int, ...],
+    columns: tuple[str, ...],
+    dataset_name: str,
+    flights_repair_mode: FlightsRepairMode,
+    rows_by_index: dict[int, dict[str, str]],
+) -> str | None:
+    """Return one repair-focused feedback message when the teacher response is unusable."""
+    if payload is None:
+        return (
+            "Your previous response was not valid JSON. Return exactly one JSON object. "
+            "If target rows contain suspicious values, use submit_repairs."
+        )
+    action = payload.get("action")
+    if action == "finish" and normalization_candidates:
+        return (
+            "You returned finish, but normalization_candidates lists suspicious target cells. "
+            "Return submit_repairs for every candidate you agree with, using exact row ids, "
+            "exact column names, and string new_value fields."
+        )
+    if action == "submit_repairs":
+        issues = _repair_payload_issues(
+            payload,
+            row_indices=row_indices,
+            columns=columns,
+            dataset_name=dataset_name,
+            normalization_candidates=normalization_candidates,
+            flights_repair_mode=flights_repair_mode,
+            rows_by_index=rows_by_index,
+        )
+        if issues:
+            candidate_instruction = (
+                " For Flights, only submit repairs that exactly match normalization_candidates; "
+                "do not guess missing or changed actual times."
+                if dataset_name == "flights" and flights_repair_mode == "strict"
+                else (
+                    " For Flights verified mode, non-candidate repairs may only target blank "
+                    "scheduled time cells and must include evidence, confidence, and reason."
+                    if dataset_name == "flights"
+                    else ""
+                )
+            )
+            return (
+                "Your submit_repairs payload has validation issues: "
+                + "; ".join(issues[:5])
+                + ". Return a corrected submit_repairs JSON object."
+                + candidate_instruction
+            )
+    return None
 
 
 def _collect_chunk(
@@ -472,36 +1180,67 @@ def _collect_chunk(
     row_indices: tuple[int, ...],
     client: CompletionClient,
     budget: BudgetGuard,
+    context_window_rows: int | None,
+    flights_repair_mode: FlightsRepairMode = "strict",
+    verifier_client: CompletionClient | None = None,
     deadline: RuntimeDeadline | None = None,
     progress: ProgressReporter | None = None,
 ) -> ChunkCollection:
     """Run the constrained ReAct loop for one chunk and return an auditable record."""
     task_id = f"{dataset.metadata.name}:{difficulty}"
     chunk_payload = _chunk_records(dataset, row_indices)
-    context_payload = _chunk_records(dataset, tuple(range(len(dataset.dirty_df.index))))
+    context_indices = _context_row_indices(
+        len(dataset.dirty_df.index),
+        row_indices,
+        context_window_rows,
+    )
+    context_payload = _chunk_records(dataset, context_indices)
+    target_rows_by_index = {int(row["_row"]): row for row in chunk_payload}
+    normalization_candidates = _normalization_candidates(
+        dataset,
+        row_indices=row_indices,
+        context_indices=context_indices,
+    )
     schema_summary = {
         "dataset": dataset.metadata.name,
         "columns": list(dataset.canonical_columns),
         "chunk_rows": len(row_indices),
         "target_row_indices": list(row_indices),
+        "context_row_indices": list(context_indices),
         "difficulty": difficulty,
         "seed": seed,
     }
+    flights_instruction = (
+        "For Flights, submit only repairs that exactly match normalization_candidates; do not "
+        "guess changed actual times or operational-note values such as runway notes."
+        if flights_repair_mode == "strict"
+        else (
+            "For Flights verified mode, submit all normalization_candidates you agree with. "
+            "You may additionally propose repairs only for blank scheduled departure/arrival "
+            "time cells when dirty target/context rows support the exact canonical time. "
+            "Every non-candidate Flights repair must include non-empty evidence, numeric "
+            "confidence from 0 to 1, and reason. Do not propose operational-note corrections "
+            "or unsupported actual-time edits."
+        )
+    )
     messages = [
         {
             "role": "system",
             "content": (
-                "You are benchmarking tabular data cleaning with a constrained tool loop. "
-                "Use the full context rows to infer local patterns, but submit repairs only "
-                "for the target row indices. Look for misspellings, placeholder values, and "
-                "numeric scale errors such as a score written as 45 when neighboring scores "
-                "use a 0-5 scale; repair that kind of value by inserting the missing decimal "
-                "point, not by rounding to a neighboring integer. For placeholder phone or ID "
-                "values, infer the replacement from same-group local sequences only when the "
-                "pattern is clear. If any target cell is visibly wrong, prefer submit_repairs "
-                "over finish. Return only one JSON action object with no prose, markdown, or "
-                "comments. Allowed actions: "
-                "inspect_rows, column_stats, submit_repairs, finish. submit_repairs must use "
+                "You are an expert tabular data-cleaning teacher. Return exactly one JSON "
+                "action object with no prose, markdown, or comments. Allowed actions are "
+                "submit_repairs, inspect_rows, column_stats, and finish. Prefer submit_repairs "
+                "whenever target rows contain suspicious values. Never repair context-only rows. "
+                "Use exact target row ids, exact schema column names, and string new_value fields. "
+                "For Beers: strip units from ounces (for example 12.0 oz. -> 12), strip a trailing "
+                "% from abv, and convert N/A placeholders in numeric columns such as ibu to an "
+                "empty string. For Flights: remove date/day prefixes from time fields, remove "
+                "status suffixes such as Delayed or On Time, and fill blank scheduled times only "
+                "when dirty references make the exact value unambiguous. "
+                + flights_instruction
+                + " Treat normalization_candidates "
+                "as high-confidence dirty-data hints; submit every candidate you agree with. "
+                "submit_repairs must use "
                 '{"action":"submit_repairs","repairs":[{"row":0,"column":"Column",'
                 '"new_value":"value","reason":"why"}]}.'
             ),
@@ -513,6 +1252,10 @@ def _collect_chunk(
                     "schema_summary": schema_summary,
                     "target_rows": chunk_payload,
                     "context_rows": context_payload,
+                    "normalization_candidates": normalization_candidates,
+                    "flights_repair_mode": flights_repair_mode
+                    if dataset.metadata.name == "flights"
+                    else None,
                 },
                 sort_keys=True,
             ),
@@ -525,125 +1268,168 @@ def _collect_chunk(
     warnings: list[str] = []
     tool_calls: list[dict[str, Any]] = []
     payloads: list[dict[str, Any]] = []
-
-    if deadline is not None:
-        deadline.raise_if_expired()
-    if progress is not None:
-        progress.api_start(
-            label="first",
-            dataset=dataset.metadata.name,
-            difficulty=difficulty,
-            seed=seed,
-            chunk_index=chunk_index,
-            budget=budget,
-        )
-    budget.consume()
-    first = client.complete(messages)
-    llm_calls += 1
-    prompt_tokens += first.prompt_tokens
-    completion_tokens += first.completion_tokens
-    warnings.extend(first.warnings)
-    if progress is not None:
-        progress.api_done(
-            label="first",
-            dataset=dataset.metadata.name,
-            difficulty=difficulty,
-            seed=seed,
-            chunk_index=chunk_index,
-            budget=budget,
-            prompt_tokens=first.prompt_tokens,
-            completion_tokens=first.completion_tokens,
-        )
-    messages.append({"role": "assistant", "content": first.text})
-    first_payload = _completion_payload(first)
     repairs: list[BenchmarkRepair] = []
 
-    if first_payload is not None:
-        payloads.append(first_payload)
-        action = first_payload.get("action")
-        if action == "submit_repairs":
-            repairs.extend(_repairs_from_payload(first_payload))
-        elif action not in {"finish", None}:
-            tool_result: dict[str, Any] | None = None
-            if action == "inspect_rows":
-                requested_rows = first_payload.get("row_indices", [])
-                safe_rows = (
-                    [
-                        row
-                        for row in requested_rows
-                        if isinstance(row, int) and 0 <= row < len(dataset.dirty_df.index)
-                    ]
-                    if isinstance(requested_rows, list)
-                    else []
-                )
-                tool_result = {"rows": _chunk_records(dataset, tuple(safe_rows))}
-                tool_calls.append(
-                    {
-                        "name": "inspect_rows",
-                        "arguments": {"row_indices": safe_rows},
-                        "result": tool_result,
-                    }
-                )
-            elif action == "column_stats":
-                requested_columns = first_payload.get("columns", [])
-                safe_columns = (
-                    [
-                        column
-                        for column in requested_columns
-                        if isinstance(column, str) and column in dataset.canonical_columns
-                    ]
-                    if isinstance(requested_columns, list)
-                    else []
-                )
-                tool_result = {"column_stats": _column_stats(dataset, safe_columns)}
-                tool_calls.append(
-                    {
-                        "name": "column_stats",
-                        "arguments": {"columns": safe_columns},
-                        "result": tool_result,
-                    }
-                )
+    def call_teacher(label: str) -> dict[str, Any] | None:
+        """Call the teacher once and append the assistant response."""
+        nonlocal llm_calls, prompt_tokens, completion_tokens
+        if deadline is not None:
+            deadline.raise_if_expired()
+        if progress is not None:
+            progress.api_start(
+                label=label,
+                dataset=dataset.metadata.name,
+                difficulty=difficulty,
+                seed=seed,
+                chunk_index=chunk_index,
+                budget=budget,
+            )
+        budget.consume()
+        completion = client.complete(messages)
+        llm_calls += 1
+        prompt_tokens += completion.prompt_tokens
+        completion_tokens += completion.completion_tokens
+        warnings.extend(completion.warnings)
+        if progress is not None:
+            progress.api_done(
+                label=label,
+                dataset=dataset.metadata.name,
+                difficulty=difficulty,
+                seed=seed,
+                chunk_index=chunk_index,
+                budget=budget,
+                prompt_tokens=completion.prompt_tokens,
+                completion_tokens=completion.completion_tokens,
+            )
+        messages.append({"role": "assistant", "content": completion.text})
+        payload = _completion_payload(completion)
+        if payload is not None:
+            payloads.append(payload)
+        return payload
 
-            if tool_result is not None:
-                messages.append(
-                    {"role": "user", "content": json.dumps(tool_result, sort_keys=True)}
-                )
-                if deadline is not None:
-                    deadline.raise_if_expired()
-                if progress is not None:
-                    progress.api_start(
-                        label="second",
-                        dataset=dataset.metadata.name,
-                        difficulty=difficulty,
-                        seed=seed,
-                        chunk_index=chunk_index,
-                        budget=budget,
-                    )
-                budget.consume()
-                second = client.complete(messages)
-                llm_calls += 1
-                prompt_tokens += second.prompt_tokens
-                completion_tokens += second.completion_tokens
-                warnings.extend(second.warnings)
-                if progress is not None:
-                    progress.api_done(
-                        label="second",
-                        dataset=dataset.metadata.name,
-                        difficulty=difficulty,
-                        seed=seed,
-                        chunk_index=chunk_index,
-                        budget=budget,
-                        prompt_tokens=second.prompt_tokens,
-                        completion_tokens=second.completion_tokens,
-                    )
-                messages.append({"role": "assistant", "content": second.text})
-                second_payload = _completion_payload(second)
-                if second_payload is not None:
-                    payloads.append(second_payload)
-                    if second_payload.get("action") == "submit_repairs":
-                        repairs.extend(_repairs_from_payload(second_payload))
+    def execute_tool(payload: dict[str, Any]) -> bool:
+        """Execute one supported tool action and append its result."""
+        action = payload.get("action")
+        tool_result: dict[str, Any] | None = None
+        if action == "inspect_rows":
+            requested_rows = payload.get("row_indices", [])
+            safe_rows = (
+                [
+                    row
+                    for row in requested_rows
+                    if isinstance(row, int) and 0 <= row < len(dataset.dirty_df.index)
+                ]
+                if isinstance(requested_rows, list)
+                else []
+            )
+            tool_result = {"rows": _chunk_records(dataset, tuple(safe_rows))}
+            tool_calls.append(
+                {
+                    "name": "inspect_rows",
+                    "arguments": {"row_indices": safe_rows},
+                    "result": tool_result,
+                }
+            )
+        elif action == "column_stats":
+            requested_columns = payload.get("columns", [])
+            safe_columns = (
+                [
+                    column
+                    for column in requested_columns
+                    if isinstance(column, str) and column in dataset.canonical_columns
+                ]
+                if isinstance(requested_columns, list)
+                else []
+            )
+            tool_result = {"column_stats": _column_stats(dataset, safe_columns)}
+            tool_calls.append(
+                {
+                    "name": "column_stats",
+                    "arguments": {"columns": safe_columns},
+                    "result": tool_result,
+                }
+            )
+        if tool_result is None:
+            return False
+        messages.append({"role": "user", "content": json.dumps(tool_result, sort_keys=True)})
+        return True
 
-    repairs = _repairs_for_rows(repairs, row_indices)
+    current_payload = call_teacher("first")
+    if current_payload is not None and execute_tool(current_payload):
+        current_payload = call_teacher("second")
+
+    feedback = _validation_feedback(
+        payload=current_payload,
+        normalization_candidates=normalization_candidates,
+        row_indices=row_indices,
+        columns=dataset.canonical_columns,
+        dataset_name=dataset.metadata.name,
+        flights_repair_mode=flights_repair_mode,
+        rows_by_index=target_rows_by_index,
+    )
+    if feedback is not None:
+        warnings.append("validation_retry")
+        messages.append(
+            {
+                "role": "user",
+                "content": json.dumps({"validation_feedback": feedback}, sort_keys=True),
+            }
+        )
+        current_payload = call_teacher("validation")
+
+    raw_repairs = (
+        current_payload.get("repairs", [])
+        if current_payload is not None
+        and current_payload.get("action") == "submit_repairs"
+        and isinstance(current_payload.get("repairs"), list)
+        else []
+    )
+    raw_repair_payloads = [
+        raw_repair for raw_repair in raw_repairs if isinstance(raw_repair, dict)
+    ]
+    if current_payload is not None and current_payload.get("action") == "submit_repairs":
+        repairs.extend(_repairs_from_payload(current_payload))
+
+    repairs = _repairs_for_rows(repairs, row_indices, dataset.canonical_columns)
+    verifier_llm_calls = 0
+    verifier_tokens = 0
+    if dataset.metadata.name == "flights" and flights_repair_mode == "verified":
+        (
+            repairs,
+            proposed_repairs,
+            teacher_proposed_repairs,
+            verified_repairs,
+            dropped_repairs,
+            verifier_llm_calls,
+            verifier_tokens,
+        ) = _verify_flights_repairs(
+            repairs=repairs,
+            raw_repairs=raw_repair_payloads,
+            dataset=dataset,
+            row_indices=row_indices,
+            context_payload=context_payload,
+            normalization_candidates=normalization_candidates,
+            verifier_client=verifier_client,
+            budget=budget,
+            deadline=deadline,
+            progress=progress,
+            difficulty=difficulty,
+            seed=seed,
+            chunk_index=chunk_index,
+            messages=messages,
+            warnings=warnings,
+        )
+    else:
+        repairs, dropped_repairs = _filter_flights_candidate_repairs(
+            repairs,
+            dataset_name=dataset.metadata.name,
+            normalization_candidates=normalization_candidates,
+        )
+        proposed_repairs = len(raw_repair_payloads) if dataset.metadata.name == "flights" else 0
+        teacher_proposed_repairs = 0
+        verified_repairs = len(repairs) if dataset.metadata.name == "flights" else 0
+        if dropped_repairs:
+            warnings.append("unsupported_flights_repairs_dropped")
     chunk_score = _score_for_rows(dataset.ground_truth, repairs, row_indices)
     record = {
         "schema_version": SCHEMA_VERSION,
@@ -657,12 +1443,16 @@ def _collect_chunk(
             "schema_summary": schema_summary,
             "target_rows": chunk_payload,
             "context_rows": context_payload,
+            "normalization_candidates": normalization_candidates,
+            "flights_repair_mode": flights_repair_mode
+            if dataset.metadata.name == "flights"
+            else None,
         },
         "tool_calls": tool_calls,
         "diagnosis": _diagnosis_from_payloads(payloads),
         "fix": [repair.model_dump(mode="json") for repair in repairs],
         "messages": messages,
-        "teacher": {"provider": "groq", "model": client.model},
+        "teacher": {"provider": client.provider, "model": client.model},
         "metrics": {
             "chunk_precision": chunk_score.precision,
             "chunk_recall": chunk_score.recall,
@@ -671,6 +1461,16 @@ def _collect_chunk(
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "warnings": warnings,
+            "unsupported_flights_repairs_dropped": dropped_repairs,
+            "flights_proposed_repairs": proposed_repairs,
+            "flights_teacher_proposed_repairs": teacher_proposed_repairs,
+            "flights_verified_repairs": verified_repairs,
+            "flights_dropped_repairs": dropped_repairs,
+            "flights_repair_mode": flights_repair_mode
+            if dataset.metadata.name == "flights"
+            else None,
+            "flights_verifier_llm_calls": verifier_llm_calls,
+            "flights_verifier_tokens": verifier_tokens,
         },
         "provenance": {
             "citation": dataset.metadata.citation,
@@ -699,6 +1499,9 @@ def collect_episode_trajectories(
     existing_keys: set[TrajectoryKey],
     budget: BudgetGuard,
     min_episode_f1: float,
+    context_window_rows: int | None = None,
+    flights_repair_mode: FlightsRepairMode = "strict",
+    verifier_client: CompletionClient | None = None,
     deadline: RuntimeDeadline | None = None,
     progress: ProgressReporter | None = None,
 ) -> list[dict[str, Any]]:
@@ -730,6 +1533,9 @@ def collect_episode_trajectories(
             row_indices=row_indices,
             client=client,
             budget=budget,
+            context_window_rows=context_window_rows,
+            flights_repair_mode=flights_repair_mode,
+            verifier_client=verifier_client,
             deadline=deadline,
             progress=progress,
         )
@@ -740,6 +1546,14 @@ def collect_episode_trajectories(
         return []
 
     episode_score = score_repairs(dataset.ground_truth, all_repairs)
+    if progress is not None:
+        progress.episode_score(
+            dataset=dataset.metadata.name,
+            difficulty=difficulty,
+            seed=seed,
+            score=episode_score,
+            min_episode_f1=min_episode_f1,
+        )
     if episode_score.f1 < min_episode_f1:
         return []
 
@@ -771,6 +1585,13 @@ def _preset_defaults(preset: Preset) -> PresetDefaults:
     return SMOKE_DEFAULTS if preset == "smoke" else FULL_DEFAULTS
 
 
+def _default_teacher_model(provider: TeacherProvider) -> str:
+    """Return the default model for one teacher provider."""
+    if provider == "gemini":
+        return DEFAULT_GEMINI_MODEL
+    return DEFAULT_CEREBRAS_MODEL if provider == "cerebras" else DEFAULT_GROQ_MODEL
+
+
 def _resolve_collection_settings(args: argparse.Namespace) -> CollectionSettings:
     """Apply preset defaults while allowing explicit CLI flags to override them."""
     preset = cast(Preset, args.preset)
@@ -786,6 +1607,25 @@ def _resolve_collection_settings(args: argparse.Namespace) -> CollectionSettings
         else list(defaults.difficulties)
     )
     difficulties = cast(list[Difficulty], raw_difficulties)
+    teacher_provider = cast(
+        TeacherProvider,
+        (args.teacher_provider or os.environ.get("DATAFORGE_LLM_PROVIDER") or "groq"),
+    )
+    teacher_model_arg = args.teacher_model if args.teacher_model is not None else args.groq_model
+    teacher_max_tokens_arg = (
+        args.teacher_max_tokens if args.teacher_max_tokens is not None else args.groq_max_tokens
+    )
+    teacher_timeout_arg = (
+        args.teacher_timeout_s if args.teacher_timeout_s is not None else args.groq_timeout_s
+    )
+    teacher_retries_arg = (
+        args.teacher_max_retries
+        if args.teacher_max_retries is not None
+        else args.groq_max_retries
+    )
+    default_min_interval_s = defaults.min_interval_s
+    if teacher_provider == "cerebras":
+        default_min_interval_s = max(default_min_interval_s, 2.1)
     settings = CollectionSettings(
         preset=preset,
         datasets=datasets,
@@ -801,19 +1641,28 @@ def _resolve_collection_settings(args: argparse.Namespace) -> CollectionSettings
         daily_request_budget=defaults.daily_request_budget
         if args.daily_request_budget is None
         else cast(int, args.daily_request_budget),
-        groq_model="llama-3.3-70b-versatile"
-        if args.groq_model is None
-        else cast(str, args.groq_model),
-        groq_max_tokens=512 if args.groq_max_tokens is None else cast(int, args.groq_max_tokens),
-        min_interval_s=defaults.min_interval_s
+        teacher_provider=teacher_provider,
+        teacher_model=_default_teacher_model(teacher_provider)
+        if teacher_model_arg is None
+        else cast(str, teacher_model_arg),
+        teacher_max_tokens=512
+        if teacher_max_tokens_arg is None
+        else cast(int, teacher_max_tokens_arg),
+        min_interval_s=default_min_interval_s
         if args.min_interval_s is None
         else cast(float, args.min_interval_s),
-        groq_timeout_s=defaults.groq_timeout_s
-        if args.groq_timeout_s is None
-        else cast(float, args.groq_timeout_s),
-        groq_max_retries=defaults.groq_max_retries
-        if args.groq_max_retries is None
-        else cast(int, args.groq_max_retries),
+        teacher_timeout_s=defaults.groq_timeout_s
+        if teacher_timeout_arg is None
+        else cast(float, teacher_timeout_arg),
+        teacher_max_retries=defaults.groq_max_retries
+        if teacher_retries_arg is None
+        else cast(int, teacher_retries_arg),
+        teacher_max_retry_after_s=120.0
+        if args.teacher_max_retry_after_s is None
+        else cast(float, args.teacher_max_retry_after_s),
+        context_window_rows=args.context_window_rows,
+        flights_repair_mode=cast(FlightsRepairMode, args.flights_repair_mode),
+        flights_verifier_model=args.flights_verifier_model,
         max_runtime_min=defaults.max_runtime_min
         if args.max_runtime_min is None
         else cast(float, args.max_runtime_min),
@@ -843,12 +1692,25 @@ def _validate_collection_settings(settings: CollectionSettings) -> None:
         raise ValueError("--max-total-requests must be >= 1.")
     if settings.daily_request_budget < 1:
         raise ValueError("--daily-request-budget must be >= 1.")
-    if settings.groq_max_tokens < 1:
-        raise ValueError("--groq-max-tokens must be >= 1.")
-    if settings.groq_timeout_s <= 0:
-        raise ValueError("--groq-timeout-s must be > 0.")
-    if settings.groq_max_retries < 1:
-        raise ValueError("--groq-max-retries must be >= 1.")
+    if settings.teacher_provider not in {"groq", "cerebras", "gemini"}:
+        raise ValueError("--teacher-provider must be groq, cerebras, or gemini.")
+    if settings.teacher_max_tokens < 1:
+        raise ValueError("--teacher-max-tokens must be >= 1.")
+    if settings.teacher_timeout_s <= 0:
+        raise ValueError("--teacher-timeout-s must be > 0.")
+    if settings.teacher_max_retries < 1:
+        raise ValueError("--teacher-max-retries must be >= 1.")
+    if settings.teacher_max_retry_after_s <= 0:
+        raise ValueError("--teacher-max-retry-after-s must be > 0.")
+    if settings.context_window_rows is not None and settings.context_window_rows < 0:
+        raise ValueError("--context-window-rows must be >= 0 when provided.")
+    if settings.flights_repair_mode not in {"strict", "verified"}:
+        raise ValueError("--flights-repair-mode must be strict or verified.")
+    if (
+        settings.flights_verifier_model is not None
+        and not settings.flights_verifier_model.strip()
+    ):
+        raise ValueError("--flights-verifier-model must be non-empty when provided.")
     if settings.min_interval_s < 0:
         raise ValueError("--min-interval-s must be >= 0.")
     if settings.max_runtime_min is not None and settings.max_runtime_min <= 0:
@@ -857,6 +1719,57 @@ def _validate_collection_settings(settings: CollectionSettings) -> None:
         raise ValueError("--progress-every-chunks must be >= 0.")
     if settings.ready_min_records < 2:
         raise ValueError("--ready-min-records must be >= 2.")
+
+
+def _teacher_api_key_env(provider: TeacherProvider) -> str:
+    """Return the API-key environment variable for a teacher provider."""
+    if provider == "gemini":
+        return "GEMINI_API_KEY"
+    return "CEREBRAS_API_KEY" if provider == "cerebras" else "GROQ_API_KEY"
+
+
+def _build_teacher_client(settings: CollectionSettings, *, api_key: str) -> CompletionClient:
+    """Build the configured teacher client."""
+    return _build_provider_client(
+        provider=settings.teacher_provider,
+        model=settings.teacher_model,
+        api_key=api_key,
+        min_interval_s=settings.min_interval_s,
+        max_tokens=settings.teacher_max_tokens,
+        max_retries=settings.teacher_max_retries,
+        max_retry_after_s=settings.teacher_max_retry_after_s,
+        timeout_s=settings.teacher_timeout_s,
+    )
+
+
+def _build_provider_client(
+    *,
+    provider: TeacherProvider,
+    model: str,
+    api_key: str,
+    min_interval_s: float,
+    max_tokens: int,
+    max_retries: int,
+    max_retry_after_s: float,
+    timeout_s: float,
+) -> CompletionClient:
+    """Build one OpenAI-compatible provider client."""
+    client_cls: type[CerebrasBenchClient] | type[GeminiBenchClient] | type[GroqBenchClient]
+    if provider == "gemini":
+        client_cls = GeminiBenchClient
+    elif provider == "cerebras":
+        client_cls = CerebrasBenchClient
+    else:
+        client_cls = GroqBenchClient
+    return client_cls(
+        api_key=api_key,
+        model=model,
+        min_interval_s=min_interval_s,
+        max_tokens=max_tokens,
+        max_retries=max_retries,
+        max_retry_after_s=max_retry_after_s,
+        timeout_s=timeout_s,
+    )
 
 
 def _resolve_hf_user(*, api: Any, token: str | None) -> str:
@@ -880,8 +1793,9 @@ def push_trajectory_dataset(
     repo_id: str,
     token: str | None,
     api: Any | None = None,
+    split_manifest: Path = Path("data/sft_traj/split_manifest.json"),
 ) -> str:
-    """Push the generated JSONL, config, and model-card template to an HF dataset repo."""
+    """Push generated trajectories and release metadata to an HF dataset repo."""
     if api is None:
         from huggingface_hub import HfApi
 
@@ -898,8 +1812,10 @@ def push_trajectory_dataset(
         commit_message="Upload Week 9 expert trajectories",
     )
     for path, path_in_repo in (
+        (Path("training/DATASET_README.md"), "README.md"),
         (Path("training/configs/sft_05b.yaml"), "sft_05b.yaml"),
         (Path("training/MODEL_CARD_TEMPLATE.md"), "MODEL_CARD_TEMPLATE.md"),
+        (split_manifest, "split_manifest.json"),
     ):
         if path.exists():
             api.upload_file(
@@ -913,7 +1829,24 @@ def push_trajectory_dataset(
     return resolved_repo
 
 
-def ensure_ready_for_push(*, output: Path, ready_min_records: int) -> None:
+def _resolve_hf_token() -> str | None:
+    """Resolve a Hugging Face token from env or the local token store."""
+    token = (os.environ.get("HF_TOKEN") or "").strip()
+    if token:
+        return token
+    try:
+        from huggingface_hub import get_token
+    except ImportError:
+        return None
+    return get_token()
+
+
+def ensure_ready_for_push(
+    *,
+    output: Path,
+    ready_min_records: int,
+    split_manifest: Path = Path("data/sft_traj/split_manifest.json"),
+) -> None:
     """Refuse to push partial or invalid trajectory datasets to Hugging Face."""
     root = Path(__file__).resolve().parents[2]
     if str(root) not in sys.path:
@@ -921,7 +1854,11 @@ def ensure_ready_for_push(*, output: Path, ready_min_records: int) -> None:
 
     from scripts.data.validate_sft_readiness import validate_sft_readiness
 
-    validate_sft_readiness(jsonl=output, min_records=ready_min_records)
+    validate_sft_readiness(
+        jsonl=output,
+        split_manifest=split_manifest,
+        min_records=ready_min_records,
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -944,6 +1881,29 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cache-root", type=Path, default=None)
     parser.add_argument("--push-to-hub", action="store_true")
     parser.add_argument("--hf-dataset-repo", default="auto")
+    parser.add_argument("--teacher-provider", choices=("groq", "cerebras", "gemini"), default=None)
+    parser.add_argument("--teacher-model", default=None)
+    parser.add_argument("--teacher-max-tokens", type=int, default=None)
+    parser.add_argument("--teacher-timeout-s", type=float, default=None)
+    parser.add_argument("--teacher-max-retries", type=int, default=None)
+    parser.add_argument("--teacher-max-retry-after-s", type=float, default=None)
+    parser.add_argument(
+        "--context-window-rows",
+        type=int,
+        default=None,
+        help="Limit context rows to N rows before/after the active chunk. Default: full table.",
+    )
+    parser.add_argument(
+        "--flights-repair-mode",
+        choices=("strict", "verified"),
+        default="strict",
+        help="Flights repair policy. strict accepts only candidates; verified adds verifier-approved proposals.",
+    )
+    parser.add_argument(
+        "--flights-verifier-model",
+        default=None,
+        help="Optional verifier model for Flights verified mode. Defaults to the teacher model.",
+    )
     parser.add_argument("--groq-model", default=None)
     parser.add_argument("--groq-max-tokens", type=int, default=None)
     parser.add_argument("--min-interval-s", type=float, default=None)
@@ -967,24 +1927,30 @@ def main(argv: list[str] | None = None) -> int:
     settings = _resolve_collection_settings(args)
     console = Console()
 
-    if os.environ.get("DATAFORGE_LLM_PROVIDER") != "groq":
-        raise RuntimeError("DATAFORGE_LLM_PROVIDER must be set to groq.")
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key_env = _teacher_api_key_env(settings.teacher_provider)
+    api_key = os.environ.get(api_key_env)
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY is required for trajectory collection.")
+        raise RuntimeError(f"{api_key_env} is required for trajectory collection.")
 
     existing_keys = existing_trajectory_keys(args.output)
     budget = BudgetGuard(
         max_total_requests=settings.max_total_requests,
         daily_request_budget=settings.daily_request_budget,
     )
-    client = GroqBenchClient(
-        api_key=api_key,
-        model=settings.groq_model,
-        min_interval_s=settings.min_interval_s,
-        max_tokens=settings.groq_max_tokens,
-        max_retries=settings.groq_max_retries,
-        timeout_s=settings.groq_timeout_s,
+    client = _build_teacher_client(settings, api_key=api_key)
+    verifier_client = (
+        _build_provider_client(
+            provider=settings.teacher_provider,
+            model=settings.flights_verifier_model or settings.teacher_model,
+            api_key=api_key,
+            min_interval_s=settings.min_interval_s,
+            max_tokens=settings.teacher_max_tokens,
+            max_retries=settings.teacher_max_retries,
+            max_retry_after_s=settings.teacher_max_retry_after_s,
+            timeout_s=settings.teacher_timeout_s,
+        )
+        if settings.flights_repair_mode == "verified"
+        else None
     )
     deadline = RuntimeDeadline(
         started_at=time.monotonic(),
@@ -1007,8 +1973,10 @@ def main(argv: list[str] | None = None) -> int:
         "[sft] starting collection "
         f"preset={settings.preset} datasets={','.join(settings.datasets)} "
         f"difficulties={','.join(settings.difficulties)} seeds={settings.seeds} "
+        f"teacher={settings.teacher_provider}:{settings.teacher_model} "
+        f"flights_repair_mode={settings.flights_repair_mode} "
         f"target={settings.max_trajectories} existing={existing_count} "
-        f"request_budget={settings.max_total_requests} timeout_s={settings.groq_timeout_s} "
+        f"request_budget={settings.max_total_requests} timeout_s={settings.teacher_timeout_s} "
         f"deadline_min={settings.max_runtime_min}"
     )
     for seed in range(settings.seeds):
@@ -1032,9 +2000,19 @@ def main(argv: list[str] | None = None) -> int:
                         existing_keys=existing_keys,
                         budget=budget,
                         min_episode_f1=settings.min_episode_f1,
+                        context_window_rows=settings.context_window_rows,
+                        flights_repair_mode=settings.flights_repair_mode,
+                        verifier_client=verifier_client,
                         deadline=deadline,
                         progress=progress,
                     )
+                except ProviderRequestError as exc:
+                    console.print(
+                        "[sft] episode skipped "
+                        f"dataset={dataset_name} difficulty={difficulty} seed={seed} "
+                        f"reason={exc}"
+                    )
+                    continue
                 except RuntimeError as exc:
                     message = str(exc)
                     if "request budget" not in message and "runtime deadline" not in message:
@@ -1078,12 +2056,12 @@ def main(argv: list[str] | None = None) -> int:
     console.print(
         f"Collected {collected} new trajectories to {args.output} "
         f"({existing_count + collected}/{settings.max_trajectories} total cap) "
-        f"using {budget.used_requests}/{budget.max_total_requests} Groq requests "
+        f"using {budget.used_requests}/{budget.max_total_requests} teacher requests "
         f"(daily planning budget: {settings.daily_request_budget})."
     )
     if args.push_to_hub:
         ensure_ready_for_push(output=args.output, ready_min_records=settings.ready_min_records)
-        token = os.environ.get("HF_TOKEN")
+        token = _resolve_hf_token()
         repo_id = push_trajectory_dataset(
             output=args.output,
             repo_id=args.hf_dataset_repo,

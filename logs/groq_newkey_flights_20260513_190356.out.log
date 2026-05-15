@@ -1,0 +1,154 @@
+ starting collection preset=full datasets=flights difficulties=easy seeds=1 
+teacher=groq:llama-3.3-70b-versatile target=53 existing=37 request_budget=40 
+timeout_s=60.0 deadline_min=25.0
+ chunk start dataset=flights difficulty=easy seed=0 chunk=1/16 requests=0/40 
+accepted=37 elapsed=0.1s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=1 
+next_request=1 accepted=37 elapsed=0.1s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=1 
+requests=1/40 tokens=4396+89 accepted=37 elapsed=1.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=1 repairs=2 
+llm_calls=1 accepted=37 elapsed=1.3s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=2/16 requests=1/40 
+accepted=37 elapsed=1.4s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=2 
+next_request=2 accepted=37 elapsed=1.5s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=2 
+requests=2/40 tokens=4384+8 accepted=37 elapsed=34.5s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=2 
+next_request=3 accepted=37 elapsed=34.5s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=2 
+requests=3/40 tokens=4406+8 accepted=37 elapsed=68.0s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=2 repairs=0 
+llm_calls=2 accepted=37 elapsed=68.0s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=3/16 requests=3/40 
+accepted=37 elapsed=68.0s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=3 
+next_request=4 accepted=37 elapsed=68.1s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=3 
+requests=4/40 tokens=4388+8 accepted=37 elapsed=101.3s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=3 
+next_request=5 accepted=37 elapsed=101.3s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=3 
+requests=5/40 tokens=4410+8 accepted=37 elapsed=134.1s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=3 repairs=0 
+llm_calls=2 accepted=37 elapsed=134.2s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=4/16 requests=5/40 
+accepted=37 elapsed=134.2s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=4 
+next_request=6 accepted=37 elapsed=134.2s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=4 
+requests=6/40 tokens=4381+8 accepted=37 elapsed=167.5s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=4 
+next_request=7 accepted=37 elapsed=167.5s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=4 
+requests=7/40 tokens=4403+15 accepted=37 elapsed=201.0s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=4 repairs=0 
+llm_calls=2 accepted=37 elapsed=201.1s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=5/16 requests=7/40 
+accepted=37 elapsed=201.1s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=5 
+next_request=8 accepted=37 elapsed=201.1s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=5 
+requests=8/40 tokens=4381+8 accepted=37 elapsed=234.2s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=5 
+next_request=9 accepted=37 elapsed=234.2s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=5 
+requests=9/40 tokens=4403+8 accepted=37 elapsed=267.5s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=5 repairs=0 
+llm_calls=2 accepted=37 elapsed=267.5s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=6/16 requests=9/40 
+accepted=37 elapsed=267.5s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=6 
+next_request=10 accepted=37 elapsed=267.5s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=6 
+requests=10/40 tokens=4368+15 accepted=37 elapsed=301.1s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=6 repairs=0 
+llm_calls=1 accepted=37 elapsed=301.1s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=7/16 requests=10/40 
+accepted=37 elapsed=301.1s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=7 
+next_request=11 accepted=37 elapsed=301.1s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=7 
+requests=11/40 tokens=4380+8 accepted=37 elapsed=335.7s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=7 
+next_request=12 accepted=37 elapsed=335.7s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=7 
+requests=12/40 tokens=4402+15 accepted=37 elapsed=368.9s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=7 repairs=0 
+llm_calls=2 accepted=37 elapsed=368.9s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=8/16 requests=12/40 
+accepted=37 elapsed=368.9s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=8 
+next_request=13 accepted=37 elapsed=368.9s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=8 
+requests=13/40 tokens=4363+8 accepted=37 elapsed=413.4s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=8 
+next_request=14 accepted=37 elapsed=413.4s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=8 
+requests=14/40 tokens=4385+8 accepted=37 elapsed=453.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=8 repairs=0 
+llm_calls=2 accepted=37 elapsed=453.4s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=9/16 requests=14/40 
+accepted=37 elapsed=453.4s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=9 
+next_request=15 accepted=37 elapsed=453.4s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=9 
+requests=15/40 tokens=4369+8 accepted=37 elapsed=494.2s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=9 
+next_request=16 accepted=37 elapsed=494.2s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=9 
+requests=16/40 tokens=4391+8 accepted=37 elapsed=527.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=9 repairs=0 
+llm_calls=2 accepted=37 elapsed=527.3s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=10/16 requests=16/40 
+accepted=37 elapsed=527.3s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=10 
+next_request=17 accepted=37 elapsed=527.4s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=10 
+requests=17/40 tokens=4369+8 accepted=37 elapsed=560.3s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=10 
+next_request=18 accepted=37 elapsed=560.4s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=10 
+requests=18/40 tokens=4391+8 accepted=37 elapsed=593.4s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=10 repairs=0 
+llm_calls=2 accepted=37 elapsed=593.5s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=11/16 requests=18/40 
+accepted=37 elapsed=593.5s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=11 
+next_request=19 accepted=37 elapsed=593.5s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=11 
+requests=19/40 tokens=4380+8 accepted=37 elapsed=626.7s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=11 
+next_request=20 accepted=37 elapsed=626.8s
+ api done    phase=second dataset=flights difficulty=easy seed=0 chunk=11 
+requests=20/40 tokens=4402+15 accepted=37 elapsed=659.7s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=11 repairs=0 
+llm_calls=2 accepted=37 elapsed=659.7s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=12/16 requests=20/40 
+accepted=37 elapsed=659.7s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=12 
+next_request=21 accepted=37 elapsed=659.8s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=12 
+requests=21/40 tokens=4358+128 accepted=37 elapsed=693.6s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=12 repairs=0 
+llm_calls=1 accepted=37 elapsed=693.7s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=13/16 requests=21/40 
+accepted=37 elapsed=693.7s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=13 
+next_request=22 accepted=37 elapsed=693.8s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=13 
+requests=22/40 tokens=4381+8 accepted=37 elapsed=727.4s
+ api start   phase=second dataset=flights difficulty=easy seed=0 chunk=13 
+next_request=23 accepted=37 elapsed=727.5s
+ episode skipped dataset=flights difficulty=easy seed=0 reason=groq rate limit 
+retry-after 823.00s exceeds cap 90.00s: {"error":{"message":"Rate limit reached
+for model `llama-3.3-70b-versatile` in organization 
+`org_01krgrj6c0e9jt55tbs7zgfmjf` service tier `on_demand` on tokens per day 
+(TPD): Limit 100000, Used 96421, Requested 4531. Please try again in 
+13m42.528s. Need more tokens? Upgrade to Dev Tier today at 
+https://console.groq.com/settings/billing","type":"tokens","code":"rate_limit_e
+xceeded"}} 
+Collected 0 new trajectories to data\sft_traj\expert_v1.jsonl (37/53 total cap)
+using 23/40 teacher requests (daily planning budget: 40).
+Pushed trajectory dataset to Praneshrajan15/dataforge-sft-trajectories.

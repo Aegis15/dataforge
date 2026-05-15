@@ -24,6 +24,7 @@ __all__ = [
     "R_FIX",
     "R_FIX_PARTIAL",
     "R_JUSTIFY_BONUS",
+    "R_ROOT_CAUSE",
     "R_TYPE_BONUS",
     "SPAM_THRESHOLD",
     "EpisodeMetrics",
@@ -37,6 +38,7 @@ R_FIX: float = 0.15
 R_FIX_PARTIAL: float = 0.075
 R_JUSTIFY_BONUS: float = 0.05
 R_EXPLORE: float = 0.01
+R_ROOT_CAUSE: float = 0.10
 
 # Negative penalties
 P_FALSE_POS: float = -0.05

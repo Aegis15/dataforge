@@ -11,6 +11,7 @@ from dataforge.agent.tool_actions import (
     Hypothesis,
     InspectRows,
     PatternMatch,
+    RootCause,
     SqlQuery,
     StatTest,
     parse_action,
@@ -115,6 +116,18 @@ class TestHypothesis:
             )
 
 
+class TestRootCause:
+    """Tests for the ROOT_CAUSE action model."""
+
+    def test_valid_root_cause(self) -> None:
+        action = RootCause(action_type="ROOT_CAUSE", error_indices=[0, 2])
+        assert action.error_indices == [0, 2]
+
+    def test_rejects_negative_error_index(self) -> None:
+        with pytest.raises(ValidationError):
+            RootCause(action_type="ROOT_CAUSE", error_indices=[-1])
+
+
 class TestDiagnose:
     """Tests for the DIAGNOSE action model."""
 
@@ -215,6 +228,15 @@ class TestParseAction:
             }
         )
         assert isinstance(action, Hypothesis)
+
+    def test_parse_root_cause(self) -> None:
+        action = parse_action({"action_type": "ROOT_CAUSE", "error_indices": [0, 1]})
+        assert isinstance(action, RootCause)
+
+    def test_parse_root_cause_alias(self) -> None:
+        action = parse_action({"action_type": "ROOT_CAUSE", "indices": [0]})
+        assert isinstance(action, RootCause)
+        assert action.error_indices == [0]
 
     def test_parse_hypothesis_prompt_shape(self) -> None:
         action = parse_action(

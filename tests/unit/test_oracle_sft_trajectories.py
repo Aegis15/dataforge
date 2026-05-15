@@ -1,0 +1,259 @@
+"""Unit tests for label-derived SFT trajectory generation."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pandas as pd
+
+from dataforge.datasets.real_world import GroundTruthCell, RealWorldDataset
+from dataforge.datasets.registry import DatasetMetadata
+from scripts.data.build_oracle_sft_trajectories import (
+    COLLECTION_METHOD,
+    ORACLE_MODEL,
+    ORACLE_PROVIDER,
+    OracleSettings,
+    build_dataset_records,
+    build_split_manifest,
+    deterministic_row_split,
+)
+
+
+def _dataset(name: str = "flights") -> RealWorldDataset:
+    dirty_df = pd.DataFrame(
+        {
+            "src": ["aa", "aa", "aa", "aa"],
+            "flight": ["1", "2", "3", "4"],
+            "sched_dep_time": ["", "Fri Dec 2 5:11 a.m.", "", ""],
+            "act_dep_time": ["7:14 p.m.", "11:08 p.m. On Time", "8:00 a.m.", "9:00 a.m."],
+            "sched_arr_time": ["", "", "", ""],
+            "act_arr_time": ["10:29 p.m.", "Delayed", "9:00 a.m.", "10:00 a.m."],
+        }
+    )
+    clean_df = pd.DataFrame(
+        {
+            "src": ["aa", "aa", "aa", "aa"],
+            "flight": ["1", "2", "3", "4"],
+            "sched_dep_time": ["7:00 p.m.", "5:11 a.m.", "", ""],
+            "act_dep_time": ["7:14 p.m.", "11:08 p.m.", "8:00 a.m.", "9:00 a.m."],
+            "sched_arr_time": ["10:15 p.m.", "", "", ""],
+            "act_arr_time": ["10:29 p.m.", "Delayed", "9:00 a.m.", "10:00 a.m."],
+        }
+    )
+    return RealWorldDataset(
+        metadata=DatasetMetadata(
+            name=name,
+            domain="aviation",
+            n_rows=len(dirty_df.index),
+            n_columns=len(dirty_df.columns),
+            error_types=("missing_value", "formatting"),
+            source_urls=("dirty", "clean"),
+            citation="fixture citation",
+        ),
+        dirty_df=dirty_df,
+        clean_df=clean_df,
+        canonical_columns=tuple(str(column) for column in clean_df.columns),
+        ground_truth=(
+            GroundTruthCell(
+                row=0,
+                column="sched_dep_time",
+                dirty_value="",
+                clean_value="7:00 p.m.",
+            ),
+            GroundTruthCell(
+                row=0,
+                column="sched_arr_time",
+                dirty_value="",
+                clean_value="10:15 p.m.",
+            ),
+            GroundTruthCell(
+                row=1,
+                column="sched_dep_time",
+                dirty_value="Fri Dec 2 5:11 a.m.",
+                clean_value="5:11 a.m.",
+            ),
+            GroundTruthCell(
+                row=1,
+                column="act_dep_time",
+                dirty_value="11:08 p.m. On Time",
+                clean_value="11:08 p.m.",
+            ),
+        ),
+    )
+
+
+def test_oracle_records_use_exact_dirty_clean_labels_without_teacher_discovery() -> None:
+    records = build_dataset_records(
+        _dataset(),
+        difficulty="easy",
+        split_seed=7,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+        chunk_rows=2,
+        context_window_rows=1,
+    )
+
+    assert records
+    for record in records:
+        assert record["teacher"] == {"provider": ORACLE_PROVIDER, "model": ORACLE_MODEL}
+        assert record["provenance"]["collection_method"] == COLLECTION_METHOD
+        assert record["metrics"]["llm_calls"] == 0
+        assert record["state"]["split"] == "train"
+        assert record["state"]["normalization_candidates"] == []
+        user_payload = json.loads(record["messages"][1]["content"])
+        assert "normalization_candidates" not in user_payload
+        assistant_payload = json.loads(record["messages"][-1]["content"])
+        assert assistant_payload["action"] == "submit_repairs"
+        assert assistant_payload["repairs"] == record["fix"]
+
+    fixes = {
+        (fix["row"], fix["column"], fix["new_value"])
+        for record in records
+        for fix in record["fix"]
+    }
+    eval_rows = set(records[0]["provenance"]["eval_rows"])
+    expected = {
+        (cell.row, cell.column, cell.clean_value)
+        for cell in _dataset().ground_truth
+        if cell.row not in eval_rows
+    }
+    assert fixes == expected
+
+
+def test_oracle_records_exclude_eval_rows_from_targets_context_and_fixes() -> None:
+    dataset = _dataset()
+    split = deterministic_row_split(
+        dataset_name=dataset.metadata.name,
+        n_rows=len(dataset.dirty_df.index),
+        split_seed=3,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+    )
+
+    records = build_dataset_records(
+        dataset,
+        difficulty="medium",
+        split_seed=3,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+        chunk_rows=1,
+        context_window_rows=10,
+    )
+
+    eval_rows = set(split.eval_rows)
+    for record in records:
+        state = record["state"]
+        target_rows = {int(row["_row"]) for row in state["target_rows"]}
+        context_rows = {int(row["_row"]) for row in state["context_rows"]}
+        fix_rows = {fix["row"] for fix in record["fix"]}
+        assert not eval_rows.intersection(target_rows)
+        assert not eval_rows.intersection(context_rows)
+        assert not eval_rows.intersection(fix_rows)
+        assert state["normalization_candidates"] == []
+
+
+def test_oracle_records_do_not_expose_clean_label_fields_in_user_visible_state() -> None:
+    records = build_dataset_records(
+        _dataset(),
+        difficulty="easy",
+        split_seed=7,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+        chunk_rows=2,
+        context_window_rows=1,
+    )
+
+    for record in records:
+        user_visible = json.dumps(
+            {
+                "state": record["state"],
+                "user_message": record["messages"][1],
+            },
+            sort_keys=True,
+        )
+        assert record["state"]["normalization_candidates"] == []
+        assert "suggested_value" not in user_visible
+        assert "new_value" not in user_visible
+        assert "repairs" not in user_visible
+
+
+def test_oracle_builder_can_emit_noop_finish_examples() -> None:
+    records = build_dataset_records(
+        _dataset(),
+        difficulty="easy",
+        split_seed=7,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+        chunk_rows=1,
+        context_window_rows=0,
+        include_noop_records=True,
+    )
+
+    noop_records = [record for record in records if not record["fix"]]
+
+    assert noop_records
+    for record in noop_records:
+        assistant_payload = json.loads(record["messages"][-1]["content"])
+        assert assistant_payload == {"action": "finish", "repairs": []}
+        assert record["metrics"]["chunk_f1"] == 1.0
+
+
+def test_oracle_trajectory_ids_are_stable() -> None:
+    kwargs = {
+        "difficulty": "easy",
+        "split_seed": 11,
+        "eval_fraction": 0.25,
+        "min_eval_rows": 1,
+        "chunk_rows": 2,
+        "context_window_rows": 1,
+    }
+
+    first = build_dataset_records(_dataset("flights"), **kwargs)
+    second = build_dataset_records(_dataset("flights"), **kwargs)
+
+    assert [record["trajectory_id"] for record in first] == [
+        record["trajectory_id"] for record in second
+    ]
+
+
+def test_split_manifest_contains_only_dirty_row_hashes(monkeypatch) -> None:
+    dataset = _dataset("flights")
+
+    def fake_loader(name, *, cache_root=None):
+        assert name == "flights"
+        return dataset
+
+    monkeypatch.setattr(
+        "scripts.data.build_oracle_sft_trajectories.load_real_world_dataset",
+        fake_loader,
+    )
+    settings = OracleSettings(
+        datasets=("flights",),
+        difficulties=("easy",),
+        split_seed=7,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+        chunk_rows=2,
+        context_window_rows=1,
+        include_noop_records=True,
+        ready_min_records=2,
+        output=Path("unused.jsonl"),
+        manifest_output=Path("unused_manifest.json"),
+        overwrite=True,
+    )
+
+    manifest = build_split_manifest(settings)
+
+    assert manifest["schema_version"] == "split_manifest_v1"
+    assert manifest["collection_method"] == COLLECTION_METHOD
+    assert manifest["datasets"][0]["train_rows"] == 3
+    assert manifest["datasets"][0]["eval_rows"] == 1
+    serialized = json.dumps(manifest, sort_keys=True)
+    assert "clean_value" not in serialized
+    assert "new_value" not in serialized
+    assert "suggested_value" not in serialized
+    for split_name in ("train", "eval"):
+        for row in manifest["datasets"][0][split_name]:
+            assert set(row) == {"row", "dirty_row_sha256"}
+            assert len(row["dirty_row_sha256"]) == 64

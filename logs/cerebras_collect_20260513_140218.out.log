@@ -1,0 +1,141 @@
+ starting collection preset=full datasets=hospital,flights,beers 
+difficulties=easy,medium seeds=24 teacher=cerebras:llama3.1-8b target=80 
+existing=37 request_budget=120 timeout_s=60.0 deadline_min=None
+ episode rejected dataset=hospital difficulty=easy seed=0 accepted=37 
+elapsed=0.1s
+ episode rejected dataset=hospital difficulty=medium seed=0 accepted=37 
+elapsed=0.1s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=1/16 requests=0/120 
+accepted=37 elapsed=0.2s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=1 
+next_request=1 accepted=37 elapsed=0.2s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=1 
+requests=1/120 tokens=4396+512 accepted=37 elapsed=1.2s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=1 repairs=0 
+llm_calls=1 accepted=37 elapsed=1.2s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=2/16 requests=1/120 
+accepted=37 elapsed=1.2s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=2 
+next_request=2 accepted=37 elapsed=1.2s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=2 
+requests=2/120 tokens=4384+512 accepted=37 elapsed=3.9s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=2 repairs=0 
+llm_calls=1 accepted=37 elapsed=3.9s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=3/16 requests=2/120 
+accepted=37 elapsed=3.9s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=3 
+next_request=3 accepted=37 elapsed=4.0s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=3 
+requests=3/120 tokens=4388+512 accepted=37 elapsed=6.8s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=3 repairs=0 
+llm_calls=1 accepted=37 elapsed=6.8s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=4/16 requests=3/120 
+accepted=37 elapsed=6.8s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=4 
+next_request=4 accepted=37 elapsed=6.8s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=4 
+requests=4/120 tokens=4381+512 accepted=37 elapsed=9.5s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=4 repairs=0 
+llm_calls=1 accepted=37 elapsed=9.5s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=5/16 requests=4/120 
+accepted=37 elapsed=9.5s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=5 
+next_request=5 accepted=37 elapsed=9.6s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=5 
+requests=5/120 tokens=4381+512 accepted=37 elapsed=12.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=5 repairs=0 
+llm_calls=1 accepted=37 elapsed=12.3s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=6/16 requests=5/120 
+accepted=37 elapsed=12.3s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=6 
+next_request=6 accepted=37 elapsed=12.3s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=6 
+requests=6/120 tokens=4368+189 accepted=37 elapsed=15.0s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=6 repairs=4 
+llm_calls=1 accepted=37 elapsed=15.0s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=7/16 requests=6/120 
+accepted=37 elapsed=15.0s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=7 
+next_request=7 accepted=37 elapsed=15.0s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=7 
+requests=7/120 tokens=4380+512 accepted=37 elapsed=17.8s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=7 repairs=0 
+llm_calls=1 accepted=37 elapsed=17.8s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=8/16 requests=7/120 
+accepted=37 elapsed=17.8s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=8 
+next_request=8 accepted=37 elapsed=17.8s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=8 
+requests=8/120 tokens=4363+217 accepted=37 elapsed=20.4s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=8 repairs=5 
+llm_calls=1 accepted=37 elapsed=20.4s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=9/16 requests=8/120 
+accepted=37 elapsed=20.4s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=9 
+next_request=9 accepted=37 elapsed=20.5s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=9 
+requests=9/120 tokens=4369+512 accepted=37 elapsed=23.1s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=9 repairs=0 
+llm_calls=1 accepted=37 elapsed=23.2s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=10/16 requests=9/120 
+accepted=37 elapsed=23.2s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=10 
+next_request=10 accepted=37 elapsed=23.2s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=10 
+requests=10/120 tokens=4369+512 accepted=37 elapsed=25.9s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=10 repairs=0 
+llm_calls=1 accepted=37 elapsed=25.9s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=11/16 requests=10/120
+accepted=37 elapsed=25.9s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=11 
+next_request=11 accepted=37 elapsed=25.9s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=11 
+requests=11/120 tokens=4380+512 accepted=37 elapsed=28.6s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=11 repairs=0 
+llm_calls=1 accepted=37 elapsed=28.7s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=12/16 requests=11/120
+accepted=37 elapsed=28.7s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=12 
+next_request=12 accepted=37 elapsed=28.7s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=12 
+requests=12/120 tokens=4358+396 accepted=37 elapsed=31.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=12 repairs=9 
+llm_calls=1 accepted=37 elapsed=31.3s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=13/16 requests=12/120
+accepted=37 elapsed=31.3s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=13 
+next_request=13 accepted=37 elapsed=31.4s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=13 
+requests=13/120 tokens=4381+371 accepted=37 elapsed=34.1s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=13 repairs=12 
+llm_calls=1 accepted=37 elapsed=34.1s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=14/16 requests=13/120
+accepted=37 elapsed=34.1s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=14 
+next_request=14 accepted=37 elapsed=34.1s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=14 
+requests=14/120 tokens=4370+192 accepted=37 elapsed=36.7s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=14 repairs=4 
+llm_calls=1 accepted=37 elapsed=36.7s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=15/16 requests=14/120
+accepted=37 elapsed=36.7s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=15 
+next_request=15 accepted=37 elapsed=36.7s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=15 
+requests=15/120 tokens=4386+227 accepted=37 elapsed=39.3s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=15 repairs=8 
+llm_calls=1 accepted=37 elapsed=39.3s
+ chunk start dataset=flights difficulty=easy seed=0 chunk=16/16 requests=15/120
+accepted=37 elapsed=39.3s
+ api start   phase=first dataset=flights difficulty=easy seed=0 chunk=16 
+next_request=16 accepted=37 elapsed=39.3s
+ api done    phase=first dataset=flights difficulty=easy seed=0 chunk=16 
+requests=16/120 tokens=4366+272 accepted=37 elapsed=42.0s
+ chunk done  dataset=flights difficulty=easy seed=0 chunk=16 repairs=6 
+llm_calls=1 accepted=37 elapsed=42.0s
+ episode rejected dataset=flights difficulty=easy seed=0 accepted=37 
+elapsed=42.0s
+ chunk start dataset=flights difficulty=medium seed=0 chunk=1/20 
+requests=16/120 accepted=37 elapsed=42.0s
+ api start   phase=first dataset=flights difficulty=medium seed=0 chunk=1 
+next_request=17 accepted=37 elapsed=42.1s

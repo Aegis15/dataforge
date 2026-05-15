@@ -1,0 +1,150 @@
+ starting collection preset=full datasets=beers difficulties=easy seeds=1 
+teacher=groq:llama-3.3-70b-versatile target=53 existing=37 request_budget=30 
+timeout_s=60.0 deadline_min=20.0
+ chunk start dataset=beers difficulty=easy seed=0 chunk=1/16 requests=0/30 
+accepted=37 elapsed=0.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=1 
+next_request=1 accepted=37 elapsed=0.2s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=1 
+requests=1/30 tokens=1326+48 accepted=37 elapsed=0.9s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=1 repairs=1 llm_calls=1
+accepted=37 elapsed=0.9s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=2/16 requests=1/30 
+accepted=37 elapsed=0.9s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=2 
+next_request=2 accepted=37 elapsed=0.9s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=2 
+requests=2/30 tokens=1636+43 accepted=37 elapsed=16.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=2 repairs=0 llm_calls=1
+accepted=37 elapsed=16.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=3/16 requests=2/30 
+accepted=37 elapsed=16.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=3 
+next_request=3 accepted=37 elapsed=16.8s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=3 
+requests=3/30 tokens=1759+43 accepted=37 elapsed=32.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=3 repairs=1 llm_calls=1
+accepted=37 elapsed=32.6s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=4/16 requests=3/30 
+accepted=37 elapsed=32.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=4 
+next_request=4 accepted=37 elapsed=32.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=4 
+requests=4/30 tokens=1770+45 accepted=37 elapsed=48.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=4 repairs=1 llm_calls=1
+accepted=37 elapsed=48.6s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=5/16 requests=4/30 
+accepted=37 elapsed=48.6s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=5 
+next_request=5 accepted=37 elapsed=48.7s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=5 
+requests=5/30 tokens=1748+200 accepted=37 elapsed=64.5s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=5 repairs=6 llm_calls=1
+accepted=37 elapsed=64.6s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=6/16 requests=5/30 
+accepted=37 elapsed=64.6s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=6 
+next_request=6 accepted=37 elapsed=64.6s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=6 
+requests=6/30 tokens=1712+104 accepted=37 elapsed=80.6s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=6 repairs=3 llm_calls=1
+accepted=37 elapsed=80.7s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=7/16 requests=6/30 
+accepted=37 elapsed=80.7s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=7 
+next_request=7 accepted=37 elapsed=80.8s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=7 
+requests=7/30 tokens=1715+119 accepted=37 elapsed=96.8s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=7 repairs=3 llm_calls=1
+accepted=37 elapsed=96.9s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=8/16 requests=7/30 
+accepted=37 elapsed=96.9s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=8 
+next_request=8 accepted=37 elapsed=96.9s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=8 
+requests=8/30 tokens=1706+8 accepted=37 elapsed=112.6s
+ api start   phase=second dataset=beers difficulty=easy seed=0 chunk=8 
+next_request=9 accepted=37 elapsed=112.7s
+ api done    phase=second dataset=beers difficulty=easy seed=0 chunk=8 
+requests=9/30 tokens=1728+8 accepted=37 elapsed=128.2s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=8 repairs=0 llm_calls=2
+accepted=37 elapsed=128.3s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=9/16 requests=9/30 
+accepted=37 elapsed=128.3s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=9 
+next_request=10 accepted=37 elapsed=128.4s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=9 
+requests=10/30 tokens=1720+8 accepted=37 elapsed=144.1s
+ api start   phase=second dataset=beers difficulty=easy seed=0 chunk=9 
+next_request=11 accepted=37 elapsed=144.2s
+ api done    phase=second dataset=beers difficulty=easy seed=0 chunk=9 
+requests=11/30 tokens=1742+8 accepted=37 elapsed=160.0s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=9 repairs=0 llm_calls=2
+accepted=37 elapsed=160.0s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=10/16 requests=11/30 
+accepted=37 elapsed=160.0s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=10 
+next_request=12 accepted=37 elapsed=160.0s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=10 
+requests=12/30 tokens=1730+114 accepted=37 elapsed=176.1s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=10 repairs=3 
+llm_calls=1 accepted=37 elapsed=176.1s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=11/16 requests=12/30 
+accepted=37 elapsed=176.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=11 
+next_request=13 accepted=37 elapsed=176.2s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=11 
+requests=13/30 tokens=1760+104 accepted=37 elapsed=192.3s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=11 repairs=3 
+llm_calls=1 accepted=37 elapsed=192.3s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=12/16 requests=13/30 
+accepted=37 elapsed=192.4s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=12 
+next_request=14 accepted=37 elapsed=192.4s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=12 
+requests=14/30 tokens=1771+105 accepted=37 elapsed=208.2s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=12 repairs=3 
+llm_calls=1 accepted=37 elapsed=208.2s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=13/16 requests=14/30 
+accepted=37 elapsed=208.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=13 
+next_request=15 accepted=37 elapsed=208.2s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=13 
+requests=15/30 tokens=1758+108 accepted=37 elapsed=224.2s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=13 repairs=3 
+llm_calls=1 accepted=37 elapsed=224.3s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=14/16 requests=15/30 
+accepted=37 elapsed=224.3s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=14 
+next_request=16 accepted=37 elapsed=224.3s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=14 
+requests=16/30 tokens=1754+8 accepted=37 elapsed=239.9s
+ api start   phase=second dataset=beers difficulty=easy seed=0 chunk=14 
+next_request=17 accepted=37 elapsed=239.9s
+ api done    phase=second dataset=beers difficulty=easy seed=0 chunk=14 
+requests=17/30 tokens=1776+8 accepted=37 elapsed=256.0s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=14 repairs=0 
+llm_calls=2 accepted=37 elapsed=256.0s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=15/16 requests=17/30 
+accepted=37 elapsed=256.0s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=15 
+next_request=18 accepted=37 elapsed=256.0s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=15 
+requests=18/30 tokens=1638+74 accepted=37 elapsed=271.7s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=15 repairs=2 
+llm_calls=1 accepted=37 elapsed=271.8s
+ chunk start dataset=beers difficulty=easy seed=0 chunk=16/16 requests=18/30 
+accepted=37 elapsed=271.8s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=16 
+next_request=19 accepted=37 elapsed=271.8s
+ api done    phase=first dataset=beers difficulty=easy seed=0 chunk=16 
+requests=19/30 tokens=1321+74 accepted=37 elapsed=287.8s
+ chunk done  dataset=beers difficulty=easy seed=0 chunk=16 repairs=2 
+llm_calls=1 accepted=37 elapsed=287.9s
+ episode score dataset=beers difficulty=easy seed=0 precision=0.258 
+recall=0.095 f1=0.139 threshold=0.600 elapsed=287.9s
+ episode rejected dataset=beers difficulty=easy seed=0 accepted=37 
+elapsed=287.9s
+Collected 0 new trajectories to data\sft_traj\expert_v1.jsonl (37/53 total cap)
+using 19/30 teacher requests (daily planning budget: 30).
+Pushed trajectory dataset to Praneshrajan15/dataforge-sft-trajectories.

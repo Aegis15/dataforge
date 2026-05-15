@@ -1,0 +1,15 @@
+ starting collection preset=full datasets=beers difficulties=easy seeds=1 
+teacher=cerebras:qwen-3-235b-a22b-instruct-2507 target=53 existing=37 
+request_budget=25 timeout_s=60.0 deadline_min=25.0
+ chunk start dataset=beers difficulty=easy seed=0 chunk=1/16 requests=0/25 
+accepted=37 elapsed=0.2s
+ api start   phase=first dataset=beers difficulty=easy seed=0 chunk=1 
+next_request=1 accepted=37 elapsed=0.3s
+ episode skipped dataset=beers difficulty=easy seed=0 reason=cerebras request 
+rejected with HTTP 429: {"message":"Requests per minute limit exceeded - too 
+many requests 
+sent.","type":"too_many_requests_error","param":"quota","code":"request_quota_e
+xceeded"}
+Collected 0 new trajectories to data\sft_traj\expert_v1.jsonl (37/53 total cap)
+using 1/25 teacher requests (daily planning budget: 25).
+Pushed trajectory dataset to Praneshrajan15/dataforge-sft-trajectories.
