@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 from types import ModuleType
 
+import pytest
 import yaml
 
 SPACE_ROOT = Path(__file__).resolve().parents[2] / "playground-model"
@@ -13,6 +14,7 @@ SPACE_ROOT = Path(__file__).resolve().parents[2] / "playground-model"
 
 def _load_space_app() -> ModuleType:
     """Load `playground-model/app.py` without requiring a package import name."""
+    pytest.importorskip("gradio")  # app.py imports gradio at module level
     spec = importlib.util.spec_from_file_location(
         "dataforge_model_space_app", SPACE_ROOT / "app.py"
     )
