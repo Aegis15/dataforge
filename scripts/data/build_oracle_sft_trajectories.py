@@ -97,7 +97,9 @@ def _csv_list(value: str | None, *, default: tuple[str, ...]) -> tuple[str, ...]
     return parsed
 
 
-def _difficulty_list(value: str | None, *, default: tuple[Difficulty, ...]) -> tuple[Difficulty, ...]:
+def _difficulty_list(
+    value: str | None, *, default: tuple[Difficulty, ...]
+) -> tuple[Difficulty, ...]:
     """Parse and validate comma-separated difficulty values."""
     raw = _csv_list(value, default=cast(tuple[str, ...], default))
     unknown = sorted(set(raw) - {"easy", "medium"})
@@ -124,11 +126,14 @@ def resolve_settings(args: argparse.Namespace) -> OracleSettings:
     config = load_oracle_config(cast(Path, args.config))
     collection = _collection_config(config)
     oracle = _oracle_config(config)
-    datasets_default = tuple(
-        str(item)
-        for item in collection.get("datasets", DEFAULT_DATASETS)
-        if isinstance(item, str)
-    ) or DEFAULT_DATASETS
+    datasets_default = (
+        tuple(
+            str(item)
+            for item in collection.get("datasets", DEFAULT_DATASETS)
+            if isinstance(item, str)
+        )
+        or DEFAULT_DATASETS
+    )
     difficulties_default = _difficulty_list(
         None,
         default=tuple(
@@ -213,9 +218,7 @@ def deterministic_row_split(
     eval_rows_count = min(n_rows - 1, max(min_eval_rows, round(n_rows * eval_fraction)))
     ranked_rows = sorted(
         range(n_rows),
-        key=lambda row: hashlib.sha256(
-            f"{dataset_name}:{split_seed}:{row}".encode()
-        ).hexdigest(),
+        key=lambda row: hashlib.sha256(f"{dataset_name}:{split_seed}:{row}".encode()).hexdigest(),
     )
     eval_rows = frozenset(ranked_rows[:eval_rows_count])
     train_rows = tuple(row for row in range(n_rows) if row not in eval_rows)
@@ -225,8 +228,7 @@ def deterministic_row_split(
 def _dirty_row_hash(dataset: RealWorldDataset, row: int) -> str:
     """Return a stable hash of one dirty source row without exposing clean labels."""
     values = {
-        str(column): str(dataset.dirty_df.iloc[row][column])
-        for column in dataset.canonical_columns
+        str(column): str(dataset.dirty_df.iloc[row][column]) for column in dataset.canonical_columns
     }
     payload = {
         "dataset": dataset.metadata.name,
@@ -248,7 +250,9 @@ def _manifest_rows(dataset: RealWorldDataset, rows: tuple[int, ...]) -> list[dic
     ]
 
 
-def chunk_train_rows(train_rows: tuple[int, ...], *, chunk_rows: int) -> tuple[tuple[int, ...], ...]:
+def chunk_train_rows(
+    train_rows: tuple[int, ...], *, chunk_rows: int
+) -> tuple[tuple[int, ...], ...]:
     """Chunk already-split train rows without reintroducing held-out rows."""
     return tuple(
         train_rows[start : start + chunk_rows] for start in range(0, len(train_rows), chunk_rows)

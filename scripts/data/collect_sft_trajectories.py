@@ -449,8 +449,8 @@ def build_light_dataset(
                     column=cell.column,
                     dirty_value=cell.dirty_value,
                     clean_value=cell.clean_value,
+                )
             )
-        )
 
     metadata = dataset.metadata.model_copy(update={"n_rows": len(dirty_df.index)})
     return RealWorldDataset(
@@ -777,9 +777,7 @@ def _normalization_candidates(
         if dataset.metadata.name == "flights"
         else context_indices
     )
-    rows_by_index = {
-        int(row["_row"]): row for row in _chunk_records(dataset, reference_indices)
-    }
+    rows_by_index = {int(row["_row"]): row for row in _chunk_records(dataset, reference_indices)}
     candidates: list[NormalizationCandidate] = []
     for row_index in row_indices:
         row = rows_by_index.get(row_index)
@@ -922,7 +920,8 @@ def _teacher_proposed_flights_issues(
     if not isinstance(reason, str) or not reason.strip():
         issues.append(f"repair {repair_index} reason must be a non-empty string")
     if not (
-        isinstance(evidence, str) and evidence.strip()
+        isinstance(evidence, str)
+        and evidence.strip()
         or isinstance(evidence, list)
         and all(isinstance(item, str) and item.strip() for item in evidence)
     ):
@@ -1096,7 +1095,12 @@ def _verify_flights_repairs(
             prompt_tokens=completion.prompt_tokens,
             completion_tokens=completion.completion_tokens,
         )
-    messages.append({"role": "user", "content": json.dumps({"flights_verifier": verifier_messages[1]}, sort_keys=True)})
+    messages.append(
+        {
+            "role": "user",
+            "content": json.dumps({"flights_verifier": verifier_messages[1]}, sort_keys=True),
+        }
+    )
     messages.append({"role": "assistant", "content": completion.text})
     approvals = _verification_payload_approvals(_completion_payload(completion))
     verified_teacher_repairs = [
@@ -1384,9 +1388,7 @@ def _collect_chunk(
         and isinstance(current_payload.get("repairs"), list)
         else []
     )
-    raw_repair_payloads = [
-        raw_repair for raw_repair in raw_repairs if isinstance(raw_repair, dict)
-    ]
+    raw_repair_payloads = [raw_repair for raw_repair in raw_repairs if isinstance(raw_repair, dict)]
     if current_payload is not None and current_payload.get("action") == "submit_repairs":
         repairs.extend(_repairs_from_payload(current_payload))
 
@@ -1619,9 +1621,7 @@ def _resolve_collection_settings(args: argparse.Namespace) -> CollectionSettings
         args.teacher_timeout_s if args.teacher_timeout_s is not None else args.groq_timeout_s
     )
     teacher_retries_arg = (
-        args.teacher_max_retries
-        if args.teacher_max_retries is not None
-        else args.groq_max_retries
+        args.teacher_max_retries if args.teacher_max_retries is not None else args.groq_max_retries
     )
     default_min_interval_s = defaults.min_interval_s
     if teacher_provider == "cerebras":
@@ -1706,10 +1706,7 @@ def _validate_collection_settings(settings: CollectionSettings) -> None:
         raise ValueError("--context-window-rows must be >= 0 when provided.")
     if settings.flights_repair_mode not in {"strict", "verified"}:
         raise ValueError("--flights-repair-mode must be strict or verified.")
-    if (
-        settings.flights_verifier_model is not None
-        and not settings.flights_verifier_model.strip()
-    ):
+    if settings.flights_verifier_model is not None and not settings.flights_verifier_model.strip():
         raise ValueError("--flights-verifier-model must be non-empty when provided.")
     if settings.min_interval_s < 0:
         raise ValueError("--min-interval-s must be >= 0.")

@@ -68,9 +68,7 @@ class TestGroqBenchClient:
             )
 
         assert completion.text == '{"repairs": []}'
-        assert mock_client.post.call_args.args[0] == (
-            "https://api.cerebras.ai/v1/chat/completions"
-        )
+        assert mock_client.post.call_args.args[0] == ("https://api.cerebras.ai/v1/chat/completions")
         assert mock_client.post.call_args.kwargs["json"]["model"] == (
             "qwen-3-235b-a22b-instruct-2507"
         )

@@ -108,9 +108,7 @@ def test_oracle_records_use_exact_dirty_clean_labels_without_teacher_discovery()
         assert assistant_payload["repairs"] == record["fix"]
 
     fixes = {
-        (fix["row"], fix["column"], fix["new_value"])
-        for record in records
-        for fix in record["fix"]
+        (fix["row"], fix["column"], fix["new_value"]) for record in records for fix in record["fix"]
     }
     eval_rows = set(records[0]["provenance"]["eval_rows"])
     expected = {

@@ -76,7 +76,7 @@ def test_notebook_loads_yaml_and_exercises_required_training_flow() -> None:
     assert "Loaded T4 training memory settings:" in source
     assert "Installed TRL does not support loss_type='chunked_nll'" in source
     assert 'importlib_metadata.version("trl")' in source
-    assert "device_map={\"\": 0}" in source
+    assert 'device_map={"": 0}' in source
     assert "Trainable parameter dtypes:" in source
     assert "bf16 trainable parameters remain" in source
     assert "param.dtype != torch.float32" in source
@@ -103,5 +103,8 @@ def test_notebook_loads_yaml_and_exercises_required_training_flow() -> None:
     assert "quality_milestone" in source
     assert "pipeline_complete_no_heldout_gain" in source
     assert '"dataset": dataset_name' in source
-    assert 'dataset_name = task.get("dataset") or task.get("schema_summary", {}).get("dataset", "unknown")' in source
+    assert (
+        'dataset_name = task.get("dataset") or task.get("schema_summary", {}).get("dataset", "unknown")'
+        in source
+    )
     assert 'task_scores.append({"dataset": dataset_name' in source

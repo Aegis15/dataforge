@@ -313,8 +313,7 @@ class GeminiBenchClient:
     def _post(self, messages: list[dict[str, str]]) -> dict[str, object]:
         """Issue the underlying Gemini generateContent request."""
         endpoint = (
-            "https://generativelanguage.googleapis.com/v1beta/"
-            f"models/{self._model}:generateContent"
+            f"https://generativelanguage.googleapis.com/v1beta/models/{self._model}:generateContent"
         )
         last_rate_limit_error: httpx.HTTPStatusError | None = None
         for attempt in range(self._max_retries):
@@ -364,17 +363,13 @@ class GeminiBenchClient:
 
         warnings: list[str] = []
         usage = payload.get("usageMetadata", {})
-        prompt_tokens = (
-            int(usage.get("promptTokenCount", 0)) if isinstance(usage, dict) else 0
-        )
+        prompt_tokens = int(usage.get("promptTokenCount", 0)) if isinstance(usage, dict) else 0
         completion_tokens = (
             int(usage.get("candidatesTokenCount", 0)) if isinstance(usage, dict) else 0
         )
         if not usage:
             warnings.append("missing_usage_payload")
-            logging.getLogger("dataforge.bench.groq_client").warning(
-                "gemini_missing_usage_payload"
-            )
+            logging.getLogger("dataforge.bench.groq_client").warning("gemini_missing_usage_payload")
 
         try:
             candidates = cast(list[dict[str, object]], payload["candidates"])

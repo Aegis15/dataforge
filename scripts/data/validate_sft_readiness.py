@@ -238,14 +238,16 @@ def _oracle_eval_rows(record: dict[str, Any], *, index: int) -> set[int]:
     """Return held-out row ids recorded for an oracle trajectory."""
     provenance = _as_mapping(record["provenance"], name=f"record {index} provenance")
     raw_eval_rows = provenance.get("eval_rows")
-    if not isinstance(raw_eval_rows, list) or not all(isinstance(row, int) for row in raw_eval_rows):
-        raise SftReadinessError(
-            f"Record {index} oracle provenance must include integer eval_rows."
-        )
+    if not isinstance(raw_eval_rows, list) or not all(
+        isinstance(row, int) for row in raw_eval_rows
+    ):
+        raise SftReadinessError(f"Record {index} oracle provenance must include integer eval_rows.")
     return set(cast(list[int], raw_eval_rows))
 
 
-def _validate_oracle_no_eval_leak(record: dict[str, Any], *, index: int) -> tuple[set[int], set[int]]:
+def _validate_oracle_no_eval_leak(
+    record: dict[str, Any], *, index: int
+) -> tuple[set[int], set[int]]:
     """Reject oracle records that expose held-out rows anywhere in the SFT example."""
     eval_rows = _oracle_eval_rows(record, index=index)
     if not eval_rows:
@@ -399,7 +401,9 @@ def _validate_record_against_manifest(
     """Ensure an oracle record agrees with the published split manifest."""
     dataset = str(record["dataset"])
     if dataset not in manifest_train or dataset not in manifest_eval:
-        raise SftReadinessError(f"Record {index} dataset {dataset!r} is absent from split manifest.")
+        raise SftReadinessError(
+            f"Record {index} dataset {dataset!r} is absent from split manifest."
+        )
     eval_rows = _oracle_eval_rows(record, index=index)
     if eval_rows != manifest_eval[dataset]:
         raise SftReadinessError(
