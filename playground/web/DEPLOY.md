@@ -1,45 +1,18 @@
 # DataForge Playground - Cloudflare Workers Static Assets Deployment
 
-This document contains the authoritative steps to deploy the static frontend to
-Cloudflare Workers Static Assets. The backend is a separate Hugging Face Space
-and is wired into the frontend through `playground/web/config.js`.
+This document contains the authoritative steps to deploy the React/Vite
+playground frontend to Cloudflare Workers Static Assets. The API backend stays
+in the separate Hugging Face Docker Space and is wired through
+`playground/web/public/config.js`.
 
 ## Prerequisites
 
 - A Cloudflare account on the free tier
+- Node.js 22 or newer
 - The repository pushed to GitHub
 - A live Hugging Face Space URL for the API backend
 
-## Step 1: Connect the repository
-
-1. Log in to Cloudflare Dashboard.
-2. Go to **Workers & Pages** and open the existing connected Worker project.
-3. Connect the GitHub repository.
-
-Use these build settings:
-
-- **Project name**: `dataforge`
-- **Production branch**: `main`
-- **Build command**:
-
-```bash
-python scripts/playground/render_web_config.py
-```
-
-- **Deploy command**:
-
-```bash
-npx wrangler@4.85.0 deploy --config wrangler.toml
-```
-
-- **Root directory**: `/`
-
-`wrangler.toml` is the frontend deployment source of truth. The renderer is the
-supported way to override the deployable `config.js` file. The committed
-`config.js` also contains the public production backend URL so an assets-only
-deploy cannot accidentally ship an empty backend config.
-
-## Step 2: Set the backend URL
+## Step 1: Configure the backend URL
 
 In the Cloudflare project settings, add:
 
@@ -48,39 +21,68 @@ In the Cloudflare project settings, add:
 | `BACKEND_URL` | `https://<hf-user>-dataforge-playground.hf.space` | Production |
 | `BACKEND_URL` | `https://<hf-user>-dataforge-playground.hf.space` | Preview |
 
+The build must render this value before Vite copies public assets:
+
+```bash
+python scripts/playground/render_web_config.py
+```
+
+## Step 2: Build the static app
+
+From the repository root:
+
+```bash
+npm --prefix playground/web ci
+npm --prefix playground/web run build
+```
+
+The build writes `playground/web/dist`. `wrangler.toml` points Cloudflare at
+that directory. `public/_headers` is copied into the build so `config.js` is
+served with `Cache-Control: no-store` and hashed assets are long-cacheable.
+
 ## Step 3: Deploy
 
-After the first successful deploy, the frontend will be served at:
+```bash
+npx wrangler@4.85.0 deploy --config wrangler.toml
+```
 
-- Production: the Worker project's configured `workers.dev` hostname or custom
-  domain
-- Preview: the preview URL emitted by Workers Builds for the branch/version
+No Worker script is required; this remains an assets-only frontend deploy.
 
 ## Step 4: Verify
 
 ```bash
 python scripts/playground/verify_frontend_deploy.py \
-  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev
+  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev \
+  --backend-url https://<hf-user>-dataforge-playground.hf.space
 ```
 
-Confirm that:
+The verifier checks that:
 
-- The page loads with `config.js`, `style.css`, and `app.js` as relative assets.
-- `config.js` contains the Hugging Face backend URL and is served with
-  `Cache-Control: no-store`.
-- The frontend warms `/api/health` on load.
-- The advanced toggle matches the backend's `advanced_available` field.
-- The backend returns `Access-Control-Allow-Origin` for the deployed frontend
-  hostname.
+- The Cloudflare root serves the built React shell and hashed assets.
+- `config.js` contains the Hugging Face backend URL and is uncached.
+- The backend root returns API metadata instead of stale frontend HTML.
+- `/api/health` exposes `status`, `advanced_available`, and `max_upload_bytes`.
+- Backend CORS allows the exact deployed frontend origin.
+
+## Quality Gates
+
+Run the frontend gates locally before deployment:
+
+```bash
+npm --prefix playground/web run typecheck
+npm --prefix playground/web run test:unit
+npm --prefix playground/web run test:e2e
+```
+
+The browser suite covers sample and upload flows, repair dry-run evidence,
+keyboard tabs, mobile viewport behavior, export/copy actions, and axe-powered
+accessibility checks.
 
 ## Notes
 
-- No Worker script is required; this remains an assets-only frontend deploy.
-- No custom domain is required for the free-tier launch, but any custom domain
-  must be added to `DATAFORGE_PLAYGROUND_ORIGINS` in the Hugging Face Space.
+- No browser persistence is used.
+- No API keys are embedded in the frontend; provider keys stay in Hugging Face
+  Space secrets.
 - In production, `DATAFORGE_PLAYGROUND_ORIGINS` must contain the exact
   Cloudflare frontend origin. The backend does not allow broad `workers.dev`
   wildcards.
-- No browser storage is used.
-- No API keys are embedded in the frontend; all provider keys stay in Hugging
-  Face Space secrets.

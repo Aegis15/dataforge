@@ -1,99 +1,137 @@
 # DataForge Architecture
 
-Last updated: 2026-05-15.
+Last updated: 2026-05-20.
 
-DataForge is organized around a local, auditable repair pipeline:
+DataForge is a local, auditable data-quality repair system. The core package is
+kept separate from playground, training, and model-demo surfaces so the CLI can
+remain installable without web or model dependencies.
 
-```text
-CSV/schema -> detectors -> repairers -> SafetyFilter -> SMTVerifier -> transaction log -> data
+```mermaid
+flowchart LR
+    A["CSV + optional schema"] --> B["Detectors"]
+    B --> C["Repairers"]
+    C --> D["SafetyFilter"]
+    D --> E["SMTVerifier"]
+    E --> F["Transaction journal + source snapshot"]
+    F --> G["CSV mutation"]
+    G --> H["Byte-for-byte revert"]
 ```
 
-The same core package is reused by the CLI, benchmark harness, OpenEnv
-environment, playground API, and MCP server. Demo and training surfaces are kept
-separate from the core runtime so the CLI remains installable without model or
-web dependencies.
-
-## Current Layers
+## Runtime Layers
 
 - **CLI and terminal UI**: Typer commands in `dataforge/cli/` with Rich output.
-  Current commands are `profile`, `repair`, `revert`, and `bench`.
-- **Detectors**: pure pandas-based detector classes for `type_mismatch`,
-  `decimal_shift`, and `fd_violation`.
-- **Repairers**: deterministic proposal generators for the shipped detector
-  families. LLM fallback is optional and explicit where supported.
-- **Safety**: constitutional safety rules compiled from YAML and enforced before
-  writes.
-- **Verification**: Z3-backed SMT checks plus typed verifier gates.
+  Public commands are `profile`, `repair`, `revert`, and `bench`.
+- **Detectors**: pandas-based scanners for `type_mismatch`, `decimal_shift`,
+  and `fd_violation`. Detectors emit typed issues and never mutate data.
+- **Repairers**: deterministic proposal generators for shipped detector
+  families. Optional LLM fallback remains explicit and is not part of the
+  default write path.
+- **Safety**: constitution-backed policy checks that deny unsafe edits,
+  row deletion, conflicting batch writes, and unconfirmed sensitive changes.
+- **Verification**: Z3-backed SMT checks that reject fixes which violate schema
+  constraints or cannot be proven safe.
 - **Transactions**: append-only JSONL journals, immutable source snapshots,
   post-state hash guards, and byte-for-byte revert.
-- **Benchmarks**: Hospital, Flights, and Beers loaders, local method runners,
-  quota accounting, and markdown report generation.
-- **OpenEnv environment**: HTTP and in-process environment with eight typed
-  actions: `INSPECT_ROWS`, `SQL_QUERY`, `STAT_TEST`, `PATTERN_MATCH`,
-  `HYPOTHESIS`, `DIAGNOSE`, `FIX`, and `ROOT_CAUSE`.
-- **Causal analyzer**: column-level DAG construction, FD-prior PC discovery,
-  and minimal root-set analysis for cascading errors.
+- **Benchmarks**: Hospital, Flights, and Beers loaders, method runners, quota
+  accounting, and generated markdown reports.
+- **OpenEnv environment**: HTTP and in-process environment with typed actions:
+  `INSPECT_ROWS`, `SQL_QUERY`, `STAT_TEST`, `PATTERN_MATCH`, `HYPOTHESIS`,
+  `DIAGNOSE`, `FIX`, and `ROOT_CAUSE`.
+- **Causal analyzer**: column-level DAG utilities, functional-dependency priors,
+  PC discovery fallback, and minimal root-set analysis.
 - **Playground**: FastAPI backend staged into a Hugging Face Docker Space and a
   static frontend deployed through Cloudflare Workers Static Assets.
-- **Training and model demos**: SFT trajectory builders, readiness/release
-  verifiers, Kaggle notebook, dataset/model card templates, and a separate
-  Gradio model-demo Space.
+- **Training and model demos**: SFT trajectory builders, GRPO reward/config
+  hooks, readiness and release verifiers, Kaggle notebooks, Hub metadata, and a
+  separate Gradio model-demo Space.
 - **MCP integration**: nested standalone `dataforge-mcp/` package exposing
   structured DataForge tools over stdio by default.
-
-## Dependency Guidance
-
-Core runtime dependencies in `pyproject.toml`:
-
-- `pandas` and `pyarrow` - CSV/tabular data handling.
-- `pydantic` - typed issue, fix, schema, environment, and MCP result models.
-- `typer` and `rich` - CLI application and terminal output.
-- `pyyaml` - schema and constitution loading.
-- `z3-solver` - SMT verification.
-- `networkx` - causal DAG representation and reachability.
-- `causal-learn` - PC causal discovery after missing-value cleanup.
-- `hyppo` and `scipy` - independence tests used by causal discovery.
-- `httpx`, `tenacity`, and `python-dotenv` - optional provider clients and
-  environment loading.
-- `sqlglot` and `duckdb` - read-only SQL parsing/execution inside the
-  environment.
-
-Optional extras:
-
-- `dev` - pytest, ruff, mypy, Hypothesis, benchmark, and Hub tooling.
-- `train` - pinned Kaggle SFT stack (`trl`, `transformers`, `accelerate`,
-  `peft`, `bitsandbytes`, `datasets`, `huggingface_hub`).
-- `eval` - plotting libraries for evaluation summaries.
-- `playground` - FastAPI, Uvicorn, multipart upload, and rate limiting.
-- `openenv` - OpenEnv protocol dependency.
-- `all` - aggregate development install.
-
-Scoped non-core dependencies:
-
-- `dataforge-mcp/pyproject.toml` depends on `dataforge` and `mcp`; MCP transport
-  dependencies are not part of the core package.
-- `playground-model/requirements.txt` contains Gradio/Spaces/model-demo
-  dependencies only.
-- `playground/api/requirements.txt` contains the hosted playground API stack.
 
 ## Safety Invariant
 
 Every applied repair must follow this order:
 
-```text
-proposed fix -> SafetyFilter -> SMTVerifier -> transaction journal/snapshot -> disk mutation
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Repairer
+    participant Safety
+    participant SMT
+    participant Journal
+    participant Disk
+
+    Agent->>Repairer: request proposed fix
+    Repairer->>Safety: ProposedFix
+    Safety->>SMT: accepted safety candidate
+    SMT->>Journal: accepted verification result
+    Journal->>Disk: write only after snapshot and journal
+    Disk-->>Agent: applied transaction id
 ```
 
-Dry-run paths may stop before mutation, but they should still exercise the same
-proposal, safety, and verification logic where feasible. The MCP server and
-playground API must preserve this invariant instead of bypassing the CLI.
+Dry-run paths may stop before mutation, but they should exercise the same
+proposal, safety, and verification logic where feasible. The CLI, MCP server,
+playground API, and OpenEnv environment must preserve this invariant.
+
+## Data And Control Flow
+
+```mermaid
+flowchart TB
+    subgraph Core["Core package"]
+        CLI["CLI"]
+        ENV["OpenEnv environment"]
+        MCP["MCP tools"]
+        API["Playground API"]
+    end
+
+    Core --> DET["Detectors"]
+    DET --> REP["Repairers"]
+    REP --> SAFE["Safety"]
+    SAFE --> VER["Verifier"]
+    VER --> TXN["Transactions"]
+
+    BENCH["Benchmarks"] --> DET
+    TRAIN["Training/eval scripts"] --> BENCH
+    DOCS["Docs and release workflows"] --> BENCH
+```
+
+The core pipeline owns repair behavior. Surrounding surfaces can expose or test
+the pipeline, but they should not create parallel write semantics.
+
+## Dependency Guidance
+
+Core runtime dependencies in `pyproject.toml`:
+
+- `pandas` and `pyarrow` for tabular data handling.
+- `pydantic` for typed issues, fixes, schemas, environment observations, and
+  release evidence.
+- `typer` and `rich` for CLI UX.
+- `pyyaml` for schema and constitution loading.
+- `z3-solver` for SMT verification.
+- `networkx`, `causal-learn`, `hyppo`, and `scipy` for causal discovery and
+  statistical tests.
+- `httpx`, `tenacity`, and `python-dotenv` for optional provider clients.
+- `sqlglot` and `duckdb` for read-only SQL parsing and execution.
+
+Optional extras and scoped dependencies:
+
+- `dev`: pytest, ruff, mypy, Hypothesis, benchmark, and Hub tooling.
+- `train`: pinned Kaggle SFT/GRPO stack.
+- `eval`: plotting libraries for evaluation summaries.
+- `playground`: FastAPI, Uvicorn, multipart upload, and rate limiting.
+- `openenv`: OpenEnv protocol dependency.
+- `dataforge-mcp/`: separate PyPI package with MCP dependencies.
+- `playground-model/`: Gradio and model-demo dependencies only.
 
 ## Release Boundaries
 
-- `dataforge` is the core CLI/library package.
-- `dataforge-mcp` is a nested standalone package with its own PyPI release flow
-  from `dataforge-mcp-v*` tags.
+- `dataforge` is the core CLI/library distribution and is released from `v*`
+  tags only after local gates and PyPI trusted-publisher ownership are verified.
+- `dataforge-mcp` is a nested standalone distribution released from
+  `dataforge-mcp-v*` tags.
 - SFT datasets and checkpoints are Hugging Face artifacts verified by
   `scripts/model/verify_sft_release.py`.
-- Generated Space staging directories are deployment artifacts, not canonical
-  documentation sources.
+- GRPO checkpoints are Hugging Face artifacts verified by
+  `scripts/model/verify_grpo_release.py` before they can be cited as quality
+  improvements.
+- Generated Hugging Face staging directories are deployment artifacts, not
+  canonical documentation sources.

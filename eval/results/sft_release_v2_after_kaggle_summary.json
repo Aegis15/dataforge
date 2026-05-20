@@ -1,0 +1,24 @@
+{
+  "base_f1": 0.002,
+  "dataset_records": 1326,
+  "dataset_repo": "Praneshrajan15/dataforge-sft-trajectories",
+  "dataset_sha": "1e8612e5ddd48ef2d7ab78592059d187bd67ba3e",
+  "eval_diagnostics_checked": true,
+  "kaggle_hours": 0.794,
+  "model_repo": "Praneshrajan15/DataForge-0.5B-SFT",
+  "model_sha": "4ba2b5196cb1dc7a423b98d7a1cdbaa3e6bebd1b",
+  "parse_success_rate": 0.94,
+  "quality_gate_failures": [
+    "sft_f1>base_f1",
+    "parse_success_rate>=0.99",
+    "schema_case_error_count==0"
+  ],
+  "quality_milestone": false,
+  "recommendation": "Do not promote as quality-improved; use eval_diagnostics.json to fix schema-case, truncation, and missed-repair behavior before the next training run.",
+  "release_status": "diagnostic_complete_no_gain",
+  "schema_case_error_count": 45,
+  "schema_version": "dataforge_release_verification_summary_v1",
+  "sft_f1": 0.0,
+  "training_examples": 1226,
+  "trajectory_filename": "expert_v2.jsonl"
+}

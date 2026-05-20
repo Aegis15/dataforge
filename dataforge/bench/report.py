@@ -69,13 +69,14 @@ def _aggregate_across_datasets(aggregates: list[AggregateBenchmarkResult]) -> li
     for method in methods:
         ok_rows = grouped.get(method, [])
         if not ok_rows:
-            rows.append([method, "Skipped", "Skipped", "Skipped", "Skipped", "Skipped"])
+            rows.append([method, "Skipped", "Skipped", "Skipped", "Skipped", "Skipped", "Skipped"])
             continue
         p_mean = sum(row.precision_mean or 0.0 for row in ok_rows) / len(ok_rows)
         r_mean = sum(row.recall_mean or 0.0 for row in ok_rows) / len(ok_rows)
         f_mean = sum(row.f1_mean or 0.0 for row in ok_rows) / len(ok_rows)
         step_mean = sum(row.avg_steps_mean or 0.0 for row in ok_rows) / len(ok_rows)
         quota_mean = sum(row.quota_units_mean or 0.0 for row in ok_rows) / len(ok_rows)
+        gpu_hours_mean = sum(row.gpu_hours_mean or 0.0 for row in ok_rows) / len(ok_rows)
         rows.append(
             [
                 method,
@@ -84,6 +85,7 @@ def _aggregate_across_datasets(aggregates: list[AggregateBenchmarkResult]) -> li
                 f"{f_mean:.4f}",
                 f"{step_mean:.2f}",
                 f"{quota_mean:.4f}",
+                f"{gpu_hours_mean:.4f}",
             ]
         )
     return rows
@@ -104,7 +106,7 @@ def build_readme_benchmark_block(agent_output: BenchmarkRunOutput, report_path: 
     """Build the generated README benchmark summary block."""
     rows = _aggregate_across_datasets(agent_output.aggregates)
     table = _render_table(
-        ["Method", "Precision", "Recall", "F1", "Avg Steps", "Quota Units"],
+        ["Method", "Precision", "Recall", "F1", "Avg Steps", "Quota Units", "GPU Hours"],
         rows,
     )
     skip_reasons = _collect_skip_reasons(agent_output.aggregates)
@@ -138,19 +140,28 @@ def render_benchmark_report(
                 _format_metric(row.f1_mean, row.f1_std),
                 _format_metric(row.avg_steps_mean, row.avg_steps_std),
                 _format_metric(row.quota_units_mean, row.quota_units_std),
+                _format_metric(row.gpu_hours_mean, row.gpu_hours_std),
             ]
             for row in rows
         ]
         per_dataset_sections.append(
             f"### {dataset.title()}\n\n"
             + _render_table(
-                ["Method", "Precision", "Recall", "F1", "Avg Steps", "Quota Units"],
+                [
+                    "Method",
+                    "Precision",
+                    "Recall",
+                    "F1",
+                    "Avg Steps",
+                    "Quota Units",
+                    "GPU Hours",
+                ],
                 table_rows,
             )
         )
 
     local_summary = _render_table(
-        ["Method", "Precision", "Recall", "F1", "Avg Steps", "Quota Units"],
+        ["Method", "Precision", "Recall", "F1", "Avg Steps", "Quota Units", "GPU Hours"],
         _aggregate_across_datasets(agent_output.aggregates),
     )
 
@@ -197,6 +208,7 @@ def render_benchmark_report(
         f"- Datasets: {', '.join(datasets)}\n"
         f"- Seeds: {seeds}\n"
         "- Free-tier quota units: `max(llm_calls / 1000, (prompt_tokens + completion_tokens) / 100000)`\n"
+        "- GRPO compute cost is reported as free-tier GPU-hours, not dollars.\n"
         f"{skip_note}\n"
         "## Cross-Dataset Local Results\n\n"
         f"{local_summary}\n\n"
@@ -210,7 +222,7 @@ def render_benchmark_report(
             sota_rows,
         )
         + "\n\n## Methodology\n\n"
-        + "Local rows are reproduced from generated JSON. Citation-only SOTA rows are copied from literature and are not rerun in this repository. Quota units are reported in free-tier fractions rather than dollars.\n"
+        + "Local rows are reproduced from generated JSON. Citation-only SOTA rows are copied from literature and are not rerun in this repository. LLM quota units are free-tier fractions; GRPO compute cost is GPU-hours, not dollars.\n"
     )
 
 

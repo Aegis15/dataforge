@@ -17,6 +17,18 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from dataforge.evaluation_contract import (  # noqa: E402
+    ABSTENTION_SLICES,
+    AUXILIARY_SLICES,
+    PROMOTION_SLICE,
+    InferabilityLabel,
+)
+from dataforge.repair_contract import (  # noqa: E402
+    CONTRACT_VERSION,
+    CONTRACT_VERSION_V1,
+    CONTRACT_VERSION_V2,
+    parse_repair_action,
+)
 from scripts.data.collect_sft_trajectories import validate_trajectory_record  # noqa: E402
 
 DEFAULT_CONFIG = Path("training/configs/sft_05b.yaml")
@@ -25,6 +37,11 @@ DEFAULT_SPLIT_MANIFEST = Path("data/sft_traj/split_manifest.json")
 DEFAULT_MIN_RECORDS = 32
 DEFAULT_HOLDOUT_RECORDS = 100
 EXPECTED_TRL_PIN = "trl==1.4.0"
+INFERABLE_LABELS = {"deterministic_normalization", "context_derivable"}
+INFERABILITY_LABELS = INFERABLE_LABELS | {
+    "external_reference_required",
+    "not_inferable_from_prompt",
+}
 EXPECTED_T4_TRAINING = {
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 16,
@@ -54,6 +71,14 @@ class SftReadinessReport:
     split_manifest_present: bool = False
     split_manifest_train_rows: int = 0
     split_manifest_eval_rows: int = 0
+    prompt_contract_version: str | None = None
+    noop_records: int = 0
+    max_repairs_per_record: int = 0
+    inferability_counts: dict[InferabilityLabel, int] | None = None
+    inferable_records: int = 0
+    noninferable_records: int = 0
+    deterministic_records: int = 0
+    abstention_records: int = 0
 
 
 def _as_mapping(value: object, *, name: str) -> dict[str, Any]:
@@ -191,6 +216,83 @@ def _collection_methods(config: dict[str, Any]) -> set[str]:
             raise SftReadinessError("collection.collection_methods entries must be strings.")
         methods.add(method)
     return methods
+
+
+def _prompt_contract_version(config: dict[str, Any]) -> str | None:
+    """Return the configured repair prompt contract version, if any."""
+    collection = _as_mapping(config["collection"], name="collection")
+    value = collection.get("prompt_contract_version")
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value:
+        raise SftReadinessError("collection.prompt_contract_version must be a string.")
+    return value
+
+
+def _max_repairs_per_record(config: dict[str, Any]) -> int | None:
+    """Return the configured v2 repair-density cap."""
+    oracle = _as_mapping(config["collection"], name="collection").get("oracle", {})
+    oracle_config = _as_mapping(oracle, name="collection.oracle") if oracle else {}
+    value = oracle_config.get("max_repairs_per_record")
+    if value is None:
+        return None
+    if not isinstance(value, int) or value < 1:
+        raise SftReadinessError("collection.oracle.max_repairs_per_record must be >= 1.")
+    return value
+
+
+def _min_noop_ratio(config: dict[str, Any]) -> float:
+    """Return the configured minimum no-op ratio."""
+    oracle = _as_mapping(config["collection"], name="collection").get("oracle", {})
+    oracle_config = _as_mapping(oracle, name="collection.oracle") if oracle else {}
+    value = float(oracle_config.get("min_noop_ratio", 0.0))
+    if value < 0.0 or value >= 1.0:
+        raise SftReadinessError("collection.oracle.min_noop_ratio must be >= 0 and < 1.")
+    return value
+
+
+def _min_inferable_records(config: dict[str, Any]) -> int:
+    """Return the configured minimum v3 trainable inferability count."""
+    oracle = _as_mapping(config["collection"], name="collection").get("oracle", {})
+    oracle_config = _as_mapping(oracle, name="collection.oracle") if oracle else {}
+    value = oracle_config.get("min_inferable_records", 0)
+    if not isinstance(value, int) or value < 0:
+        raise SftReadinessError("collection.oracle.min_inferable_records must be >= 0.")
+    return value
+
+
+def _min_deterministic_records(config: dict[str, Any]) -> int:
+    """Return the configured minimum v4 promotion-slice examples."""
+    oracle = _as_mapping(config["collection"], name="collection").get("oracle", {})
+    oracle_config = _as_mapping(oracle, name="collection.oracle") if oracle else {}
+    value = oracle_config.get("min_deterministic_records", 0)
+    if not isinstance(value, int) or value < 0:
+        raise SftReadinessError("collection.oracle.min_deterministic_records must be >= 0.")
+    return value
+
+
+def _min_abstention_records(config: dict[str, Any]) -> int:
+    """Return the configured minimum v4 abstention examples."""
+    oracle = _as_mapping(config["collection"], name="collection").get("oracle", {})
+    oracle_config = _as_mapping(oracle, name="collection.oracle") if oracle else {}
+    value = oracle_config.get("min_abstention_records", 0)
+    if not isinstance(value, int) or value < 0:
+        raise SftReadinessError("collection.oracle.min_abstention_records must be >= 0.")
+    return value
+
+
+def _record_inferability(record: dict[str, Any], *, index: int) -> InferabilityLabel | None:
+    """Return and validate a trajectory record's inferability label when present."""
+    raw_label = record.get("inferability")
+    if raw_label is None:
+        raw_label = _as_mapping(record["provenance"], name=f"record {index} provenance").get(
+            "inferability"
+        )
+    if raw_label is None:
+        return None
+    if raw_label not in INFERABILITY_LABELS:
+        raise SftReadinessError(f"Record {index} has unknown inferability label {raw_label!r}.")
+    return cast(InferabilityLabel, raw_label)
 
 
 def _oracle_teacher_key(config: dict[str, Any]) -> tuple[str, str]:
@@ -426,6 +528,89 @@ def _validate_record_against_manifest(
         )
 
 
+def _validate_prompt_contract(
+    record: dict[str, Any],
+    *,
+    index: int,
+    expected_contract: str | None,
+    max_repairs_per_record: int | None,
+) -> tuple[int, bool]:
+    """Validate one record's prompt/action contract and repair density."""
+    repairs = record.get("fix")
+    if not isinstance(repairs, list):
+        raise SftReadinessError(f"Record {index} fix must be a list.")
+    if max_repairs_per_record is not None and len(repairs) > max_repairs_per_record:
+        raise SftReadinessError(
+            f"Record {index} has {len(repairs)} repairs; configured cap is "
+            f"{max_repairs_per_record}."
+        )
+    if expected_contract is None:
+        return len(repairs), not repairs
+
+    record_contract = record.get("prompt_contract_version") or _as_mapping(
+        record["provenance"], name=f"record {index} provenance"
+    ).get("prompt_contract_version")
+    if record_contract != expected_contract:
+        raise SftReadinessError(
+            f"Record {index} prompt contract {record_contract!r}; expected {expected_contract!r}."
+        )
+    if expected_contract not in {CONTRACT_VERSION, CONTRACT_VERSION_V1, CONTRACT_VERSION_V2}:
+        raise SftReadinessError(f"Unsupported configured prompt contract {expected_contract!r}.")
+
+    messages = record.get("messages")
+    if not isinstance(messages, list) or len(messages) < 3:
+        raise SftReadinessError(f"Record {index} must include system/user/assistant messages.")
+    user_message = messages[1]
+    assistant_message = messages[-1]
+    if not isinstance(user_message, dict) or not isinstance(assistant_message, dict):
+        raise SftReadinessError(f"Record {index} messages must be mappings.")
+    try:
+        user_payload = json.loads(str(user_message["content"]))
+    except (KeyError, json.JSONDecodeError) as exc:
+        raise SftReadinessError(f"Record {index} user message is not contract JSON.") from exc
+    user_map = _as_mapping(user_payload, name=f"record {index} user payload")
+    required_user_keys = {
+        "contract_version",
+        "schema_summary",
+        "allowed_columns",
+        "target_rows",
+        "context_rows",
+    }
+    if expected_contract == CONTRACT_VERSION_V2:
+        required_user_keys.add("valid_rows")
+    missing = sorted(required_user_keys - set(user_map))
+    if missing:
+        raise SftReadinessError(
+            f"Record {index} user payload missing contract key(s): {', '.join(missing)}."
+        )
+    if user_map["contract_version"] != expected_contract:
+        raise SftReadinessError(f"Record {index} user payload contract mismatch.")
+    if (
+        _as_mapping(record["state"], name=f"record {index} state").get("target_rows")
+        != user_map["target_rows"]
+    ):
+        raise SftReadinessError(f"Record {index} target_rows drift between state and prompt.")
+    parse_result = parse_repair_action(
+        str(assistant_message.get("content", "")),
+        allowed_columns=cast(list[str], user_map["allowed_columns"])
+        if expected_contract == CONTRACT_VERSION_V2
+        else None,
+        valid_rows=cast(list[int], user_map["valid_rows"])
+        if expected_contract == CONTRACT_VERSION_V2 and isinstance(user_map.get("valid_rows"), list)
+        else None,
+        require_explicit_action=expected_contract == CONTRACT_VERSION_V2,
+    )
+    if not parse_result.ok or parse_result.action is None:
+        raise SftReadinessError(
+            f"Record {index} assistant message violates repair contract: "
+            f"{parse_result.error_message}"
+        )
+    parsed_repairs = [repair.model_dump(mode="json") for repair in parse_result.action.repairs]
+    if parsed_repairs != repairs:
+        raise SftReadinessError(f"Record {index} assistant repairs drift from fix field.")
+    return len(repairs), not repairs
+
+
 def validate_records(
     records: list[dict[str, Any]],
     *,
@@ -452,6 +637,12 @@ def validate_records(
     expected_provider = collection.get("teacher_provider")
     allowed_methods = _collection_methods(config)
     oracle_teacher = _oracle_teacher_key(config)
+    expected_prompt_contract = _prompt_contract_version(config)
+    max_repairs_per_record = _max_repairs_per_record(config)
+    min_noop_ratio = _min_noop_ratio(config)
+    min_inferable_records = _min_inferable_records(config)
+    min_deterministic_records = _min_deterministic_records(config)
+    min_abstention_records = _min_abstention_records(config)
     accepted_teachers = collection.get("accepted_teachers")
     allowed_teachers: set[tuple[str | None, str]] = set()
     if isinstance(expected_provider, str):
@@ -475,6 +666,9 @@ def validate_records(
     datasets: set[str] = set()
     difficulties: set[str] = set()
     collection_methods: set[str] = set()
+    inferability_counts: dict[InferabilityLabel, int] = {}
+    noop_records = 0
+    max_repairs_seen = 0
     train_row_ids: set[tuple[str, int]] = set()
     heldout_row_ids: set[tuple[str, int]] = set()
     manifest_train: dict[str, set[int]] = {}
@@ -487,6 +681,11 @@ def validate_records(
                 f"Record {index} has schema_version={record['schema_version']!r}; "
                 f"expected {expected_schema!r}."
             )
+        inferability = _record_inferability(record, index=index)
+        if expected_schema in {"expert_v3", "expert_v4"} and inferability is None:
+            raise SftReadinessError(f"Record {index} {expected_schema} requires inferability.")
+        if inferability is not None:
+            inferability_counts[inferability] = inferability_counts.get(inferability, 0) + 1
         trajectory_id = str(record["trajectory_id"])
         if trajectory_id in trajectory_ids:
             raise SftReadinessError(f"Duplicate trajectory_id: {trajectory_id}")
@@ -548,10 +747,57 @@ def validate_records(
             )
         if not record.get("messages"):
             raise SftReadinessError(f"Record {index} has no chat messages.")
+        repair_count, is_noop = _validate_prompt_contract(
+            record,
+            index=index,
+            expected_contract=expected_prompt_contract,
+            max_repairs_per_record=max_repairs_per_record,
+        )
+        if expected_schema == "expert_v4":
+            if inferability == PROMOTION_SLICE and repair_count < 1:
+                raise SftReadinessError(
+                    f"Record {index} expert_v4 deterministic_normalization must carry repairs."
+                )
+            if inferability in ABSTENTION_SLICES | AUXILIARY_SLICES and repair_count:
+                raise SftReadinessError(
+                    f"Record {index} expert_v4 {inferability} must be a finish/no-repair example."
+                )
+        max_repairs_seen = max(max_repairs_seen, repair_count)
+        if is_noop:
+            noop_records += 1
         datasets.add(str(record["dataset"]))
         difficulties.add(str(record["difficulty"]))
 
     train_size, test_size = _split_sizes(len(records), holdout_records)
+    if min_noop_ratio > 0.0 and noop_records / len(records) < min_noop_ratio:
+        raise SftReadinessError(
+            "No-op ratio below configured gate: "
+            f"{noop_records / len(records):.3f} < {min_noop_ratio:.3f}."
+        )
+    inferable_records = sum(
+        count for label, count in inferability_counts.items() if label in INFERABLE_LABELS
+    )
+    noninferable_records = sum(inferability_counts.values()) - inferable_records
+    deterministic_records = inferability_counts.get(PROMOTION_SLICE, 0)
+    abstention_records = sum(
+        count for label, count in inferability_counts.items() if label in ABSTENTION_SLICES
+    )
+    if min_inferable_records and inferable_records < min_inferable_records:
+        raise SftReadinessError(
+            "Inferable v3 record count below configured gate: "
+            f"{inferable_records} < {min_inferable_records}."
+        )
+    if expected_schema == "expert_v4":
+        if min_deterministic_records and deterministic_records < min_deterministic_records:
+            raise SftReadinessError(
+                "Deterministic v4 record count below configured gate: "
+                f"{deterministic_records} < {min_deterministic_records}."
+            )
+        if min_abstention_records and abstention_records < min_abstention_records:
+            raise SftReadinessError(
+                "Abstention v4 record count below configured gate: "
+                f"{abstention_records} < {min_abstention_records}."
+            )
     packages = cast(
         list[str], _as_mapping(config["environment"], name="environment")["pip_packages"]
     )
@@ -579,6 +825,14 @@ def validate_records(
         split_manifest_present=split_manifest is not None,
         split_manifest_train_rows=manifest_train_rows,
         split_manifest_eval_rows=manifest_eval_rows,
+        prompt_contract_version=expected_prompt_contract,
+        noop_records=noop_records,
+        max_repairs_per_record=max_repairs_seen,
+        inferability_counts=inferability_counts or None,
+        inferable_records=inferable_records,
+        noninferable_records=noninferable_records,
+        deterministic_records=deterministic_records,
+        abstention_records=abstention_records,
     )
 
 
@@ -636,6 +890,20 @@ def main(argv: list[str] | None = None) -> int:
     table.add_row("Difficulties", ", ".join(report.difficulties))
     table.add_row("Teacher model", report.teacher_model)
     table.add_row("Collection methods", ", ".join(report.collection_methods))
+    table.add_row("Prompt contract", report.prompt_contract_version or "legacy")
+    if report.inferability_counts:
+        table.add_row(
+            "Inferability",
+            ", ".join(
+                f"{label}={count}" for label, count in sorted(report.inferability_counts.items())
+            ),
+        )
+        table.add_row("Inferable records", str(report.inferable_records))
+        table.add_row("Non-inferable records", str(report.noninferable_records))
+        table.add_row("Deterministic records", str(report.deterministic_records))
+        table.add_row("Abstention records", str(report.abstention_records))
+    table.add_row("No-op records", str(report.noop_records))
+    table.add_row("Max repairs/record", str(report.max_repairs_per_record))
     table.add_row("Split manifest", "present" if report.split_manifest_present else "not checked")
     table.add_row("Pinned packages", str(report.package_count))
     Console().print(table)

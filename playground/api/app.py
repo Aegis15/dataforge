@@ -13,32 +13,117 @@ import io
 import logging
 import os
 import tempfile
-from datetime import UTC, datetime
+import time
+from collections import defaultdict
+from collections.abc import Callable
+from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, TypeVar, cast
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from slowapi import Limiter
-from slowapi.errors import RateLimitExceeded
-from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
-from dataforge.cli.repair import _propose_repairs
 from dataforge.detectors import run_all_detectors
 from dataforge.detectors.base import Issue, Severity
-from dataforge.repairers.base import ProposedFix
-from dataforge.safety import SafetyFilter, SafetyVerdict
-from dataforge.transactions.log import (
-    append_created_transaction,
-    sha256_bytes,
-    snapshot_path_for,
+from dataforge.engine.repair import (
+    RepairPipelineRequest,
+    VerifiedFix,
+    run_repair_pipeline,
 )
-from dataforge.transactions.txn import RepairTransaction, generate_txn_id
+from dataforge.http.problem import problem_exception_handler, problem_response
+from dataforge.observability import configure_fastapi_observability
+from dataforge.repair_contract import CONTRACT_VERSION
+from dataforge.transactions.txn import RepairTransaction
+
+
+class FallbackRateLimitExceededError(Exception):
+    """Fallback exception shape matching slowapi's detail attribute."""
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(detail)
+        self.detail = detail
+
+
+try:
+    _slowapi_module = import_module("slowapi")
+    _slowapi_errors = import_module("slowapi.errors")
+    _slowapi_util = import_module("slowapi.util")
+    _SlowapiLimiter: Any | None = _slowapi_module.Limiter
+    _SlowapiRateLimitExceeded: type[Exception] | None = _slowapi_errors.RateLimitExceeded
+    get_remote_address = cast(Callable[[Request], str], _slowapi_util.get_remote_address)
+
+    SLOWAPI_AVAILABLE = True
+except ModuleNotFoundError:
+    _SlowapiLimiter = None
+    _SlowapiRateLimitExceeded = None
+    SLOWAPI_AVAILABLE = False
+
+    def get_remote_address(request: Request) -> str:
+        """Return the client host for fallback rate-limit keys."""
+        return request.client.host if request.client else "unknown"
+
+
+_CallableT = TypeVar("_CallableT", bound=Callable[..., Any])
+
+
+class _StorageLike(Protocol):
+    """Minimal storage protocol used by tests and fallback middleware."""
+
+    def reset(self) -> None: ...
+
+
+class _LimiterLike(Protocol):
+    """Minimal limiter protocol shared by slowapi and the fallback."""
+
+    _storage: _StorageLike
+
+    def limit(self, limit_value: str) -> Callable[[_CallableT], _CallableT]: ...
+
+
+class _FallbackStorage:
+    """Small in-memory windowed counter used when slowapi is unavailable."""
+
+    def __init__(self) -> None:
+        self._hits: dict[tuple[str, str], list[float]] = defaultdict(list)
+
+    def reset(self) -> None:
+        """Clear all fallback counters."""
+        self._hits.clear()
+
+    def allow(self, key: tuple[str, str], *, limit: int, window_seconds: float) -> bool:
+        """Record a hit and return whether it fits inside the window."""
+        now = time.monotonic()
+        hits = [seen for seen in self._hits[key] if now - seen < window_seconds]
+        hits.append(now)
+        self._hits[key] = hits
+        return len(hits) <= limit
+
+
+class _FallbackLimiter:
+    """Decorator-compatible fallback limiter."""
+
+    def __init__(self) -> None:
+        self._storage: _StorageLike = _FallbackStorage()
+
+    def limit(self, _limit_value: str) -> Callable[[_CallableT], _CallableT]:
+        """Return an identity decorator; middleware enforces the limit."""
+
+        def decorator(func: _CallableT) -> _CallableT:
+            return func
+
+        return decorator
+
+
+_RateLimitExceeded: type[Exception] = (
+    _SlowapiRateLimitExceeded
+    if _SlowapiRateLimitExceeded is not None
+    else FallbackRateLimitExceededError
+)
 
 logger = logging.getLogger("playground.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -46,6 +131,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname
 MAX_UPLOAD_BYTES = 1_048_576
 MAX_MULTIPART_OVERHEAD_BYTES = 16_384
 SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
+SLOWAPI_CONFIG = Path(__file__).resolve().parent / "slowapi.env"
 ALLOWED_SAMPLES = {"hospital_10rows", "flights_10rows", "beers_10rows"}
 
 
@@ -80,14 +166,54 @@ class SizeCapMiddleware(BaseHTTPMiddleware):
                     length,
                     self.max_body_bytes,
                 )
-                return JSONResponse(
-                    status_code=413,
-                    content={"error": "file_too_large", "max_bytes": self.max_file_bytes},
+                return problem_response(
+                    status=413,
+                    type_="https://dataforge.local/problems/file_too_large",
+                    title="File Too Large",
+                    detail="The uploaded request body exceeds the playground limit.",
+                    instance=str(request.url.path),
+                    error="file_too_large",
+                    max_bytes=self.max_file_bytes,
                 )
         return await call_next(request)
 
 
-limiter = Limiter(key_func=get_remote_address)
+class FallbackRateLimitMiddleware(BaseHTTPMiddleware):
+    """Enforce the playground POST limit when slowapi is not installed."""
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        """Apply a 10/minute in-memory fallback to mutating playground endpoints."""
+        if request.method == "POST" and request.url.path in {"/api/profile", "/api/repair"}:
+            storage = limiter._storage
+            key = (get_remote_address(request), request.url.path)
+            if isinstance(storage, _FallbackStorage) and not storage.allow(
+                key,
+                limit=10,
+                window_seconds=60.0,
+            ):
+                return problem_response(
+                    status=429,
+                    type_="https://dataforge.local/problems/rate_limit_exceeded",
+                    title="Rate Limit Exceeded",
+                    detail="10 per 1 minute",
+                    instance=str(request.url.path),
+                    headers={"Retry-After": "60"},
+                    error="rate_limit_exceeded",
+                )
+        return await call_next(request)
+
+
+if _SlowapiLimiter is not None:
+    limiter: _LimiterLike = cast(
+        _LimiterLike,
+        _SlowapiLimiter(key_func=get_remote_address, config_filename=str(SLOWAPI_CONFIG)),
+    )
+else:
+    limiter = _FallbackLimiter()
 
 
 def _advanced_available() -> bool:
@@ -123,6 +249,8 @@ app.add_middleware(
     max_file_bytes=MAX_UPLOAD_BYTES,
     max_multipart_overhead_bytes=MAX_MULTIPART_OVERHEAD_BYTES,
 )
+if not SLOWAPI_AVAILABLE:
+    app.add_middleware(FallbackRateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_build_cors_origins(),
@@ -132,14 +260,22 @@ app.add_middleware(
     allow_credentials=False,
 )
 app.state.limiter = limiter
+app.add_exception_handler(HTTPException, problem_exception_handler)
+configure_fastapi_observability(app, service_name="dataforge-playground-api")
 
 
-@app.exception_handler(RateLimitExceeded)
-async def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+@app.exception_handler(_RateLimitExceeded)
+async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
     """Return a machine-readable 429 response."""
-    return JSONResponse(
-        status_code=429,
-        content={"error": "rate_limit_exceeded", "detail": str(exc.detail)},
+    detail = str(getattr(exc, "detail", str(exc)))
+    return problem_response(
+        status=429,
+        type_="https://dataforge.local/problems/rate_limit_exceeded",
+        title="Rate Limit Exceeded",
+        detail=detail,
+        instance=str(request.url.path),
+        headers={"Retry-After": "60"},
+        error="rate_limit_exceeded",
     )
 
 
@@ -202,12 +338,14 @@ def _issues_to_response(
             "column_names": list(df.columns),
             "total_issues": len(issues),
             "advanced_requested": advanced_requested,
+            "api_version": app.version,
+            "contract_version": CONTRACT_VERSION,
         },
     }
 
 
 def _fixes_to_response(
-    fixes: list[ProposedFix],
+    fixes: list[VerifiedFix],
     transaction: RepairTransaction,
     *,
     source_name: str,
@@ -217,11 +355,11 @@ def _fixes_to_response(
     for proposed_fix in fixes:
         payload_fixes.append(
             {
-                "row": proposed_fix.fix.row,
-                "column": proposed_fix.fix.column,
-                "old_value": proposed_fix.fix.old_value,
-                "new_value": proposed_fix.fix.new_value,
-                "detector_id": proposed_fix.fix.detector_id,
+                "row": proposed_fix.row,
+                "column": proposed_fix.column,
+                "old_value": proposed_fix.old_value,
+                "new_value": proposed_fix.new_value,
+                "detector_id": proposed_fix.detector_id,
                 "reason": proposed_fix.reason,
                 "confidence": proposed_fix.confidence,
                 "provenance": proposed_fix.provenance,
@@ -243,6 +381,10 @@ def _fixes_to_response(
                 "after the response. Install the CLI to apply and revert repairs."
             ),
         },
+        "meta": {
+            "api_version": app.version,
+            "contract_version": CONTRACT_VERSION,
+        },
     }
 
 
@@ -252,68 +394,30 @@ def _require_advanced_mode(advanced_requested: bool) -> None:
         raise HTTPException(status_code=400, detail={"error": "advanced_mode_unavailable"})
 
 
-def _write_ephemeral_transaction(
-    *,
-    upload_path: Path,
-    source_bytes: bytes,
-    fixes: list[ProposedFix],
-) -> RepairTransaction:
-    """Persist an ephemeral dry-run transaction under the temporary request directory."""
-    txn_id = generate_txn_id()
-    snapshot_path = snapshot_path_for(upload_path, txn_id)
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path.write_bytes(source_bytes)
-
-    transaction = RepairTransaction(
-        txn_id=txn_id,
-        created_at=datetime.now(UTC),
-        source_path=str(upload_path.resolve()),
-        source_sha256=sha256_bytes(source_bytes),
-        source_snapshot_path=str(snapshot_path.resolve()),
-        fixes=[proposed_fix.fix for proposed_fix in fixes],
-        applied=False,
-    )
-    append_created_transaction(transaction)
-    return transaction
-
-
 def _run_repair_pipeline(
     *,
     upload_name: str,
     source_bytes: bytes,
     allow_llm: bool,
-) -> tuple[list[ProposedFix], RepairTransaction]:
+) -> tuple[list[VerifiedFix], RepairTransaction]:
     """Run the real dry-run repair pipeline inside a temporary workspace."""
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_root = Path(tmpdir)
         upload_path = temp_root / upload_name
         upload_path.write_bytes(source_bytes)
 
-        working_df = _csv_to_df(source_bytes)
-        issues = run_all_detectors(working_df, schema=None)
-        accepted_fixes, _attempt_groups = _propose_repairs(
-            issues,
-            upload_path,
-            working_df.copy(deep=True),
-            None,
-            allow_llm=allow_llm,
-            model="gemini-2.0-flash",
-            allow_pii=False,
-            confirm_pii=False,
-            confirm_escalations=False,
-            interactive=False,
+        result = run_repair_pipeline(
+            RepairPipelineRequest(
+                source_path=upload_path,
+                mode="dry_run",
+                schema=None,
+                create_dry_run_transaction=True,
+                allow_llm=allow_llm,
+            )
         )
-
-        batch_safety = SafetyFilter().evaluate_batch(accepted_fixes)
-        if batch_safety.verdict != SafetyVerdict.ALLOW:
-            raise RuntimeError(f"Batch safety rejected dry-run fixes: {batch_safety.reason}")
-
-        transaction = _write_ephemeral_transaction(
-            upload_path=upload_path,
-            source_bytes=source_bytes,
-            fixes=accepted_fixes,
-        )
-        return accepted_fixes, transaction
+        if result.transaction is None:
+            raise RuntimeError(result.receipt.reason)
+        return result.fixes, result.transaction
 
 
 @app.get("/")

@@ -7,6 +7,7 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+docs/site/
 build/
 dist/
 *.egg-info/
@@ -20,6 +21,9 @@ DESIGN_PARTNERS.md
 .hf-space-repo/
 .hf-space-stage-plan/
 .wrangler/
+node_modules/
+playground/web/playwright-report/
+playground/web/test-results/
 data/sft_traj/*.jsonl
 !data/sft_traj/.gitkeep
 training/kaggle/.ipynb_checkpoints/

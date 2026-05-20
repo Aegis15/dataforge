@@ -10,6 +10,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 NOTEBOOK = ROOT / "training" / "kaggle" / "sft_warmup_kaggle.ipynb"
 CONFIG = ROOT / "training" / "configs" / "sft_05b.yaml"
+CONFIG_V2 = ROOT / "training" / "configs" / "sft_05b_v2.yaml"
+CONFIG_V3 = ROOT / "training" / "configs" / "sft_05b_v3.yaml"
+CONFIG_V4 = ROOT / "training" / "configs" / "sft_05b_v4.yaml"
 
 
 def _notebook_source() -> str:
@@ -40,6 +43,51 @@ def test_config_owns_training_hyperparameters_and_exact_package_pins() -> None:
     assert all("==" in package for package in config["environment"]["pip_packages"])
 
 
+def test_v2_config_owns_repair_contract_and_remote_only_gates() -> None:
+    config = yaml.safe_load(CONFIG_V2.read_text(encoding="utf-8"))
+
+    assert config["collection"]["schema_version"] == "expert_v2"
+    assert config["collection"]["prompt_contract_version"] == "repair_contract_v1"
+    assert config["repos"]["trajectory_filename"] == "expert_v2.jsonl"
+    assert config["repos"]["split_manifest_filename"] == "split_manifest_v2.json"
+    assert config["release"]["require_hf_token"] is True
+    assert config["release"]["upload_eval_diagnostics"] is True
+    assert config["release"]["promoted_status"] == "quality_improved_verified"
+    assert config["collection"]["oracle"]["chunk_rows"] == 4
+    assert config["collection"]["oracle"]["context_window_rows"] == 8
+    assert config["collection"]["oracle"]["max_repairs_per_record"] == 8
+    assert config["evaluation"]["remote_only"] is True
+
+
+def test_v3_config_requires_inferable_repair_contract_v2_handoff() -> None:
+    config = yaml.safe_load(CONFIG_V3.read_text(encoding="utf-8"))
+
+    assert config["collection"]["schema_version"] == "expert_v3"
+    assert config["collection"]["prompt_contract_version"] == "repair_contract_v2"
+    assert config["repos"]["trajectory_filename"] == "expert_v3.jsonl"
+    assert config["repos"]["split_manifest_filename"] == "split_manifest_v3.json"
+    assert config["collection"]["oracle"]["inferability"] == "auto"
+    assert config["collection"]["oracle"]["train_only_inferable"] is True
+    assert config["evaluation"]["parse_success_min"] == 0.995
+
+
+def test_v4_config_requires_contract_repair_handoff() -> None:
+    config = yaml.safe_load(CONFIG_V4.read_text(encoding="utf-8"))
+
+    assert config["collection"]["schema_version"] == "expert_v4"
+    assert config["collection"]["prompt_contract_version"] == "repair_contract_v2"
+    assert config["repos"]["trajectory_filename"] == "expert_v4.jsonl"
+    assert config["repos"]["split_manifest_filename"] == "split_manifest_v4.json"
+    assert config["collection"]["oracle"]["inferability"] == "auto"
+    assert config["collection"]["oracle"]["train_only_inferable"] is False
+    assert config["collection"]["oracle"]["abstain_noninferable"] is True
+    assert config["collection"]["oracle"]["include_context_derivable"] is False
+    assert config["collection"]["oracle"]["min_deterministic_records"] >= 32
+    assert config["collection"]["oracle"]["min_abstention_records"] >= 32
+    assert config["evaluation"]["promotion_slice"] == "deterministic_normalization"
+    assert "context_derivable" in config["evaluation"]["auxiliary_slices"]
+
+
 def test_notebook_has_six_main_cells_and_no_placeholder_owner() -> None:
     payload = json.loads(NOTEBOOK.read_text(encoding="utf-8"))
     main_cells = [
@@ -56,9 +104,12 @@ def test_notebook_has_six_main_cells_and_no_placeholder_owner() -> None:
     assert '"pending"' not in source
     assert "kaggle_secrets" in source
     assert 'secrets.get_secret("HF_TOKEN")' in source
+    assert "HF_TOKEN Kaggle secret is required for this release notebook" in source
     assert 'os.environ["HF_TOKEN"] = HF_TOKEN' in source
     assert 'os.environ["HUGGING_FACE_HUB_TOKEN"] = HF_TOKEN' in source
-    assert '"pip", "uninstall", "-y", "torchao"' in source
+    assert "HF upload skipped" not in source
+    assert "No HF_TOKEN secret found" not in source
+    assert "uninstall_remote_conflicts" in source
     assert "torchao: not installed" in source
 
 
@@ -70,10 +121,11 @@ def test_notebook_loads_yaml_and_exercises_required_training_flow() -> None:
     assert "BitsAndBytesConfig" in source
     assert "LoraConfig" in source
     assert "SFTTrainer" in source
-    assert "expected_t4_training" in source
-    assert "Downloaded sft_05b.yaml is stale for this T4 run" in source
+    assert "expected_remote_training" in source
+    assert 'CONFIG_FILENAME = os.environ.get("DATAFORGE_SFT_CONFIG", "sft_05b_v4.yaml")' in source
+    assert "Downloaded SFT YAML is stale for this remote run" in source
     assert 'loss_type=train_cfg["loss_type"]' in source
-    assert "Loaded T4 training memory settings:" in source
+    assert "Loaded remote training memory settings:" in source
     assert "Installed TRL does not support loss_type='chunked_nll'" in source
     assert 'importlib_metadata.version("trl")' in source
     assert 'device_map={"": 0}' in source
@@ -84,6 +136,7 @@ def test_notebook_loads_yaml_and_exercises_required_training_flow() -> None:
     assert "resume_from_checkpoint=latest_checkpoint" in source
     assert "merge_and_unload" in source
     assert "training_metrics.json" in source
+    assert "eval_diagnostics.json" in source
     assert "evaluate_model(" in source
     assert "torch.cuda.empty_cache()" in source
     assert source.count("api.upload_folder(") == 1
@@ -100,11 +153,22 @@ def test_notebook_loads_yaml_and_exercises_required_training_flow() -> None:
     assert "base_eval" in source
     assert "sft_eval" in source
     assert '"macro_f1"' in source
+    assert '"quality_gate_failures": gate_failures' in source
     assert "quality_milestone" in source
-    assert "pipeline_complete_no_heldout_gain" in source
+    assert "diagnostic_complete_no_gain" in source
+    assert "quality_improved_verified" in source
+    assert '"parse_success_rate": parse_success_rate' in source
+    assert '"schema_case_error_count": schema_case_error_count' in source
+    assert '"promotion_slice": PROMOTION_SLICE' in source
+    assert (
+        '"slice_scores": {"base": base_eval.get("slice_scores", {}), "sft": sft_eval.get("slice_scores", {})}'
+        in source
+    )
+    assert "failure_samples_by_slice" in source
+    assert '"valid_rows": task["valid_rows"]' in source
     assert '"dataset": dataset_name' in source
     assert (
         'dataset_name = task.get("dataset") or task.get("schema_summary", {}).get("dataset", "unknown")'
         in source
     )
-    assert 'task_scores.append({"dataset": dataset_name' in source
+    assert '"target_rows": task["target_rows"]' in source

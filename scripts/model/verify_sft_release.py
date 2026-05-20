@@ -38,6 +38,33 @@ REQUIRED_DATASET_FILES = frozenset(
         "MODEL_CARD_TEMPLATE.md",
     }
 )
+REQUIRED_DATASET_FILES_V2 = frozenset(
+    {
+        "README.md",
+        "expert_v2.jsonl",
+        "split_manifest_v2.json",
+        "sft_05b_v2.yaml",
+        "MODEL_CARD_TEMPLATE.md",
+    }
+)
+REQUIRED_DATASET_FILES_V3 = frozenset(
+    {
+        "README.md",
+        "expert_v3.jsonl",
+        "split_manifest_v3.json",
+        "sft_05b_v3.yaml",
+        "MODEL_CARD_TEMPLATE.md",
+    }
+)
+REQUIRED_DATASET_FILES_V4 = frozenset(
+    {
+        "README.md",
+        "expert_v4.jsonl",
+        "split_manifest_v4.json",
+        "sft_05b_v4.yaml",
+        "MODEL_CARD_TEMPLATE.md",
+    }
+)
 REQUIRED_METRIC_FIELDS = frozenset(
     {
         "model_name",
@@ -76,6 +103,7 @@ class HubApi(Protocol):
         repo_id: str,
         *,
         repo_type: str | None = None,
+        revision: str | None = None,
         token: str | None = None,
     ) -> HubRepoInfo:
         """Return repository metadata."""
@@ -90,6 +118,7 @@ class DownloadFile(Protocol):
         *,
         filename: str,
         repo_type: str | None = None,
+        revision: str | None = None,
         token: str | None = None,
     ) -> str:
         """Download a repo file and return a local path."""
@@ -119,9 +148,13 @@ class ReleaseEvidence:
     dataset_records: int
     quality_milestone: bool
     release_status: str
+    quality_gate_failures: tuple[str, ...]
     dataset_sha_metric_checked: bool
+    eval_diagnostics_checked: bool
     model_readme_checked: bool
     dataset_readme_checked: bool
+    trajectory_filename: str = "expert_v1.jsonl"
+    split_manifest_filename: str = "split_manifest.json"
 
 
 def _repo_files(info: HubRepoInfo) -> tuple[str, ...]:
@@ -135,6 +168,59 @@ def _missing(required: frozenset[str], files: tuple[str, ...]) -> list[str]:
     return sorted(required - file_set)
 
 
+def _dataset_contract_files(
+    files: tuple[str, ...],
+    *,
+    trajectory_filename: str | None = None,
+) -> tuple[frozenset[str], str, str]:
+    """Return the dataset artifact contract to verify."""
+    contracts_by_trajectory = {
+        "expert_v1.jsonl": (REQUIRED_DATASET_FILES, "expert_v1.jsonl", "split_manifest.json"),
+        "expert_v2.jsonl": (
+            REQUIRED_DATASET_FILES_V2,
+            "expert_v2.jsonl",
+            "split_manifest_v2.json",
+        ),
+        "expert_v3.jsonl": (
+            REQUIRED_DATASET_FILES_V3,
+            "expert_v3.jsonl",
+            "split_manifest_v3.json",
+        ),
+        "expert_v4.jsonl": (
+            REQUIRED_DATASET_FILES_V4,
+            "expert_v4.jsonl",
+            "split_manifest_v4.json",
+        ),
+    }
+    if trajectory_filename:
+        try:
+            return contracts_by_trajectory[trajectory_filename]
+        except KeyError as exc:
+            raise ReleaseVerificationError(
+                f"Unsupported trajectory filename in training metrics: {trajectory_filename!r}."
+            ) from exc
+    file_set = set(files)
+    if REQUIRED_DATASET_FILES_V4.issubset(file_set):
+        return REQUIRED_DATASET_FILES_V4, "expert_v4.jsonl", "split_manifest_v4.json"
+    if REQUIRED_DATASET_FILES_V3.issubset(file_set):
+        return REQUIRED_DATASET_FILES_V3, "expert_v3.jsonl", "split_manifest_v3.json"
+    if REQUIRED_DATASET_FILES_V2.issubset(file_set):
+        return REQUIRED_DATASET_FILES_V2, "expert_v2.jsonl", "split_manifest_v2.json"
+    return REQUIRED_DATASET_FILES, "expert_v1.jsonl", "split_manifest.json"
+
+
+def _trajectory_filename_from_metrics(
+    metrics: dict[str, Any], dataset_files: tuple[str, ...]
+) -> str | None:
+    """Return the trajectory artifact that belongs to the model metrics, when known."""
+    filename = metrics.get("trajectory_filename")
+    if isinstance(filename, str) and filename:
+        return filename
+    if "release_status" in metrics and REQUIRED_DATASET_FILES_V3.issubset(set(dataset_files)):
+        return "expert_v3.jsonl"
+    return None
+
+
 def _download_text(
     repo_id: str,
     *,
@@ -142,9 +228,18 @@ def _download_text(
     repo_type: str,
     token: str | None,
     downloader: DownloadFile,
+    revision: str | None = None,
 ) -> str:
     """Download and read one UTF-8 Hub file."""
-    path = Path(downloader(repo_id, filename=filename, repo_type=repo_type, token=token))
+    path = Path(
+        downloader(
+            repo_id,
+            filename=filename,
+            repo_type=repo_type,
+            revision=revision,
+            token=token,
+        )
+    )
     return path.read_text(encoding="utf-8")
 
 
@@ -226,7 +321,8 @@ def _validate_metrics(metrics: dict[str, Any], *, model_repo: str, dataset_repo:
         raise ReleaseVerificationError(
             f"training_metrics repo_id={metrics['repo_id']!r} does not match {model_repo!r}."
         )
-    if metrics["dataset_repo"] != dataset_repo:
+    metric_dataset_repo = str(metrics["dataset_repo"])
+    if metric_dataset_repo != dataset_repo and not metric_dataset_repo.startswith("kaggle://"):
         raise ReleaseVerificationError(
             "training_metrics dataset_repo="
             f"{metrics['dataset_repo']!r} does not match {dataset_repo!r}."
@@ -242,13 +338,43 @@ def _validate_metrics(metrics: dict[str, Any], *, model_repo: str, dataset_repo:
             raise ReleaseVerificationError(f"{field} must be in [0, 1], got {value}.")
 
 
+def _quality_gate_failures(metrics: dict[str, Any]) -> list[str]:
+    """Return missing or failed quality gates for an F1-improved release."""
+    failures: list[str] = []
+    base_f1 = float(metrics["base_f1"])
+    sft_f1 = float(metrics["sft_f1"])
+    if sft_f1 <= base_f1:
+        failures.append("sft_f1>base_f1")
+    parse_success = metrics.get("parse_success_rate")
+    if not isinstance(parse_success, int | float) or float(parse_success) < 0.99:
+        failures.append("parse_success_rate>=0.99")
+    schema_case_errors = metrics.get("schema_case_error_count")
+    if not isinstance(schema_case_errors, int | float) or int(schema_case_errors) != 0:
+        failures.append("schema_case_error_count==0")
+    if metrics.get("prompt_contract_drift") not in (False, 0):
+        failures.append("prompt_contract_drift==false")
+    if metrics.get("heldout_leakage_detected") not in (False, 0):
+        failures.append("heldout_leakage_detected==false")
+    return failures
+
+
 def _validate_dataset_sha_metric(
     metrics: dict[str, Any],
     *,
+    api: HubApi,
+    dataset_repo: str,
     dataset_sha: str,
+    required_files: frozenset[str],
+    token: str | None,
     require_sha_metrics: bool,
 ) -> bool:
-    """Check optional training-time dataset SHA linkage."""
+    """Check optional training-time dataset SHA linkage.
+
+    The model records the dataset revision used at training time. The dataset
+    repository may later receive report-only commits, so the recorded SHA need
+    not remain the dataset HEAD. Require that it is a real Hub revision with the
+    expected training handoff files.
+    """
     recorded_sha = metrics.get("dataset_sha")
     if recorded_sha is None:
         if require_sha_metrics:
@@ -256,33 +382,85 @@ def _validate_dataset_sha_metric(
                 "training_metrics.json must include dataset_sha for a contract-v2 release."
             )
         return False
-    if str(recorded_sha) != dataset_sha:
+    if str(metrics.get("dataset_repo", "")).startswith("kaggle://"):
+        if require_sha_metrics:
+            raise ReleaseVerificationError(
+                "training_metrics dataset_sha cannot be checked as an HF revision "
+                "because dataset_repo points to an archived Kaggle handoff."
+            )
+        return False
+    recorded_text = str(recorded_sha)
+    if recorded_text == dataset_sha:
+        return True
+    try:
+        training_info = api.repo_info(
+            dataset_repo,
+            repo_type="dataset",
+            revision=recorded_text,
+            token=token,
+        )
+    except Exception as exc:
         raise ReleaseVerificationError(
-            f"training_metrics dataset_sha={recorded_sha!r} does not match current "
-            f"dataset repo SHA {dataset_sha!r}."
+            f"training_metrics dataset_sha={recorded_sha!r} is not a resolvable dataset revision."
+        ) from exc
+    missing = _missing(required_files, _repo_files(training_info))
+    if missing:
+        raise ReleaseVerificationError(
+            f"training-time dataset revision {recorded_text!r} is missing required files: "
+            + ", ".join(missing)
         )
     return True
 
 
-def _release_status(metrics: dict[str, Any]) -> tuple[bool, str]:
+def _release_status(metrics: dict[str, Any]) -> tuple[bool, str, tuple[str, ...]]:
     """Classify the release without overstating model quality."""
-    base_f1 = float(metrics["base_f1"])
-    sft_f1 = float(metrics["sft_f1"])
-    if sft_f1 > base_f1:
-        return True, "quality_improved"
-    return False, "pipeline_complete_no_heldout_gain"
+    failures = _quality_gate_failures(metrics)
+    if not failures:
+        return True, "quality_improved_verified", ()
+    if "sft_f1>base_f1" in failures:
+        return False, "diagnostic_complete_no_gain", tuple(failures)
+    return False, "quality_gate_failed", tuple(failures)
+
+
+def _validate_eval_diagnostics(
+    model_repo: str,
+    *,
+    files: tuple[str, ...],
+    token: str | None,
+    downloader: DownloadFile,
+) -> bool:
+    """Validate per-task diagnostics for a contract-v2 release."""
+    if "eval_diagnostics.json" not in files:
+        raise ReleaseVerificationError(f"{model_repo} missing required file: eval_diagnostics.json")
+    diagnostics = _load_json(
+        model_repo,
+        filename="eval_diagnostics.json",
+        repo_type="model",
+        token=token,
+        downloader=downloader,
+    )
+    if diagnostics.get("schema_version") != "dataforge_eval_diagnostics_v1":
+        raise ReleaseVerificationError("eval_diagnostics.json has an unknown schema_version.")
+    for section in ("base", "sft"):
+        payload = diagnostics.get(section)
+        if not isinstance(payload, dict) or not isinstance(payload.get("task_scores"), list):
+            raise ReleaseVerificationError(
+                f"eval_diagnostics.json must include {section}.task_scores."
+            )
+    return True
 
 
 def _count_jsonl_records(
     repo_id: str,
     *,
+    filename: str,
     token: str | None,
     downloader: DownloadFile,
 ) -> int:
     """Count non-empty trajectory JSONL rows."""
     text = _download_text(
         repo_id,
-        filename="expert_v1.jsonl",
+        filename=filename,
         repo_type="dataset",
         token=token,
         downloader=downloader,
@@ -294,7 +472,7 @@ def _count_jsonl_records(
         payload = json.loads(line)
         if not isinstance(payload, dict):
             raise ReleaseVerificationError(
-                f"{repo_id}/expert_v1.jsonl:{line_number} must contain a JSON object."
+                f"{repo_id}/{filename}:{line_number} must contain a JSON object."
             )
         records += 1
     return records
@@ -309,6 +487,8 @@ def verify_sft_release(
     downloader: DownloadFile | None = None,
     token: str | None = None,
     require_sha_metrics: bool = False,
+    require_eval_diagnostics: bool = False,
+    require_quality_improvement: bool = False,
 ) -> ReleaseEvidence:
     """Verify model and dataset release artifacts on Hugging Face."""
     resolved_api: HubApi
@@ -333,12 +513,6 @@ def verify_sft_release(
         raise ReleaseVerificationError(
             f"{model_repo} missing required files: {', '.join(missing_model)}"
         )
-    missing_dataset = _missing(REQUIRED_DATASET_FILES, dataset_files)
-    if missing_dataset:
-        raise ReleaseVerificationError(
-            f"{dataset_repo} missing required files: {', '.join(missing_dataset)}"
-        )
-
     metrics = _load_json(
         model_repo,
         filename="training_metrics.json",
@@ -347,12 +521,38 @@ def verify_sft_release(
         downloader=downloader,
     )
     _validate_metrics(metrics, model_repo=model_repo, dataset_repo=dataset_repo)
+    requested_trajectory = _trajectory_filename_from_metrics(metrics, dataset_files)
+    required_dataset_files, trajectory_filename, split_manifest_filename = _dataset_contract_files(
+        dataset_files,
+        trajectory_filename=requested_trajectory,
+    )
+    missing_dataset = _missing(required_dataset_files, dataset_files)
+    if missing_dataset:
+        raise ReleaseVerificationError(
+            f"{dataset_repo} missing required files: {', '.join(missing_dataset)}"
+        )
     dataset_sha_metric_checked = _validate_dataset_sha_metric(
         metrics,
+        api=resolved_api,
+        dataset_repo=dataset_repo,
         dataset_sha=dataset_info.sha or "unknown",
+        required_files=required_dataset_files,
+        token=token,
         require_sha_metrics=require_sha_metrics,
     )
-    quality_milestone, release_status = _release_status(metrics)
+    quality_milestone, release_status, gate_failures = _release_status(metrics)
+    if require_quality_improvement and not quality_milestone:
+        raise ReleaseVerificationError(
+            "quality improvement gate failed: " + ", ".join(gate_failures or ("unknown",))
+        )
+    eval_diagnostics_checked = False
+    if require_eval_diagnostics:
+        eval_diagnostics_checked = _validate_eval_diagnostics(
+            model_repo,
+            files=model_files,
+            token=token,
+            downloader=downloader,
+        )
 
     model_readme = _download_text(
         model_repo,
@@ -370,7 +570,7 @@ def verify_sft_release(
     )
     split_manifest_text = _download_text(
         dataset_repo,
-        filename="split_manifest.json",
+        filename=split_manifest_filename,
         repo_type="dataset",
         token=token,
         downloader=downloader,
@@ -379,10 +579,15 @@ def verify_sft_release(
     _assert_no_placeholders(dataset_readme, repo_id=dataset_repo, filename="README.md")
     _assert_split_manifest_contract(split_manifest_text, repo_id=dataset_repo)
 
-    dataset_records = _count_jsonl_records(dataset_repo, token=token, downloader=downloader)
+    dataset_records = _count_jsonl_records(
+        dataset_repo,
+        filename=trajectory_filename,
+        token=token,
+        downloader=downloader,
+    )
     if dataset_records < min_dataset_records:
         raise ReleaseVerificationError(
-            f"{dataset_repo}/expert_v1.jsonl has {dataset_records} records; "
+            f"{dataset_repo}/{trajectory_filename} has {dataset_records} records; "
             f"need at least {min_dataset_records}."
         )
     if int(metrics["training_examples"]) > dataset_records:
@@ -408,9 +613,13 @@ def verify_sft_release(
         dataset_records=dataset_records,
         quality_milestone=quality_milestone,
         release_status=release_status,
+        quality_gate_failures=gate_failures,
         dataset_sha_metric_checked=dataset_sha_metric_checked,
+        eval_diagnostics_checked=eval_diagnostics_checked,
         model_readme_checked=True,
         dataset_readme_checked=True,
+        trajectory_filename=trajectory_filename,
+        split_manifest_filename=split_manifest_filename,
     )
 
 
@@ -434,6 +643,7 @@ def _print_summary(evidence: ReleaseEvidence) -> None:
     table.add_row("Base F1", str(evidence.metrics["base_f1"]))
     table.add_row("SFT F1", str(evidence.metrics["sft_f1"]))
     table.add_row("Release status", evidence.release_status)
+    table.add_row("Gate failures", ", ".join(evidence.quality_gate_failures) or "none")
     Console().print(table)
 
 
@@ -444,6 +654,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset-repo", default=DEFAULT_DATASET_REPO)
     parser.add_argument("--min-dataset-records", type=int, default=DEFAULT_MIN_DATASET_RECORDS)
     parser.add_argument("--require-sha-metrics", action="store_true")
+    parser.add_argument("--require-eval-diagnostics", action="store_true")
+    parser.add_argument("--require-quality-improvement", action="store_true")
     parser.add_argument("--output", type=Path, default=None)
     return parser
 
@@ -467,6 +679,8 @@ def main(argv: list[str] | None = None) -> int:
             min_dataset_records=args.min_dataset_records,
             token=token,
             require_sha_metrics=args.require_sha_metrics,
+            require_eval_diagnostics=args.require_eval_diagnostics,
+            require_quality_improvement=args.require_quality_improvement,
         )
     except ReleaseVerificationError as exc:
         print(f"SFT release verification failed: {exc}", file=sys.stderr)

@@ -69,7 +69,11 @@ def test_publish_model_renders_card_and_uploads_folder(tmp_path: Path) -> None:
     (model_dir / "training_metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
     template = tmp_path / "MODEL_CARD_TEMPLATE.md"
     template.write_text(
-        "# {model_name}\nLicense: {model_license}\nBase: {base_model}\nF1: {sft_f1}\n",
+        "# {model_name}\n"
+        "License: {model_license}\n"
+        "Base: {base_model}\n"
+        "Training Data: {trajectory_filename}\n"
+        "F1: {sft_f1}\n",
         encoding="utf-8",
     )
     api = _FakeHfApi()
@@ -85,4 +89,6 @@ def test_publish_model_renders_card_and_uploads_folder(tmp_path: Path) -> None:
     assert repo_id == "tester/DataForge-0.5B-SFT"
     assert api.created == [("tester/DataForge-0.5B-SFT", "model")]
     assert api.uploaded == [("tester/DataForge-0.5B-SFT", "merged")]
-    assert (model_dir / "README.md").read_text(encoding="utf-8").startswith("# DataForge")
+    card = (model_dir / "README.md").read_text(encoding="utf-8")
+    assert card.startswith("# DataForge")
+    assert "Training Data: expert_v3.jsonl" in card

@@ -2,7 +2,7 @@
 
 > Status: Accepted
 > Owner: pranesh
-> Last updated: 2026-05-15
+> Last updated: 2026-05-20
 
 ## 1. Purpose
 
@@ -25,6 +25,11 @@ mutation out of the training loop.
   root-set analysis and returns structured result data.
 - [x] Step-budget termination auto-finalizes the episode.
 - [x] HTTP endpoints return OpenEnv-compatible JSON.
+- [x] HTTP `/reset` creates an `episode_id`; `/step`, `/state`, and `/close`
+  accept optional `episode_id` while preserving legacy no-id behavior.
+- [x] `SQL_QUERY` is sandboxed to a single read-only query over the registered
+  `data` relation and rejects DuckDB file, network, extension, table-function,
+  and multi-statement escape attempts.
 - [x] Legacy `data_quality_env` imports continue to pass regression tests.
 
 ## 3. Scope
@@ -47,14 +52,15 @@ mutation out of the training loop.
 - Training orchestration.
 - Durable CSV mutation or transaction log creation inside the environment.
 - Modification of the legacy `data_quality_env/` compatibility package.
-- Multi-user session management.
+- Persistent multi-user state beyond an in-memory local session registry.
 
 ## 4. Constraints
 
 - Python `>=3.11,<3.13`.
 - `reset()` should complete under 500 ms on the hospital fixture.
 - `step()` should complete under 200 ms for normal local actions.
-- SQL actions are read-only.
+- SQL actions are read-only, single-statement, and limited to the registered
+  in-memory `data` relation.
 - `causal-learn` must not receive NaN values.
 - `openenv-core[core]` is optional and must not be required by the base CLI.
 
@@ -100,9 +106,18 @@ mutation out of the training loop.
 ### 6.5 HTTP Server
 
 - Acceptance: `/reset`, `/step`, `/state`, `/close`, `/health`, `/metadata`, and
-  `/schema` expose the current action and observation contracts.
+  `/schema` expose the current action and observation contracts; optional
+  `episode_id` routing prevents concurrent local sessions from sharing state.
 - Depends on: 6.2.
 - Estimated complexity: M.
+
+### 6.6 SQL sandbox
+
+- Acceptance: `SQL_QUERY` rejects multi-statement queries, non-SELECT
+  statements, references to tables other than `data`, and DuckDB I/O or
+  extension-loading functions.
+- Depends on: 6.2.
+- Estimated complexity: S.
 
 ## 7. Verification
 
@@ -147,3 +162,15 @@ Reasoning: validates the repair gate sequence.
 Input: selected errors on a chain `discount_pct -> order_total -> tax`.
 Expected output: only the upstream selected error is returned as root.
 Reasoning: validates the Week 10 analyzer contract.
+
+### Case A.5: Episode sessions are isolated
+
+Input: two `/reset` calls followed by one `/step` using only the first `episode_id`.
+Expected output: first `/state?episode_id=...` has `step_count == 1`; second remains `0`.
+Reasoning: prevents module-global state contamination between OpenEnv clients.
+
+### Case A.6: SQL file escape is rejected
+
+Input: `SQL_QUERY` with `SELECT * FROM read_csv_auto('secret.csv')`.
+Expected output: structured rejection and no DuckDB execution.
+Reasoning: protects local files and network-capable DuckDB extensions.

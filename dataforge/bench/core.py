@@ -59,6 +59,7 @@ class SeedBenchmarkResult(BaseModel):
     prompt_tokens: int = Field(ge=0, default=0)
     completion_tokens: int = Field(ge=0, default=0)
     quota_units: float = Field(ge=0.0, default=0.0)
+    gpu_hours: float = Field(ge=0.0, default=0.0)
     runtime_s: float = Field(ge=0.0, default=0.0)
     provider: str | None = None
     model: str | None = None
@@ -85,6 +86,8 @@ class AggregateBenchmarkResult(BaseModel):
     avg_steps_std: float | None = None
     quota_units_mean: float | None = None
     quota_units_std: float | None = None
+    gpu_hours_mean: float | None = None
+    gpu_hours_std: float | None = None
     runtime_s_mean: float | None = None
     runtime_s_std: float | None = None
     provider: str | None = None
@@ -229,6 +232,7 @@ def aggregate_seed_results(
         f1_mean, f1_std = _mean_std([row.f1 or 0.0 for row in ok_rows])
         avg_steps_mean, avg_steps_std = _mean_std([row.avg_steps or 0.0 for row in ok_rows])
         quota_mean, quota_std = _mean_std([row.quota_units for row in ok_rows])
+        gpu_hours_mean, gpu_hours_std = _mean_std([row.gpu_hours for row in ok_rows])
         runtime_mean, runtime_std = _mean_std([row.runtime_s for row in ok_rows])
         aggregates.append(
             AggregateBenchmarkResult(
@@ -248,6 +252,8 @@ def aggregate_seed_results(
                 avg_steps_std=avg_steps_std,
                 quota_units_mean=quota_mean,
                 quota_units_std=quota_std,
+                gpu_hours_mean=gpu_hours_mean,
+                gpu_hours_std=gpu_hours_std,
                 runtime_s_mean=runtime_mean,
                 runtime_s_std=runtime_std,
                 provider=ok_rows[0].provider,

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from dataforge.repair_contract import RepairFix, render_repair_messages
 from scripts.data.validate_sft_readiness import (
     SftReadinessError,
     load_config,
@@ -59,6 +60,72 @@ def _oracle_config(path: Path) -> Path:
             "teacher_model": "llama-3.3-70b-versatile",
             "collection_methods": ["oracle_from_clean_diff"],
             "oracle": {"provider": "oracle", "model": "clean-diff-v1"},
+        },
+    }
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    return path
+
+
+def _oracle_v2_config(path: Path) -> Path:
+    config = {
+        "environment": {"pip_packages": ["trl==1.4.0", "transformers==5.7.0"]},
+        "repos": {"trajectory_filename": "expert_v2.jsonl"},
+        "model": {"base_model": "Qwen/Qwen2.5-0.5B-Instruct"},
+        "lora": {"r": 16},
+        "training": {
+            "fp16": True,
+            "bf16": False,
+            "per_device_train_batch_size": 1,
+            "gradient_accumulation_steps": 16,
+            "max_seq_length": 1024,
+            "loss_type": "chunked_nll",
+        },
+        "collection": {
+            "schema_version": "expert_v2",
+            "prompt_contract_version": "repair_contract_v1",
+            "min_episode_f1": 0.6,
+            "teacher_model": "clean-diff-v1",
+            "collection_methods": ["oracle_from_clean_diff"],
+            "oracle": {
+                "provider": "oracle",
+                "model": "clean-diff-v1",
+                "max_repairs_per_record": 2,
+                "min_noop_ratio": 0.25,
+            },
+        },
+    }
+    path.write_text(yaml.safe_dump(config), encoding="utf-8")
+    return path
+
+
+def _oracle_v4_config(path: Path) -> Path:
+    config = {
+        "environment": {"pip_packages": ["trl==1.4.0", "transformers==5.7.0"]},
+        "repos": {"trajectory_filename": "expert_v4.jsonl"},
+        "model": {"base_model": "Qwen/Qwen2.5-0.5B-Instruct"},
+        "lora": {"r": 16},
+        "training": {
+            "fp16": True,
+            "bf16": False,
+            "per_device_train_batch_size": 1,
+            "gradient_accumulation_steps": 16,
+            "max_seq_length": 1024,
+            "loss_type": "chunked_nll",
+        },
+        "collection": {
+            "schema_version": "expert_v4",
+            "prompt_contract_version": "repair_contract_v2",
+            "min_episode_f1": 1.0,
+            "teacher_model": "clean-diff-v1",
+            "collection_methods": ["oracle_from_clean_diff"],
+            "oracle": {
+                "provider": "oracle",
+                "model": "clean-diff-v1",
+                "max_repairs_per_record": 2,
+                "min_noop_ratio": 0.25,
+                "min_deterministic_records": 1,
+                "min_abstention_records": 1,
+            },
         },
     }
     path.write_text(yaml.safe_dump(config), encoding="utf-8")
@@ -119,6 +186,117 @@ def _oracle_record(seed: int) -> dict[str, object]:
             "split": "train",
             "eval_rows": [1],
         },
+    }
+
+
+def _oracle_v2_record(seed: int, *, repairs: list[RepairFix]) -> dict[str, object]:
+    target_rows = [{"_row": "0", "sched_dep_time": ""}]
+    schema_summary = {
+        "dataset": "flights",
+        "columns": ["sched_dep_time"],
+        "chunk_rows": 1,
+        "target_row_indices": [0],
+        "context_row_indices": [],
+        "difficulty": "easy",
+        "seed": 42,
+        "split": "train",
+    }
+    return {
+        "schema_version": "expert_v2",
+        "trajectory_id": f"flights:easy:{seed}:0",
+        "task_id": "flights:easy",
+        "dataset": "flights",
+        "difficulty": "easy",
+        "seed": seed,
+        "chunk_index": 0,
+        "state": {
+            "split": "train",
+            "schema_summary": schema_summary,
+            "target_rows": target_rows,
+            "context_rows": [],
+            "normalization_candidates": [],
+        },
+        "tool_calls": [],
+        "diagnosis": ["oracle clean diff"] if repairs else ["no differences"],
+        "fix": [repair.model_dump(mode="json") for repair in repairs],
+        "messages": render_repair_messages(
+            schema_summary=schema_summary,
+            target_rows=target_rows,
+            context_rows=[],
+            allowed_columns=["sched_dep_time"],
+            label_source="oracle_from_clean_diff",
+            repairs=repairs,
+            contract_version="repair_contract_v1",
+        ),
+        "teacher": {"provider": "oracle", "model": "clean-diff-v1"},
+        "metrics": {"episode_f1": 1.0, "chunk_f1": 1.0},
+        "provenance": {
+            "citation": "fixture citation",
+            "collection_method": "oracle_from_clean_diff",
+            "split": "train",
+            "eval_rows": [1],
+            "prompt_contract_version": "repair_contract_v1",
+        },
+        "prompt_contract_version": "repair_contract_v1",
+    }
+
+
+def _oracle_v4_record(
+    seed: int,
+    *,
+    inferability: str,
+    repairs: list[RepairFix],
+) -> dict[str, object]:
+    target_rows = [{"_row": "0", "sched_dep_time": "Fri Dec 2 5:11 a.m."}]
+    schema_summary = {
+        "dataset": "flights",
+        "columns": ["sched_dep_time"],
+        "chunk_rows": 1,
+        "target_row_indices": [0],
+        "context_row_indices": [],
+        "difficulty": "easy",
+        "seed": seed,
+        "split": "train",
+    }
+    return {
+        "schema_version": "expert_v4",
+        "trajectory_id": f"flights:easy:{seed}:0",
+        "task_id": "flights:easy",
+        "dataset": "flights",
+        "difficulty": "easy",
+        "seed": seed,
+        "chunk_index": 0,
+        "state": {
+            "split": "train",
+            "schema_summary": schema_summary,
+            "target_rows": target_rows,
+            "context_rows": [],
+            "normalization_candidates": [],
+        },
+        "tool_calls": [],
+        "diagnosis": ["oracle clean diff"] if repairs else ["finish"],
+        "fix": [repair.model_dump(mode="json") for repair in repairs],
+        "messages": render_repair_messages(
+            schema_summary=schema_summary,
+            target_rows=target_rows,
+            context_rows=[],
+            allowed_columns=["sched_dep_time"],
+            label_source="oracle_from_clean_diff",
+            repairs=repairs,
+            contract_version="repair_contract_v2",
+        ),
+        "teacher": {"provider": "oracle", "model": "clean-diff-v1"},
+        "metrics": {"episode_f1": 1.0, "chunk_f1": 1.0},
+        "provenance": {
+            "citation": "fixture citation",
+            "collection_method": "oracle_from_clean_diff",
+            "split": "train",
+            "eval_rows": [1],
+            "prompt_contract_version": "repair_contract_v2",
+            "inferability": inferability,
+        },
+        "prompt_contract_version": "repair_contract_v2",
+        "inferability": inferability,
     }
 
 
@@ -230,6 +408,105 @@ def test_readiness_accepts_oracle_clean_diff_records(tmp_path: Path) -> None:
     assert report.collection_methods == ("oracle_from_clean_diff",)
     assert report.train_rows == 1
     assert report.heldout_rows == 1
+
+
+def test_readiness_accepts_v2_prompt_contract_and_density_gates(tmp_path: Path) -> None:
+    config_path = _oracle_v2_config(tmp_path / "sft_05b_v2.yaml")
+    fix = RepairFix(
+        row=0,
+        column="sched_dep_time",
+        new_value="7:00 p.m.",
+        reason="oracle clean diff",
+    )
+    jsonl = _jsonl(
+        tmp_path / "expert_v2.jsonl",
+        [
+            _oracle_v2_record(0, repairs=[fix]),
+            _oracle_v2_record(1, repairs=[fix]),
+            _oracle_v2_record(2, repairs=[]),
+            _oracle_v2_record(3, repairs=[]),
+        ],
+    )
+
+    report = validate_sft_readiness(
+        jsonl=jsonl,
+        config_path=config_path,
+        min_records=2,
+    )
+
+    assert report.prompt_contract_version == "repair_contract_v1"
+    assert report.noop_records == 2
+    assert report.max_repairs_per_record == 1
+
+
+def test_readiness_rejects_v2_prompt_drift(tmp_path: Path) -> None:
+    config_path = _oracle_v2_config(tmp_path / "sft_05b_v2.yaml")
+    record = _oracle_v2_record(0, repairs=[])
+    state = record["state"]
+    assert isinstance(state, dict)
+    state["target_rows"] = [{"_row": "0", "sched_dep_time": "different"}]
+    jsonl = _jsonl(tmp_path / "expert_v2.jsonl", [record, _oracle_v2_record(1, repairs=[])])
+
+    with pytest.raises(SftReadinessError, match="target_rows drift"):
+        validate_sft_readiness(
+            jsonl=jsonl,
+            config_path=config_path,
+            min_records=2,
+        )
+
+
+def test_readiness_accepts_expert_v4_deterministic_and_abstention_records(
+    tmp_path: Path,
+) -> None:
+    config_path = _oracle_v4_config(tmp_path / "sft_05b_v4.yaml")
+    fix = RepairFix(
+        row=0,
+        column="sched_dep_time",
+        new_value="5:11 a.m.",
+        reason="extract canonical flight time",
+    )
+    jsonl = _jsonl(
+        tmp_path / "expert_v4.jsonl",
+        [
+            _oracle_v4_record(0, inferability="deterministic_normalization", repairs=[fix]),
+            _oracle_v4_record(1, inferability="external_reference_required", repairs=[]),
+            _oracle_v4_record(2, inferability="not_inferable_from_prompt", repairs=[]),
+        ],
+    )
+
+    report = validate_sft_readiness(
+        jsonl=jsonl,
+        config_path=config_path,
+        min_records=2,
+    )
+
+    assert report.deterministic_records == 1
+    assert report.abstention_records == 2
+    assert report.noop_records == 2
+
+
+def test_readiness_rejects_repair_bearing_expert_v4_abstentions(tmp_path: Path) -> None:
+    config_path = _oracle_v4_config(tmp_path / "sft_05b_v4.yaml")
+    fix = RepairFix(
+        row=0,
+        column="sched_dep_time",
+        new_value="5:11 a.m.",
+        reason="external guess",
+    )
+    jsonl = _jsonl(
+        tmp_path / "expert_v4.jsonl",
+        [
+            _oracle_v4_record(0, inferability="deterministic_normalization", repairs=[fix]),
+            _oracle_v4_record(1, inferability="external_reference_required", repairs=[fix]),
+        ],
+    )
+
+    with pytest.raises(SftReadinessError, match="must be a finish/no-repair example"):
+        validate_sft_readiness(
+            jsonl=jsonl,
+            config_path=config_path,
+            min_records=2,
+        )
 
 
 def test_readiness_rejects_oracle_eval_row_leakage(tmp_path: Path) -> None:

@@ -1,0 +1,66 @@
+{
+  "model_name": "DataForge-0.5B-SFT",
+  "model_license": "apache-2.0",
+  "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+  "teacher_model": "clean-diff-v1",
+  "dataset_repo": "kaggle://praneshrajan15/dataforge-sft-v3-handoff",
+  "dataset_sha": "bf99494539c8346676488bb982cd72d3ce9fea494fc63695ab08cb3fb1c98ac3",
+  "dataset_records": 690,
+  "training_examples": 621,
+  "heldout_examples": 69,
+  "config_sha256": "6af1bfc245a3da0dad08287f789d05349ad307eb2d2023f6b783317eb9feb740",
+  "trajectory_sha256": "bf99494539c8346676488bb982cd72d3ce9fea494fc63695ab08cb3fb1c98ac3",
+  "split_manifest_sha256": "60fd8bdbd663f9fc622426ba8b082ccd500b33af2eb501b516971586575da8a5",
+  "kaggle_hours": 0.669,
+  "base_f1": 0.0094,
+  "sft_f1": 0.0083,
+  "base_eval": {
+    "macro_f1": 0.0094,
+    "mean_f1": 0.0096,
+    "dataset_f1": {
+      "beers": 0.0,
+      "flights": 0.0,
+      "hospital": 0.0281
+    },
+    "parse_success_rate": 1.0,
+    "schema_case_error_count": 88,
+    "failure_taxonomy": {
+      "missed_repair": 637,
+      "overrepair": 202,
+      "schema_case_error": 88,
+      "wrong_cell": 34,
+      "wrong_value": 63
+    }
+  },
+  "sft_eval": {
+    "macro_f1": 0.0083,
+    "mean_f1": 0.0084,
+    "dataset_f1": {
+      "beers": 0.0061,
+      "flights": 0.0,
+      "hospital": 0.0187
+    },
+    "parse_success_rate": 1.0,
+    "schema_case_error_count": 71,
+    "failure_taxonomy": {
+      "missed_repair": 590,
+      "overrepair": 207,
+      "schema_case_error": 71,
+      "wrong_cell": 1,
+      "wrong_value": 110
+    }
+  },
+  "evaluation_chunk_width": 4,
+  "evaluation_max_new_tokens": 1024,
+  "parse_success_rate": 1.0,
+  "schema_case_error_count": 71,
+  "quality_gate_failures": [
+    "sft_f1>base_f1",
+    "schema_case_error_count==0"
+  ],
+  "prompt_contract_drift": false,
+  "heldout_leakage_detected": false,
+  "quality_milestone": false,
+  "release_status": "diagnostic_complete_no_gain",
+  "repo_id": "Praneshrajan15/DataForge-0.5B-SFT"
+}

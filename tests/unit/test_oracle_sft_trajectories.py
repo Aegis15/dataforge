@@ -197,6 +197,42 @@ def test_oracle_builder_can_emit_noop_finish_examples() -> None:
         assert record["metrics"]["chunk_f1"] == 1.0
 
 
+def test_expert_v4_emits_only_deterministic_repairs_and_abstentions() -> None:
+    records = build_dataset_records(
+        _dataset(),
+        difficulty="easy",
+        split_seed=0,
+        eval_fraction=0.25,
+        min_eval_rows=1,
+        chunk_rows=1,
+        context_window_rows=1,
+        include_noop_records=True,
+        schema_version="expert_v4",
+        prompt_contract_version="repair_contract_v2",
+        abstain_noninferable=True,
+        include_context_derivable=False,
+    )
+
+    assert records
+    by_label = {}
+    for record in records:
+        by_label.setdefault(record["inferability"], []).append(record)
+        assistant_payload = json.loads(record["messages"][-1]["content"])
+        assert assistant_payload["repairs"] == record["fix"]
+
+    assert "deterministic_normalization" in by_label
+    assert "external_reference_required" in by_label
+    assert "not_inferable_from_prompt" in by_label
+    assert all(record["fix"] for record in by_label["deterministic_normalization"])
+    assert all(not record["fix"] for record in by_label["external_reference_required"])
+    assert all(not record["fix"] for record in by_label["not_inferable_from_prompt"])
+    assert all(
+        json.loads(record["messages"][-1]["content"]) == {"action": "finish", "repairs": []}
+        for label in ("external_reference_required", "not_inferable_from_prompt")
+        for record in by_label[label]
+    )
+
+
 def test_oracle_trajectory_ids_are_stable() -> None:
     kwargs = {
         "difficulty": "easy",
@@ -235,6 +271,10 @@ def test_split_manifest_contains_only_dirty_row_hashes(monkeypatch) -> None:
         chunk_rows=2,
         context_window_rows=1,
         include_noop_records=True,
+        schema_version="expert_v1",
+        prompt_contract_version="repair_contract_v1",
+        max_repairs_per_record=None,
+        min_noop_ratio=0.0,
         ready_min_records=2,
         output=Path("unused.jsonl"),
         manifest_output=Path("unused_manifest.json"),

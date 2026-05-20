@@ -19,6 +19,7 @@ Shipped in the current worktree:
 - Three detector families: `type_mismatch`, `decimal_shift`, `fd_violation`
 - Matching deterministic repairers wired through SafetyFilter -> SMTVerifier
 - Reversible transaction journals with immutable source snapshots
+- Public backend repair engine at `dataforge.engine.repair`
 - Real-world benchmark harness for Hospital, Flights, and Beers
 - OpenEnv-compatible HTTP environment with eight typed actions, including
   read-only `ROOT_CAUSE`
@@ -87,6 +88,29 @@ claim. Verify release artifacts before citing them:
 .\.venv\Scripts\python.exe scripts\model\verify_sft_release.py --min-dataset-records 272 --require-sha-metrics --output eval\results\sft_release_contract_v2_20260515.json
 ```
 
+## Week 12 GRPO Path
+
+The repository now contains a gated GRPO post-training path for free-tier
+experiments:
+
+- `training/configs/grpo_05b.yaml` targets `DataForge-0.5B-SFT` -> `DataForge-0.5B-GRPO`.
+- `training/configs/grpo_15b.yaml` requires a verified `DataForge-1.5B-SFT`
+  prerequisite before attempting `DataForge-1.5B-GRPO`.
+- `training/rewards/dataforge_reward.py` scores completions locally through the
+  `repair_contract_v1` exact-repair contract.
+- `training/kaggle/grpo_kaggle.ipynb` blocks Hub upload unless GRPO beats SFT
+  by at least 3 absolute F1 points on `DataForge-Bench-light-verified`.
+
+No GRPO checkpoint is described as a quality milestone in this README until
+`scripts/model/verify_grpo_release.py` produces committed verification
+evidence. Refresh benchmark tables only from generated JSON:
+
+After GRPO eval evidence exists:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\bench\refresh_benchmark_table.py --skip-agent-run --trained-model-json eval\results\grpo_model_comparison.json
+```
+
 ## MCP Server
 
 The nested `dataforge-mcp/` package is a standalone distribution that exposes
@@ -100,8 +124,9 @@ dataforge-mcp serve
 
 Tools: `dataforge_profile`, `dataforge_detect_errors`,
 `dataforge_verify_fix`, `dataforge_apply_repairs`, and `dataforge_revert`.
-The default transport is stdio. Streamable HTTP is available for local
-experiments.
+The default transport is stdio. MCP reads and writes are sandboxed to configured
+allowed roots; dry-run works by default, while apply requires `--enable-apply`.
+Streamable HTTP is available for local experiments.
 
 ## Playground And Model Demo
 
@@ -121,9 +146,9 @@ backend provider key is explicitly configured.
 <!-- BENCH:START -->
 Generated from `eval/results/agent_comparison.json`.
 
-| Method | Precision | Recall | F1 | Avg Steps | Quota Units |
-| --- | --- | --- | --- | --- | --- |
-| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 |
+| Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
+| --- | --- | --- | --- | --- | --- | --- |
+| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 | 0.0000 |
 
 See `BENCHMARK_REPORT.md` for per-dataset tables, error bars, and citation-only SOTA rows.
 <!-- BENCH:END -->
@@ -135,10 +160,16 @@ make setup
 make lint
 make type
 make test
+make backend-gate
 ```
 
 Verification works on Linux, macOS, and Windows with Git Bash available for GNU
 Make recipes. Python support is `>=3.11,<3.13`.
+
+`make backend-gate` is the release-quality backend check: lint, format, strict
+mypy, root tests, MCP tests, README truth, OpenAPI snapshot drift, secret scan,
+dependency audit availability, SBOM generation availability, and package build
+availability for both `dataforge` and `dataforge-mcp`.
 
 Windows setup:
 

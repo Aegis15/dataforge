@@ -11,7 +11,7 @@ ifndef PYTHON
 PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python)
 endif
 
-.PHONY: help setup setup-all lint format type test test-mapped sft-preflight coverage bench bench-free mutation clean lock uv-lock
+.PHONY: help setup setup-all lint format type test test-mapped frontend-install frontend-build frontend-test frontend-gate backend-gate sft-preflight coverage bench bench-free mutation clean lock uv-lock
 
 help:
 	@echo "DataForge dev targets"
@@ -22,6 +22,8 @@ help:
 	@echo "  type          Run mypy --strict on core + shipped Week 5 Python paths"
 	@echo "  test          Run the full test suite"
 	@echo "  test-mapped   Run tests for a changed source file (FILE=path)"
+	@echo "  frontend-gate Run Vite typecheck, unit tests, build budget, and Playwright"
+	@echo "  backend-gate  Run the canonical backend release-quality gate"
 	@echo "  sft-preflight Validate SFT JSONL/config before launching Kaggle"
 	@echo "  coverage      Run tests with coverage (fails at <90%)"
 	@echo "  bench         Run pytest-benchmark suites"
@@ -47,13 +49,27 @@ format:
 	$(PYTHON) -m ruff check --fix dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
 
 type:
-	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
+	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
 
 test:
 	$(PYTHON) -m pytest tests/ -x -v
 
 test-mapped:
 	$(PYTHON) scripts/test_mapped.py $(FILE)
+
+frontend-install:
+	npm --prefix playground/web ci
+
+frontend-build:
+	npm --prefix playground/web run build
+
+frontend-test:
+	npm --prefix playground/web run test
+
+frontend-gate: frontend-install frontend-build frontend-test
+
+backend-gate:
+	$(PYTHON) scripts/ci/backend_gate.py
 
 sft-preflight:
 	$(PYTHON) scripts/data/validate_sft_readiness.py
@@ -74,7 +90,7 @@ mutation:
 	$(PYTHON) -m mutmut results
 
 clean:
-	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov build dist *.egg-info
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov build dist *.egg-info playground/web/dist playground/web/test-results playground/web/playwright-report
 	find . -type d -name __pycache__ -exec rm -rf {} +
 
 lock:

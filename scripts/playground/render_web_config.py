@@ -9,7 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "playground" / "web" / "config.js"
+DEFAULT_OUTPUT_PATH = PROJECT_ROOT / "playground" / "web" / "public" / "config.js"
 
 
 def normalize_backend_url(raw_url: str) -> str:
@@ -35,9 +35,10 @@ def render_config(backend_url: str, output_path: Path = DEFAULT_OUTPUT_PATH) -> 
     normalized_url = normalize_backend_url(backend_url)
     body = (
         "window.__DATAFORGE_CONFIG__ = Object.freeze({\n"
-        f"    BACKEND_URL: {json.dumps(normalized_url)},\n"
+        f"  BACKEND_URL: {json.dumps(normalized_url)},\n"
         "});\n"
     )
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(body, encoding="utf-8")
     return output_path
 

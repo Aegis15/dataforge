@@ -12,6 +12,33 @@ Format for every entry:
 
 ---
 
+## 2026-05-16 - Use GRPO before GiGPO on the free-tier training path
+**Context**: Week 12 needs a post-SFT reinforcement learning step that can run
+on Kaggle or Colab free GPUs without adding a second distributed RL stack.
+The original prompt named TRL v0.11 and GiGPO as adjacent possibilities, but
+the free-tier release path needs a stable trainer, local reward scoring, and
+small rollout batches.
+**Alternatives**:
+- Use TRL GRPO. Pros: ships in the existing TRL family, supports callable
+  reward functions, and can run with LoRA/QLoRA on small models. Cons:
+  rollout count and prompt length must be conservative on P100/T4 memory.
+- Use GiGPO through verl-agent. Pros: closer to newer agentic RL research.
+  Cons: heavier setup, larger memory footprint, and more moving parts than the
+  current free-tier path can honestly support.
+- Skip RL and refresh only SFT. Pros: lowest operational risk. Cons: does not
+  test the environment/reward path that Week 12 is meant to validate.
+**Decision**: implement GRPO first with TRL, local stateless exact-repair
+rewards, and a hard F1 gate before publishing.
+**Reasoning**: GRPO is the smallest credible RL step after SFT that can be
+reproduced by maintainers without paid infrastructure. GiGPO remains future
+work until the project has either paid compute or an HF compute grant.
+**Reviewed with**: `specs/SPEC_grpo_training.md`.
+**Reversal criteria**: if GRPO cannot clear the +0.03 F1 gate after reward
+diagnostics and rollout-count tuning, or if GiGPO gains a lightweight
+single-GPU implementation, revisit the RL method choice.
+
+---
+
 ## 2026-05-15 - Treat canonical human docs as the documentation source of truth
 **Context**: The repository now contains generated Hugging Face staging mirrors,
 local logs, cache directories, and canonical human-authored docs. A full docs

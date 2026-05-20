@@ -35,6 +35,11 @@ except ImportError:  # pragma: no cover - local development fallback
 
 MODEL_ID = "Praneshrajan15/DataForge-0.5B-SFT"
 MAX_ROWS = 50
+EXAMPLE_SNIPPETS = [
+    "id,amount,department\n1,100,cardiology\n2,105,cardiology\n3,1020,cardiology",
+    "id,email,zip\n1,ana@example.com,02139\n2,bob@example.com,2139\n3,chen@example.com,02139",
+    "id,room,ward\n1,12A,north\n2,12A,north\n3,99Z,south",
+]
 TABLE_HEADERS = [
     "status",
     "row",
@@ -207,23 +212,65 @@ def detect_and_propose(csv_snippet: str) -> list[list[str]]:
     return parse_model_output(model_text)
 
 
+def detect_and_propose_with_status(csv_snippet: str) -> tuple[list[list[str]], str]:
+    """Return model proposals plus an honest demo-status message."""
+    rows = detect_and_propose(csv_snippet)
+    first_status = rows[0][0] if rows else "raw"
+    if first_status == "error":
+        return rows, "Input rejected or inference failed. The verified playground path remains Profile -> Repair -> Verify -> Revert."
+    if first_status == "raw":
+        return rows, "The checkpoint returned unstructured text. Treat this as research output, not a verified repair."
+    if first_status == "ok":
+        return rows, "The checkpoint proposed no fixes for this snippet."
+    return rows, f"Experimental checkpoint returned {len(rows)} proposed fix row(s). Verify repairs with the CLI or playground API before trusting them."
+
+
 with gr.Blocks(title="DataForge 0.5B SFT") as demo:
-    gr.Markdown("# DataForge 0.5B SFT")
-    csv_input = gr.Textbox(
-        label="CSV snippet",
-        lines=14,
-        max_lines=20,
-        placeholder="id,amount\n1,100\n2,105\n3,1020",
+    gr.Markdown(
+        """
+# DataForge 0.5B SFT
+
+Experimental model demo for short CSV snippets. This Space shows what the warmup
+checkpoint proposes; it does not apply repairs, store data, or replace the
+verified DataForge workflow.
+
+**Use the product path for evidence:** Profile -> Repair -> Verify -> Revert
+in the CLI or Cloudflare playground. This model surface is intentionally bounded
+to 50 rows, one queued inference at a time, and research-grade outputs.
+"""
     )
-    run_button = gr.Button("Detect + propose fixes", variant="primary")
-    output = gr.Dataframe(
-        headers=TABLE_HEADERS,
-        datatype=["str"] * len(TABLE_HEADERS),
-        row_count=1,
-        column_count=len(TABLE_HEADERS),
-        label="Output",
+    with gr.Row():
+        with gr.Column(scale=2):
+            csv_input = gr.Textbox(
+                label="CSV snippet",
+                lines=14,
+                max_lines=20,
+                placeholder="id,amount\n1,100\n2,105\n3,1020",
+            )
+            gr.Examples(
+                examples=EXAMPLE_SNIPPETS,
+                inputs=csv_input,
+                label="Audited examples",
+            )
+            run_button = gr.Button("Detect + propose fixes", variant="primary")
+        with gr.Column(scale=3):
+            output = gr.Dataframe(
+                headers=TABLE_HEADERS,
+                datatype=["str"] * len(TABLE_HEADERS),
+                row_count=1,
+                column_count=len(TABLE_HEADERS),
+                label="Model output",
+            )
+            status_output = gr.Markdown("Waiting for a CSV snippet.")
+    run_button.click(
+        detect_and_propose_with_status,
+        inputs=csv_input,
+        outputs=[output, status_output],
+        show_progress="full",
+        concurrency_limit=1,
     )
-    run_button.click(detect_and_propose, inputs=csv_input, outputs=output)
+
+demo.queue(max_size=8, default_concurrency_limit=1)
 
 
 if __name__ == "__main__":

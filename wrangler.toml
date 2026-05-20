@@ -2,5 +2,5 @@ name = "dataforge"
 compatibility_date = "2026-04-27"
 
 [assets]
-directory = "./playground/web"
+directory = "./playground/web/dist"
 not_found_handling = "404-page"

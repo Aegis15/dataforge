@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pytest
 
+from dataforge.causal import pc as pc_module
 from dataforge.causal.dag import CausalDAG
 from dataforge.causal.pc import discover_causal_dag
 from dataforge.causal.root_cause import CausalRootCauseAnalyzer, ErrorEvidence
@@ -33,6 +36,24 @@ def test_dag_reachability_and_cycle_rejection() -> None:
         raise AssertionError("Expected cycle rejection")
 
 
+def test_dag_metadata_absent_paths_and_root_deduplication() -> None:
+    """DAG utilities clamp metadata and handle absent nodes deterministically."""
+    dag = CausalDAG(["source"])
+    dag.add_node("target")
+    dag.add_edge("source", "target", confidence=1.5, provenance="manual")
+
+    assert dag.nodes == ("source", "target")
+    assert dag.edges[0].confidence == 1.0
+    assert dag.edges[0].provenance == "manual"
+    assert dag.successors("missing") == ()
+    assert dag.is_reachable("missing", "target") is False
+    assert dag.path_confidence("missing", "target") == 0.0
+    assert dag.minimal_root_columns(["source", "target", "source"]) == ("source",)
+
+    with pytest.raises(ValueError, match="self-edges"):
+        dag.add_edge("source", "source", confidence=0.5, provenance="bad")
+
+
 def test_fd_priors_seed_edges() -> None:
     """Functional dependencies become high-confidence prior edges."""
     df = pd.DataFrame(
@@ -49,6 +70,52 @@ def test_fd_priors_seed_edges() -> None:
 
     assert result.dag.is_reachable("zip_code", "city")
     assert result.confidence_report["zip_code->city"] == 0.95
+
+
+def test_discovery_reports_cycle_warnings_for_conflicting_fd_priors() -> None:
+    """Conflicting FD priors do not crash discovery; they are reported."""
+    df = pd.DataFrame({"a": ["x", "y", "z"], "b": ["u", "v", "w"]})
+    schema = Schema(
+        functional_dependencies=[
+            FunctionalDependency(determinant=("a",), dependent="b"),
+            FunctionalDependency(determinant=("b",), dependent="a"),
+        ]
+    )
+
+    result = discover_causal_dag(df, schema)
+
+    assert result.dag.is_reachable("a", "b")
+    assert any("cycle" in warning for warning in result.warnings)
+
+
+def test_pc_dependency_helpers_cover_categorical_numeric_and_import_fallbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Low-level PC helpers return bounded values under fallback paths."""
+    constant = pd.Series(["same", "same", "same", "same"])
+    numeric = pd.Series([1, 2, 3, 4, 5, 6])
+    correlated = pd.Series([2, 4, 6, 8, 10, 12])
+    mixed = pd.Series(["a", "a", "b", "b", "c", "c"])
+
+    assert pc_module._chi_squared_p_value(constant, constant) == 1.0
+    assert 0.0 <= pc_module._mutual_information_p_value(numeric, mixed) <= 1.0
+    assert pc_module._codes(numeric).shape == (6,)
+
+    real_import = builtins.__import__
+
+    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "hyppo.independence":
+            raise ImportError("blocked for fallback coverage")
+        if name == "causallearn.search.ConstraintBased.PC":
+            raise ImportError("blocked for fallback coverage")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert pc_module._hsic_p_value(numeric, correlated) == 0.0
+    assert pc_module._run_causal_learn_pc(numeric.to_numpy().reshape(-1, 1), ["x"], 0.05)[
+        1
+    ].startswith("causal-learn PC unavailable")
 
 
 def test_minimal_root_set_for_chain() -> None:

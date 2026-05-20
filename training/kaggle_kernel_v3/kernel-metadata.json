@@ -1,0 +1,17 @@
+{
+  "id": "praneshrajan15/dataforge-0-5b-sft-v3-diagnostic",
+  "title": "DataForge 0.5B SFT v3 Diagnostic",
+  "code_file": "sft_warmup_kaggle_v3.ipynb",
+  "language": "python",
+  "kernel_type": "notebook",
+  "is_private": "true",
+  "enable_gpu": "true",
+  "enable_tpu": "false",
+  "enable_internet": "true",
+  "dataset_sources": [
+    "praneshrajan15/dataforge-sft-v3-handoff"
+  ],
+  "competition_sources": [],
+  "kernel_sources": [],
+  "model_sources": []
+}

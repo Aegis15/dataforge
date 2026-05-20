@@ -19,6 +19,7 @@ from typing import Any, cast
 import duckdb
 import pandas as pd
 import sqlglot
+import sqlglot.expressions as sqlglot_exp
 from pydantic import BaseModel, Field
 
 from dataforge.agent.scratchpad import Scratchpad
@@ -63,6 +64,30 @@ _MAX_STEPS = 30
 _MAX_RESULT_ROWS = 20
 _TOOL_HISTORY_LIMIT = 5
 _NOISE_EPSILON = 0.15
+_BLOCKED_SQL_FRAGMENTS = (
+    "attach",
+    "call ",
+    "copy ",
+    "detach",
+    "duckdb_extensions",
+    "filename",
+    "from_csv_auto",
+    "glob(",
+    "http://",
+    "https://",
+    "httpfs",
+    "install",
+    "load ",
+    "mysql_scan",
+    "parquet_scan",
+    "postgres_scan",
+    "pragma",
+    "read_csv",
+    "read_json",
+    "read_parquet",
+    "s3://",
+    "sqlite_scan",
+)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -347,7 +372,7 @@ class DataForgeEnv:
         """Handle SQL_QUERY: execute read-only SQL via DuckDB."""
         # Validate read-only
         try:
-            parsed = sqlglot.parse(action.query)
+            parsed = [stmt for stmt in sqlglot.parse(action.query) if stmt is not None]
         except sqlglot.errors.ParseError as exc:
             return ToolResult(
                 action_type="SQL_QUERY",
@@ -359,8 +384,35 @@ class DataForgeEnv:
                 },
             ), P_INVALID
 
+        if len(parsed) != 1:
+            return ToolResult(
+                action_type="SQL_QUERY",
+                success=False,
+                error={
+                    "verdict": "rejected",
+                    "reason": "Exactly one SELECT statement is allowed.",
+                    "suggested_constraint": "Use a single read-only SELECT statement.",
+                },
+            ), P_INVALID
+
+        normalized_query = f" {action.query.lower()} "
+        blocked = next(
+            (fragment for fragment in _BLOCKED_SQL_FRAGMENTS if fragment in normalized_query),
+            None,
+        )
+        if blocked is not None:
+            return ToolResult(
+                action_type="SQL_QUERY",
+                success=False,
+                error={
+                    "verdict": "rejected",
+                    "reason": "SQL_QUERY may only read from the registered data relation.",
+                    "suggested_constraint": "Query the in-memory data table without file, network, extension, or table functions.",
+                },
+            ), P_INVALID
+
         for stmt in parsed:
-            if stmt is not None and stmt.key not in ("select",):
+            if stmt.key not in ("select",):
                 return ToolResult(
                     action_type="SQL_QUERY",
                     success=False,
@@ -370,6 +422,21 @@ class DataForgeEnv:
                         "suggested_constraint": "Use SELECT statements only",
                     },
                 ), P_INVALID
+
+            for table in stmt.find_all(sqlglot_exp.Table):
+                if table.name.lower() != "data":
+                    return ToolResult(
+                        action_type="SQL_QUERY",
+                        success=False,
+                        error={
+                            "verdict": "rejected",
+                            "reason": (
+                                "SQL_QUERY may only reference the registered data relation; "
+                                f"got '{table.name}'."
+                            ),
+                            "suggested_constraint": "Use FROM data for tabular queries.",
+                        },
+                    ), P_INVALID
 
         try:
             conn = duckdb.connect(":memory:")

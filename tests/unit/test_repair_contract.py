@@ -1,0 +1,148 @@
+"""Tests for the canonical DataForge repair contract."""
+
+from __future__ import annotations
+
+import json
+
+from pydantic import BaseModel
+
+from dataforge.repair_contract import (
+    CONTRACT_VERSION,
+    CONTRACT_VERSION_V2,
+    RepairFix,
+    parse_repair_action,
+    render_repair_messages,
+    repair_failure_taxonomy,
+    score_repair_fixes,
+    score_repair_fixes_canonicalized,
+)
+
+
+class _Truth(BaseModel):
+    row: int
+    column: str
+    clean_value: str
+
+
+def test_render_repair_messages_uses_canonical_payload_shape() -> None:
+    messages = render_repair_messages(
+        schema_summary={"dataset": "synthetic", "columns": ["Score"]},
+        target_rows=[{"_row": 0, "Score": "45"}],
+        context_rows=[],
+        allowed_columns=["Score"],
+        label_source="fixture",
+        repairs=[RepairFix(row=0, column="Score", new_value="4.5", reason="decimal shift")],
+    )
+
+    assert [message["role"] for message in messages] == ["system", "user", "assistant"]
+    user_payload = json.loads(messages[1]["content"])
+    assert user_payload["contract_version"] == CONTRACT_VERSION
+    assert user_payload["contract_version"] == CONTRACT_VERSION_V2
+    assert user_payload["allowed_columns"] == ["Score"]
+    assert user_payload["valid_rows"] == [0]
+    assert user_payload["target_rows"] == [{"_row": "0", "Score": "45"}]
+    assistant_payload = json.loads(messages[2]["content"])
+    assert assistant_payload == {
+        "action": "submit_repairs",
+        "repairs": [{"row": 0, "column": "Score", "new_value": "4.5", "reason": "decimal shift"}],
+    }
+
+
+def test_parse_repair_action_accepts_objects_arrays_and_fences() -> None:
+    object_result = parse_repair_action(
+        '{"action":"submit_repairs","repairs":[{"row":0,"column":"Score","new_value":"4.5"}]}'
+    )
+    array_result = parse_repair_action('[{"row":1,"column":"Phone","new_value":"217"}]')
+    fenced_result = parse_repair_action('```json\n{"action":"finish","repairs":[]}\n```')
+
+    assert object_result.ok
+    assert object_result.action is not None
+    assert object_result.action.repairs[0].reason == "repair proposal"
+    assert array_result.ok
+    assert fenced_result.ok
+    assert fenced_result.action is not None
+    assert fenced_result.action.action == "finish"
+
+
+def test_parse_repair_action_v2_enforces_columns_rows_and_explicit_action() -> None:
+    missing_action = parse_repair_action(
+        '{"repairs":[{"row":0,"column":"Score","new_value":"4.5"}]}',
+        allowed_columns=["Score"],
+        valid_rows=[0],
+        require_explicit_action=True,
+    )
+    bad_column = parse_repair_action(
+        '{"action":"submit_repairs","repairs":[{"row":0,"column":"score","new_value":"4.5"}]}',
+        allowed_columns=["Score"],
+        valid_rows=[0],
+        require_explicit_action=True,
+    )
+    bad_row = parse_repair_action(
+        '{"action":"submit_repairs","repairs":[{"row":99,"column":"Score","new_value":"4.5"}]}',
+        allowed_columns=["Score"],
+        valid_rows=[0],
+        require_explicit_action=True,
+    )
+    nonempty_finish = parse_repair_action(
+        '{"action":"finish","repairs":[{"row":0,"column":"Score","new_value":"4.5"}]}',
+        allowed_columns=["Score"],
+        valid_rows=[0],
+        require_explicit_action=True,
+    )
+
+    assert missing_action.error_kind == "schema_error"
+    assert bad_column.error_kind == "invalid_column"
+    assert bad_column.diagnostics["schema_case_error"] is True
+    assert bad_row.error_kind == "invalid_row"
+    assert nonempty_finish.error_kind == "schema_error"
+
+
+def test_parse_repair_action_deduplicates_cells_last_write_wins() -> None:
+    result = parse_repair_action(
+        '{"action":"submit_repairs","repairs":['
+        '{"row":0,"column":"Score","new_value":"wrong"},'
+        '{"row":0,"column":"Score","new_value":"4.5"}'
+        "]}"
+    )
+
+    assert result.ok
+    assert result.action is not None
+    assert result.diagnostics["duplicate_cell_count"] == 1
+    assert result.action.repairs == [
+        RepairFix(row=0, column="Score", new_value="4.5", reason="repair proposal")
+    ]
+
+
+def test_score_and_taxonomy_keep_exact_scoring_strict() -> None:
+    truth = [
+        _Truth(row=0, column="Score", clean_value="4.5"),
+        _Truth(row=1, column="Phone", clean_value="217"),
+    ]
+    fixes = [
+        RepairFix(row=0, column="score", new_value="4.5", reason="wrong case"),
+        RepairFix(row=1, column="Phone", new_value="999", reason="wrong value"),
+        RepairFix(row=2, column="Phone", new_value="217", reason="wrong row"),
+    ]
+
+    score = score_repair_fixes(truth, fixes)
+    canonicalized = score_repair_fixes_canonicalized(
+        [_Truth(row=0, column="Score", clean_value="Mercy Hospital")],
+        [RepairFix(row=0, column="Score", new_value="  MERCY   HOSPITAL  ", reason="format")],
+    )
+    taxonomy = repair_failure_taxonomy(
+        ground_truth=truth,
+        fixes=fixes,
+        allowed_columns=["Score", "Phone"],
+        valid_rows=[0, 1],
+    )
+
+    assert score.tp == 0
+    assert score.fp == 3
+    assert score.fn == 2
+    assert canonicalized.f1 == 1.0
+    assert taxonomy == {
+        "missed_repair": 1,
+        "schema_case_error": 1,
+        "wrong_cell": 1,
+        "wrong_value": 1,
+    }

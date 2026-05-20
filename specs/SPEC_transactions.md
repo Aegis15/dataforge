@@ -2,7 +2,7 @@
 
 > Status: Draft
 > Owner: @pranesh
-> Last updated: 2026-04-20
+> Last updated: 2026-05-20
 
 ## 1. Purpose (2 sentences)
 
@@ -14,6 +14,7 @@ mutation and every revert must restore the exact original bytes.
 
 - [ ] `dataforge repair <path> --dry-run` renders proposed fixes and writes nothing.
 - [ ] `dataforge repair <path> --apply` writes a transaction journal and source snapshot before modifying the CSV.
+- [ ] `dataforge.engine.repair.run_repair_pipeline()` exposes the public repair pipeline used by non-CLI backends.
 - [ ] `dataforge revert <txn_id>` restores the exact original bytes and verifies the original SHA-256.
 - [ ] Transaction logs are append-only JSONL with a schema-version field on every event.
 - [ ] `type_mismatch` and `decimal_shift` repairers are deterministic and never call the LLM provider.
@@ -27,6 +28,8 @@ mutation and every revert must restore the exact original bytes.
 - Append-only per-transaction JSONL journal at `.dataforge/transactions/<txn_id>.jsonl`
 - Immutable source snapshot persisted before apply
 - `repair` CLI with `--dry-run` and `--apply`
+- Public engine API: `RepairPipelineRequest`, `RepairPipelineResult`,
+  `RepairReceipt`, `CandidateFix`, `VerifiedFix`, and `RepairFailure`
 - `revert` CLI with post-state hash guard
 - Repairer protocol and three Week 1 repairers
 - Thin safety + verifier gate scaffolds in the apply path
@@ -45,6 +48,7 @@ mutation and every revert must restore the exact original bytes.
 - Compatibility: Python 3.11+ and 3.12 supported; Windows / macOS / Linux.
 - Backward compatibility: no regressions in existing Week 1 tests.
 - Safety invariant: apply path must flow through Safety -> Verifier -> Transaction -> File write.
+- Apply invariant: source-path locking, stale-source detection, immutable snapshot creation, and atomic same-directory replacement are required for every source mutation.
 - Journal format correction: use `.jsonl` rather than mutable single-file JSON.
 - Exact restore guarantee: revert is snapshot-based, not pandas inverse-write based.
 
@@ -87,9 +91,24 @@ mutation and every revert must restore the exact original bytes.
 - Depends on: 6.4
 - Estimated complexity: S
 
+### 6.7 Public backend engine
+- Acceptance: CLI-compatible repair behavior is available through
+  `dataforge.engine.repair.run_repair_pipeline(request)` without API/MCP callers
+  importing private CLI helpers.
+- Depends on: 6.2, 6.4, 6.6
+- Estimated complexity: M
+
+### 6.8 Atomic apply and source locking
+- Acceptance: apply rejects stale source bytes, duplicate transaction ids fail
+  before mutation, journal-append crashes restore original bytes, and concurrent
+  source mutations are serialized by a source-path lock.
+- Depends on: 6.2, 6.3
+- Estimated complexity: M
+
 ## 7. Verification
 
 - Unit tests: `tests/unit/test_transactions.py`, `tests/unit/test_repairers.py`, `tests/unit/test_cli_repair.py`
+- Engine tests: `tests/unit/test_engine_repair.py`
 - Integration tests: `tests/unit/test_cli_profile.py` remains green
 - Property tests: `tests/property/test_revert_is_bytes_identical.py`
 - Benchmarks: existing performance expectation for small CSV dry-run
@@ -151,3 +170,13 @@ Reasoning: deterministic majority rules should handle the common case without th
 Input: a small CSV, at least one valid `CellFix`, and a full apply followed by revert.
 Expected output: `sha256(reverted_file_bytes) == sha256(original_file_bytes)` and `reverted_file_bytes == original_file_bytes`.
 Reasoning: the Week 2 headline guarantee is byte-identical restoration.
+
+### Case A.7: Stale-source apply is refused
+Input: detect fixes against source bytes, edit the CSV before apply, then call apply with the old source bytes.
+Expected output: apply raises a clear stale-source error and writes no transaction-applied event.
+Reasoning: prevents a verified repair from being applied to a different file state.
+
+### Case A.8: Apply crash restores bytes
+Input: force the journal-applied append to fail after file mutation.
+Expected output: source bytes equal the pre-apply bytes.
+Reasoning: protects local-first trust when the process fails mid-transaction.

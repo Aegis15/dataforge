@@ -10,20 +10,21 @@
 - Datasets: hospital
 - Seeds: 1
 - Free-tier quota units: `max(llm_calls / 1000, (prompt_tokens + completion_tokens) / 100000)`
+- GRPO compute cost is reported as free-tier GPU-hours, not dollars.
 
 ## Cross-Dataset Local Results
 
-| Method | Precision | Recall | F1 | Avg Steps | Quota Units |
-| --- | --- | --- | --- | --- | --- |
-| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 |
+| Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
+| --- | --- | --- | --- | --- | --- | --- |
+| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 | 0.0000 |
 
 ## Per-Dataset Local Results
 
 ### Hospital
 
-| Method | Precision | Recall | F1 | Avg Steps | Quota Units |
-| --- | --- | --- | --- | --- | --- |
-| llm_zeroshot | 0.2500 +/- 0.0000 | 0.3333 +/- 0.0000 | 0.2857 +/- 0.0000 | 2.0000 +/- 0.0000 | 0.0053 +/- 0.0000 |
+| Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
+| --- | --- | --- | --- | --- | --- | --- |
+| llm_zeroshot | 0.2500 +/- 0.0000 | 0.3333 +/- 0.0000 | 0.2857 +/- 0.0000 | 2.0000 +/- 0.0000 | 0.0053 +/- 0.0000 | 0.0000 +/- 0.0000 |
 
 ## Citation-Only SOTA Reference
 
@@ -42,4 +43,4 @@ HoloClean rows are transcribed from BClean Table 4; see [HoloClean 2017](https:/
 
 ## Methodology
 
-Local rows are reproduced from generated JSON. Citation-only SOTA rows are copied from literature and are not rerun in this repository. Quota units are reported in free-tier fractions rather than dollars.
+Local rows are reproduced from generated JSON. Citation-only SOTA rows are copied from literature and are not rerun in this repository. LLM quota units are free-tier fractions; GRPO compute cost is GPU-hours, not dollars.

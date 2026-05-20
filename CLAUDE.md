@@ -22,6 +22,11 @@ the date.
   when actual floating-point behavior matters.
 - TRL v1+ manages `remove_unused_columns` internally in `GRPOConfig`; do not
   hand-set it from older tutorials.
+- Week 12 GRPO configs intentionally use `prompt_token_budget`, not
+  `max_prompt_length`; pass `max_prompt_length` to TRL only if the installed
+  `GRPOConfig` signature exposes it.
+- On Windows-style runtimes, import `GRPOTrainer` under `PYTHONUTF8=1` to avoid
+  TRL chat-template decode failures.
 - `causal-learn` PC does not accept NaN values. Impute or drop missing values
   before discovery.
 - OpenEnv's current primary API is `reset()`, `step()`, and `state()`. The local
@@ -45,6 +50,9 @@ the date.
   50 parsed data rows and may return malformed or incorrect model output.
 - Hugging Face ZeroGPU is selected in Space settings. Do not document unsupported
   README frontmatter keys for hardware selection.
+- GRPO reward scoring must remain local/stateless. Do not call the mutable
+  OpenEnv HTTP singleton from parallel rollout rewards unless a future stateless
+  scoring endpoint is specified.
 
 ## Performance Notes
 

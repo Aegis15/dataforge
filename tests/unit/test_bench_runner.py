@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+from dataforge.bench.core import SeedBenchmarkResult
 from dataforge.bench.runner import run_agent_comparison
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "bench"
@@ -106,3 +108,97 @@ class TestRunAgentComparison:
                 really_run_big_bench=False,
                 cache_root=tmp_path / "cache",
             )
+
+    def test_runner_rejects_unknown_dataset_and_nonpositive_seeds(self, tmp_path: Path) -> None:
+        """Input validation covers dataset names and seed counts independently."""
+        with pytest.raises(ValueError, match="Unknown benchmark datasets"):
+            run_agent_comparison(
+                methods=["heuristic"],
+                datasets=["unknown"],
+                seeds=1,
+                output_json=tmp_path / "out.json",
+                really_run_big_bench=False,
+                cache_root=tmp_path / "cache",
+            )
+
+        with pytest.raises(ValueError, match="must be >= 1"):
+            run_agent_comparison(
+                methods=["heuristic"],
+                datasets=["hospital"],
+                seeds=0,
+                output_json=tmp_path / "out.json",
+                really_run_big_bench=False,
+                cache_root=tmp_path / "cache",
+            )
+
+    def test_runner_executes_configured_llm_methods_with_env_fallbacks(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Configured LLM paths instantiate the client and normalize reproduction metadata."""
+        cache_root = tmp_path / "cache"
+        _populate_cache(cache_root)
+        output_json = tmp_path / "agent_comparison.json"
+        monkeypatch.setenv("DATAFORGE_LLM_PROVIDER", "groq")
+        monkeypatch.setenv("GROQ_API_KEY", "test-key")
+        monkeypatch.setenv("DATAFORGE_GROQ_MIN_INTERVAL_S", "not-a-float")
+        monkeypatch.setenv("DATAFORGE_GROQ_TIMEOUT_S", "not-a-float")
+        monkeypatch.setenv("DATAFORGE_GROQ_MAX_TOKENS", "not-an-int")
+        monkeypatch.setenv("DATAFORGE_GROQ_MAX_RETRIES", "not-an-int")
+
+        stale_command = "old reproduction command"
+        zero_result = SeedBenchmarkResult(
+            method="llm_zeroshot",
+            dataset="hospital",
+            seed=0,
+            status="ok",
+            tp=1,
+            fp=0,
+            fn=0,
+            precision=1.0,
+            recall=1.0,
+            f1=1.0,
+            avg_steps=1,
+            runtime_s=0.1,
+            llm_calls=1,
+            prompt_tokens=10,
+            completion_tokens=2,
+            quota_units=0.001,
+            provider="groq",
+            model="mock",
+            reproduction_command=stale_command,
+        )
+        react_result = zero_result.model_copy(update={"method": "llm_react"})
+
+        with (
+            patch("dataforge.bench.runner.GroqBenchClient", return_value=MagicMock()) as client,
+            patch(
+                "dataforge.bench.runner.run_llm_zeroshot_episode",
+                return_value=zero_result,
+            ) as zeroshot,
+            patch(
+                "dataforge.bench.runner.run_llm_react_episode", return_value=react_result
+            ) as react,
+        ):
+            output = run_agent_comparison(
+                methods=["llm_zeroshot", "llm_react"],
+                datasets=["hospital"],
+                seeds=1,
+                output_json=output_json,
+                really_run_big_bench=True,
+                cache_root=cache_root,
+            )
+
+        client.assert_called_once()
+        assert client.call_args.kwargs["min_interval_s"] == 1.0
+        assert client.call_args.kwargs["timeout_s"] == 30.0
+        assert client.call_args.kwargs["max_tokens"] == 256
+        assert client.call_args.kwargs["max_retries"] == 3
+        zeroshot.assert_called_once()
+        react.assert_called_once()
+        assert all(
+            record.reproduction_command
+            == "dataforge bench --methods llm_zeroshot,llm_react --datasets hospital --seeds 1"
+            for record in output.records
+        )

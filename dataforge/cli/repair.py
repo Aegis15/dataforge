@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -15,6 +14,13 @@ from rich.panel import Panel
 from dataforge.cli.common import load_schema, read_csv
 from dataforge.detectors import run_all_detectors
 from dataforge.detectors.base import Issue, Schema
+from dataforge.engine.repair import (
+    _atomic_write_bytes,
+    source_path_lock,
+)
+from dataforge.engine.repair import (
+    apply_fixes_to_csv as engine_apply_fixes_to_csv,
+)
 from dataforge.repairers import build_repairers
 from dataforge.repairers.base import ProposedFix, RepairAttempt, RetryContext
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
@@ -45,25 +51,7 @@ def apply_fixes_to_csv(path: Path, fixes: list[CellFix]) -> str:
     Raises:
         ValueError: If a fix references a missing row/column or stale old value.
     """
-    df = read_csv(path)
-    for fix in fixes:
-        if fix.operation != "update":
-            raise ValueError(f"Unsupported repair operation '{fix.operation}' for row {fix.row}.")
-        if fix.column not in df.columns:
-            raise ValueError(f"Column '{fix.column}' not found in '{path}'.")
-        if fix.row < 0 or fix.row >= len(df.index):
-            raise ValueError(f"Row {fix.row} is out of bounds for '{path}'.")
-
-        current_value = str(df.at[fix.row, fix.column])
-        if current_value != fix.old_value:
-            raise ValueError(
-                f"Refusing to apply stale fix for row {fix.row}, column '{fix.column}': "
-                f"expected '{fix.old_value}', found '{current_value}'."
-            )
-        df.at[fix.row, fix.column] = fix.new_value
-
-    df.to_csv(path, index=False, lineterminator="\n")
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    return engine_apply_fixes_to_csv(path, fixes)
 
 
 def _resolve_schema(schema_path: Path | None) -> Schema | None:
@@ -316,28 +304,35 @@ def _apply_transaction(
 ) -> str:
     """Write a transaction record, apply fixes, and append the applied event."""
     resolved_path = path.resolve()
-    txn_id = generate_txn_id()
-    snapshot_path = snapshot_path_for(resolved_path, txn_id)
-    snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-    snapshot_path.write_bytes(source_bytes)
+    with source_path_lock(resolved_path):
+        if resolved_path.read_bytes() != source_bytes:
+            raise RuntimeError(
+                "Refusing to apply repairs because the source file changed after detection."
+            )
 
-    transaction = RepairTransaction(
-        txn_id=txn_id,
-        created_at=datetime.now(UTC),
-        source_path=str(resolved_path),
-        source_sha256=sha256_bytes(source_bytes),
-        source_snapshot_path=str(snapshot_path.resolve()),
-        fixes=[proposal.fix for proposal in fixes],
-        applied=False,
-    )
-    log_path = append_created_transaction(transaction)
+        txn_id = generate_txn_id()
+        snapshot_path = snapshot_path_for(resolved_path, txn_id)
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        with snapshot_path.open("xb") as handle:
+            handle.write(source_bytes)
 
-    try:
-        post_sha256 = apply_fixes_to_csv(path, [proposal.fix for proposal in fixes])
-        append_applied_event(log_path, txn_id, post_sha256=post_sha256)
-    except Exception:
-        path.write_bytes(source_bytes)
-        raise
+        transaction = RepairTransaction(
+            txn_id=txn_id,
+            created_at=datetime.now(UTC),
+            source_path=str(resolved_path),
+            source_sha256=sha256_bytes(source_bytes),
+            source_snapshot_path=str(snapshot_path.resolve()),
+            fixes=[proposal.fix for proposal in fixes],
+            applied=False,
+        )
+        log_path = append_created_transaction(transaction)
+
+        try:
+            post_sha256 = apply_fixes_to_csv(path, [proposal.fix for proposal in fixes])
+            append_applied_event(log_path, txn_id, post_sha256=post_sha256)
+        except Exception:
+            _atomic_write_bytes(resolved_path, source_bytes)
+            raise
 
     return txn_id
 

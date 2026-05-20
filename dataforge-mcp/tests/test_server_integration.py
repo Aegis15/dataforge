@@ -29,6 +29,7 @@ def test_stdio_server_lists_and_calls_profile_tool(tmp_path: Path) -> None:
     env["PYTHONPATH"] = os.pathsep.join(
         [str(package_root), str(repo_root), env.get("PYTHONPATH", "")]
     )
+    env["DATAFORGE_MCP_ALLOWED_ROOTS"] = str(tmp_path)
 
     async def run_client() -> None:
         server_params = StdioServerParameters(

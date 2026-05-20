@@ -12,8 +12,8 @@ from playground.api.app import _build_cors_origin_regex, _build_cors_origins
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WRANGLER_PATH = PROJECT_ROOT / "wrangler.toml"
-ASSETSIGNORE_PATH = PROJECT_ROOT / "playground" / "web" / ".assetsignore"
-HEADERS_PATH = PROJECT_ROOT / "playground" / "web" / "_headers"
+ASSETSIGNORE_PATH = PROJECT_ROOT / "playground" / "web" / "public" / ".assetsignore"
+HEADERS_PATH = PROJECT_ROOT / "playground" / "web" / "public" / "_headers"
 RENDERER_PATH = PROJECT_ROOT / "scripts" / "playground" / "render_web_config.py"
 VERIFIER_PATH = PROJECT_ROOT / "scripts" / "playground" / "verify_frontend_deploy.py"
 HF_SYNC_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "sync-to-hf.yml"
@@ -34,7 +34,7 @@ def test_wrangler_config_declares_assets_only_worker() -> None:
     body = WRANGLER_PATH.read_text(encoding="utf-8")
     assert 'name = "dataforge"' in body
     assert 'compatibility_date = "2026-04-27"' in body
-    assert 'directory = "./playground/web"' in body
+    assert 'directory = "./playground/web/dist"' in body
     assert 'not_found_handling = "404-page"' in body
 
 
@@ -44,6 +44,8 @@ def test_assetsignore_and_headers_protect_runtime_config() -> None:
     headers = HEADERS_PATH.read_text(encoding="utf-8")
     assert "/config.js" in headers
     assert "Cache-Control: no-store" in headers
+    assert "/assets/*" in headers
+    assert "immutable" in headers
     assert VERIFIER_PATH.exists()
 
 

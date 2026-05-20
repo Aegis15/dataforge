@@ -9,7 +9,9 @@ This document formalizes the reward structure of the Data Quality RL environment
 The Data Quality environment is formulated as a finite-horizon MDP:
 
 - **State space S**: (dataset snapshot, inspection history, diagnosis history, fix history, step count)
-- **Action space A**: {inspect, diagnose, fix, finalize} with structured parameters
+- **Action space A**: eight typed tool-use actions: `INSPECT_ROWS`, `SQL_QUERY`,
+  `STAT_TEST`, `PATTERN_MATCH`, `HYPOTHESIS`, `DIAGNOSE`, `FIX`, and read-only
+  `ROOT_CAUSE`
 - **Transition T(s'|s,a)**: Deterministic given the ground truth; stochastic in noisy mode
 - **Reward R(s,a,s')**: Dense, multi-component signal detailed below
 - **Horizon H**: Task-dependent (30 / 50 / 65 steps)
@@ -18,7 +20,7 @@ The Data Quality environment is formulated as a finite-horizon MDP:
 ### Partial Observability
 
 The agent operates under partial observability (POMDP):
-- Only 10 rows visible per inspect action (window over full dataset)
+- Up to 20 rows visible per `INSPECT_ROWS` action (window over full dataset)
 - Column statistics are aggregates, not row-level data
 - Ground truth is hidden; the agent infers issues from data patterns
 - In stochastic mode (`noisy=True`), observed values may be perturbed

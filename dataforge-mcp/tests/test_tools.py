@@ -5,8 +5,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from dataforge_mcp.server import create_server
 from dataforge_mcp.tools import (
+    configure_mcp_security,
     dataforge_apply_repairs,
     dataforge_detect_errors,
     dataforge_profile,
@@ -38,6 +41,12 @@ def _fix_spec(path: Path, *, old_value: str = "1020", new_value: str = "102") ->
         "confidence": 0.9,
         "provenance": "deterministic",
     }
+
+
+@pytest.fixture(autouse=True)
+def _mcp_security(tmp_path: Path) -> None:
+    """Allow each test's temporary files and enable explicit apply coverage."""
+    configure_mcp_security(enable_apply=True, allowed_roots=[tmp_path])
 
 
 class TestDataForgeMcpTools:
@@ -99,6 +108,14 @@ class TestDataForgeMcpTools:
         assert receipt.txn_id is None
         assert receipt.fixes_count >= 1
         assert csv_path.read_bytes() == original
+
+    def test_apply_requires_explicit_enablement(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "amounts.csv"
+        _write_repairable_csv(csv_path)
+        configure_mcp_security(enable_apply=False, allowed_roots=[tmp_path])
+
+        with pytest.raises(ValueError, match="apply mode is disabled"):
+            dataforge_apply_repairs(str(csv_path), "apply")
 
     def test_apply_then_revert_restores_source_bytes(
         self,

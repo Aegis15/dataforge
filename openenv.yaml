@@ -7,8 +7,8 @@ description: >
   DataForge RL Environment — agents learn to detect, diagnose, and repair
   data-quality issues in tabular datasets using typed tool-use actions,
   with SMT-verified repair gating and dense reward signals. Supports
-  7 action types (INSPECT_ROWS, SQL_QUERY, STAT_TEST, PATTERN_MATCH,
-  HYPOTHESIS, DIAGNOSE, FIX) with constitutional safety filtering.
+  8 action types (INSPECT_ROWS, SQL_QUERY, STAT_TEST, PATTERN_MATCH,
+  HYPOTHESIS, DIAGNOSE, FIX, ROOT_CAUSE) with constitutional safety filtering.
 tags:
   - openenv
   - data-quality

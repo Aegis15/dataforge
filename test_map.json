@@ -42,6 +42,32 @@
     "property_tests": ["tests/property/test_revert_is_bytes_identical.py"],
     "regression_tests": ["tests/regression/test_env.py"]
   },
+  "dataforge/engine/repair.py": {
+    "direct_tests": ["tests/unit/test_engine_repair.py", "tests/unit/test_cli_repair.py"],
+    "integration_tests": [
+      "tests/integration/test_playground_smoke.py",
+      "dataforge-mcp/tests/test_tools.py"
+    ],
+    "property_tests": ["tests/property/test_revert_is_bytes_identical.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/engine/__init__.py": {
+    "direct_tests": ["tests/unit/test_engine_repair.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
+  "dataforge/http/problem.py": {
+    "integration_tests": [
+      "tests/integration/test_playground_smoke.py",
+      "tests/integration/test_openenv_spec.py"
+    ]
+  },
+  "dataforge/observability.py": {
+    "direct_tests": ["tests/unit/test_engine_repair.py", "tests/unit/test_observability.py"],
+    "integration_tests": [
+      "tests/integration/test_playground_smoke.py",
+      "tests/integration/test_openenv_spec.py"
+    ]
+  },
   "dataforge/ui/profile_view.py": {
     "direct_tests": ["tests/unit/test_cli_profile.py"],
     "regression_tests": ["tests/regression/test_env.py"]
@@ -175,6 +201,9 @@
     "direct_tests": ["tests/integration/test_bench_workflow.py"],
     "regression_tests": ["tests/regression/test_env.py"]
   },
+  "scripts/bench/refresh_benchmark_table.py": {
+    "direct_tests": ["tests/unit/test_grpo_benchmark_refresh.py"]
+  },
   "dataforge/bench/__init__.py": {
     "direct_tests": ["tests/unit/test_bench_core.py", "tests/unit/test_bench_runner.py"],
     "regression_tests": ["tests/regression/test_env.py"]
@@ -242,6 +271,9 @@
   "scripts/model/verify_sft_release.py": {
     "direct_tests": ["tests/unit/test_sft_release_verifier.py"]
   },
+  "scripts/model/verify_grpo_release.py": {
+    "direct_tests": ["tests/unit/test_grpo_release_verifier.py"]
+  },
   "scripts/model/publish_dataset_readme.py": {
     "direct_tests": ["tests/unit/test_sft_release_verifier.py"]
   },
@@ -254,8 +286,23 @@
   "training/configs/sft_05b.yaml": {
     "direct_tests": ["tests/unit/test_sft_notebook_contract.py"]
   },
+  "training/configs/grpo_05b.yaml": {
+    "direct_tests": ["tests/unit/test_grpo_configs.py"]
+  },
+  "training/configs/grpo_15b.yaml": {
+    "direct_tests": ["tests/unit/test_grpo_configs.py"]
+  },
+  "training/grpo_config.py": {
+    "direct_tests": ["tests/unit/test_grpo_configs.py"]
+  },
+  "training/rewards/dataforge_reward.py": {
+    "direct_tests": ["tests/unit/test_dataforge_grpo_reward.py"]
+  },
   "training/kaggle/sft_warmup_kaggle.ipynb": {
     "direct_tests": ["tests/unit/test_sft_notebook_contract.py"]
+  },
+  "training/kaggle/grpo_kaggle.ipynb": {
+    "direct_tests": ["tests/unit/test_grpo_notebook_contract.py"]
   },
   "training/MODEL_CARD_TEMPLATE.md": {
     "direct_tests": ["tests/unit/test_publish_model.py", "tests/unit/test_sft_notebook_contract.py"]
@@ -279,5 +326,11 @@
   "dataforge-mcp/dataforge_mcp/server.py": {
     "direct_tests": ["dataforge-mcp/tests/test_tools.py"],
     "integration_tests": ["dataforge-mcp/tests/test_server_integration.py"]
+  },
+  "scripts/ci/openapi_contract.py": {
+    "direct_tests": ["tests/integration/test_playground_smoke.py", "tests/integration/test_openenv_spec.py"]
+  },
+  "scripts/ci/backend_gate.py": {
+    "direct_tests": ["tests/integration/test_playground_smoke.py", "dataforge-mcp/tests/test_tools.py"]
   }
 }

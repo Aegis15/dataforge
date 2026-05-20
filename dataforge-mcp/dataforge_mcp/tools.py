@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Sequence
 
 from pydantic import BaseModel, Field
 
 from dataforge.cli.common import load_schema, read_csv
-from dataforge.cli.repair import _apply_transaction, _propose_repairs
 from dataforge.detectors import run_all_detectors
 from dataforge.detectors.base import Issue, Schema
+from dataforge.engine.repair import RepairPipelineRequest, VerifiedFix, run_repair_pipeline
 from dataforge.repairers.base import ProposedFix
+from dataforge.repair_contract import CONTRACT_VERSION
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyVerdict
+from dataforge.transactions.log import TransactionLogError
 from dataforge.transactions.revert import revert_transaction
 from dataforge.transactions.txn import CellFix
 from dataforge.verifier import SMTVerifier, VerificationVerdict
+
+_APPLY_ENABLED = False
+_ALLOWED_ROOTS: tuple[Path, ...] | None = None
 
 
 class IssueResult(BaseModel):
@@ -71,8 +77,12 @@ class TxnReceipt(BaseModel):
 
     path: str
     mode: Literal["dry_run", "apply"]
+    contract_version: str = CONTRACT_VERSION
     applied: bool
     txn_id: str | None
+    reversible: bool
+    allowed_columns: list[str]
+    valid_rows: list[int]
     issues_count: int
     fixes_count: int
     reason: str
@@ -89,9 +99,60 @@ class RevertReceipt(BaseModel):
     reason: str
 
 
+def configure_mcp_security(
+    *,
+    enable_apply: bool = False,
+    allowed_roots: Sequence[str | Path] | None = None,
+) -> None:
+    """Configure process-wide MCP path and apply safety settings."""
+    global _APPLY_ENABLED, _ALLOWED_ROOTS
+    _APPLY_ENABLED = enable_apply
+    if allowed_roots is None:
+        _ALLOWED_ROOTS = None
+        return
+    _ALLOWED_ROOTS = tuple(Path(root).expanduser().resolve() for root in allowed_roots)
+
+
+def _env_flag_enabled(name: str) -> bool:
+    """Return whether an environment flag is truthy."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _apply_is_enabled() -> bool:
+    """Return whether MCP apply mode is explicitly enabled."""
+    return _APPLY_ENABLED or _env_flag_enabled("DATAFORGE_MCP_ENABLE_APPLY")
+
+
+def _allowed_roots() -> tuple[Path, ...]:
+    """Return configured allowed filesystem roots for MCP file access."""
+    raw_roots = os.environ.get("DATAFORGE_MCP_ALLOWED_ROOTS", "")
+    if raw_roots.strip():
+        return tuple(
+            Path(root).expanduser().resolve()
+            for root in raw_roots.split(os.pathsep)
+            if root.strip()
+        )
+    if _ALLOWED_ROOTS is not None:
+        return _ALLOWED_ROOTS
+    return (Path.cwd().resolve(),)
+
+
+def _ensure_under_allowed_root(path: Path) -> Path:
+    """Reject paths outside the configured MCP allowlist."""
+    resolved = path.expanduser().resolve()
+    roots = _allowed_roots()
+    if not roots:
+        raise ValueError("At least one MCP allowed root must be configured.")
+    for root in roots:
+        if resolved == root or resolved.is_relative_to(root):
+            return resolved
+    allowed = ", ".join(str(root) for root in roots)
+    raise ValueError(f"Path is outside configured MCP allowed roots: {resolved}. Allowed: {allowed}")
+
+
 def _resolve_csv_path(path: str) -> Path:
     """Resolve and validate a CSV path supplied by an MCP client."""
-    resolved = Path(path).expanduser().resolve()
+    resolved = _ensure_under_allowed_root(Path(path))
     if not resolved.exists():
         raise ValueError(f"CSV file does not exist: {resolved}")
     if not resolved.is_file():
@@ -103,7 +164,7 @@ def _load_optional_schema(raw_path: object) -> Schema | None:
     """Load an optional schema path from an untrusted payload."""
     if raw_path is None:
         return None
-    schema_path = Path(str(raw_path)).expanduser().resolve()
+    schema_path = _ensure_under_allowed_root(Path(str(raw_path)))
     if not schema_path.exists():
         raise ValueError(f"Schema file does not exist: {schema_path}")
     return load_schema(schema_path)
@@ -136,6 +197,21 @@ def _fix_to_result(proposed_fix: ProposedFix) -> FixResult:
         reason=proposed_fix.reason,
         confidence=proposed_fix.confidence,
         provenance=proposed_fix.provenance,
+    )
+
+
+def _verified_fix_to_result(verified_fix: VerifiedFix) -> FixResult:
+    """Convert a public engine verified fix into a stable MCP payload."""
+    return FixResult(
+        row=verified_fix.row,
+        column=verified_fix.column,
+        old_value=verified_fix.old_value,
+        new_value=verified_fix.new_value,
+        detector_id=verified_fix.detector_id,
+        operation=verified_fix.operation,
+        reason=verified_fix.reason,
+        confidence=verified_fix.confidence,
+        provenance=verified_fix.provenance,
     )
 
 
@@ -232,65 +308,51 @@ def dataforge_apply_repairs(path: str, mode: Literal["dry_run", "apply"]) -> Txn
     csv_path = _resolve_csv_path(path)
     if mode not in {"dry_run", "apply"}:
         raise ValueError("mode must be 'dry_run' or 'apply'.")
+    if mode == "apply" and not _apply_is_enabled():
+        raise ValueError(
+            "MCP apply mode is disabled. Start the server with --enable-apply or set "
+            "DATAFORGE_MCP_ENABLE_APPLY=1."
+        )
 
-    df, issues = _run_detection(csv_path)
-    accepted_fixes, _attempt_groups = _propose_repairs(
-        issues,
-        csv_path,
-        df.copy(deep=True),
-        None,
-        allow_llm=False,
-        model="gemini-2.0-flash",
-        allow_pii=False,
-        confirm_pii=False,
-        confirm_escalations=False,
-        interactive=False,
+    result = run_repair_pipeline(
+        RepairPipelineRequest(
+            source_path=csv_path,
+            mode=mode,
+            schema=None,
+            allow_llm=False,
+        )
     )
-    batch_safety = SafetyFilter().evaluate_batch(accepted_fixes)
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
-        return TxnReceipt(
-            path=str(csv_path),
-            mode=mode,
-            applied=False,
-            txn_id=None,
-            issues_count=len(issues),
-            fixes_count=0,
-            reason=batch_safety.reason,
-            fixes=[],
-        )
-
-    if mode == "dry_run" or not accepted_fixes:
-        return TxnReceipt(
-            path=str(csv_path),
-            mode=mode,
-            applied=False,
-            txn_id=None,
-            issues_count=len(issues),
-            fixes_count=len(accepted_fixes),
-            reason=(
-                "Dry run completed without mutating the source file."
-                if accepted_fixes
-                else "No accepted fixes were produced."
-            ),
-            fixes=[_fix_to_result(fix) for fix in accepted_fixes],
-        )
-
-    txn_id = _apply_transaction(csv_path, accepted_fixes, csv_path.read_bytes())
+    receipt = result.receipt
     return TxnReceipt(
         path=str(csv_path),
         mode=mode,
-        applied=True,
-        txn_id=txn_id,
-        issues_count=len(issues),
-        fixes_count=len(accepted_fixes),
-        reason=f"Applied {len(accepted_fixes)} fix(es).",
-        fixes=[_fix_to_result(fix) for fix in accepted_fixes],
+        applied=receipt.applied,
+        txn_id=receipt.txn_id,
+        reversible=True,
+        allowed_columns=receipt.allowed_columns,
+        valid_rows=receipt.valid_rows,
+        issues_count=receipt.issues_count,
+        fixes_count=receipt.fixes_count,
+        reason=receipt.reason,
+        fixes=[_verified_fix_to_result(fix) for fix in result.fixes],
     )
 
 
 def dataforge_revert(txn_id: str) -> RevertReceipt:
     """Revert a previously applied DataForge repair transaction."""
-    transaction = revert_transaction(txn_id)
+    transaction = None
+    last_error: Exception | None = None
+    for root in _allowed_roots():
+        try:
+            transaction = revert_transaction(txn_id, search_root=root)
+            break
+        except TransactionLogError as exc:
+            last_error = exc
+            continue
+    if transaction is None:
+        if last_error is not None:
+            raise ValueError(str(last_error)) from last_error
+        raise ValueError(f"Could not find transaction '{txn_id}' under configured allowed roots.")
     return RevertReceipt(
         txn_id=transaction.txn_id,
         source_path=transaction.source_path,

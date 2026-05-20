@@ -37,7 +37,7 @@ data_quality_env/
   specs/                     Specs and open questions.
   tests/                     Unit, integration, regression, property, benchmark,
                              adversarial, and fixture coverage.
-  training/                  SFT config, Kaggle notebook, dataset/model docs.
+  training/                  SFT/GRPO configs, Kaggle notebooks, dataset/model docs.
 ```
 
 Root documentation and project files:
@@ -87,7 +87,7 @@ The following product surfaces remain future work unless a spec says otherwise:
 - warehouse-native adapters
 - standalone `dataforge-evals`
 - standalone `dataforge-agent-patterns`
-- production model family beyond the current 0.5B SFT smoke checkpoint
+- production model family beyond the current verified SFT/GRPO release evidence
 - hosted product domain and docs site
 
 Do not promote planned areas into `README.md` as shipped features until the

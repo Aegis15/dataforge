@@ -13,6 +13,7 @@ from dataforge.bench.groq_client import (
     GroqBenchClient,
     ProviderRateLimitError,
     ProviderRequestError,
+    _is_rate_limit_error,
 )
 
 
@@ -235,3 +236,106 @@ class TestGroqBenchClient:
             CerebrasBenchClient(api_key="test", model="llama3.1-8b").complete(
                 [{"role": "user", "content": "large prompt"}]
             )
+
+    def test_rate_limit_helper_and_spacing_sleep(self) -> None:
+        request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+        rate_limited = httpx.HTTPStatusError(
+            "rate limited",
+            request=request,
+            response=httpx.Response(429, request=request),
+        )
+        unavailable = httpx.HTTPStatusError(
+            "unavailable",
+            request=request,
+            response=httpx.Response(503, request=request),
+        )
+
+        with patch("dataforge.bench.groq_client.httpx.Client"):
+            client = GroqBenchClient(api_key="test", min_interval_s=5)
+        client._last_success_at = 10.0
+
+        with (
+            patch("dataforge.bench.groq_client.time.monotonic", return_value=12.0),
+            patch("dataforge.bench.groq_client.time.sleep") as sleep,
+        ):
+            client._respect_spacing()
+
+        assert _is_rate_limit_error(rate_limited) is True
+        assert _is_rate_limit_error(unavailable) is False
+        sleep.assert_called_once_with(3.0)
+
+    def test_retryable_503_final_attempt_raises_provider_error(self) -> None:
+        request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+        response = httpx.Response(503, text="temporarily down", request=request)
+        unavailable = httpx.HTTPStatusError("unavailable", request=request, response=response)
+        mock_response = MagicMock()
+        mock_response.raise_for_status.side_effect = unavailable
+        mock_client = MagicMock()
+        mock_client.post.return_value = mock_response
+
+        with (
+            patch("dataforge.bench.groq_client.httpx.Client", return_value=mock_client),
+            patch("dataforge.bench.groq_client.time.sleep") as sleep,
+            pytest.raises(ProviderRequestError, match="temporarily down"),
+        ):
+            GroqBenchClient(api_key="test", max_retries=1).complete(
+                [{"role": "user", "content": "hi"}]
+            )
+
+        sleep.assert_not_called()
+
+    def test_invalid_retry_after_uses_fallback_delay(self) -> None:
+        request = httpx.Request("POST", "https://api.groq.com/openai/v1/chat/completions")
+        rate_limited_response = httpx.Response(
+            429,
+            headers={"retry-after": "not-a-number"},
+            request=request,
+        )
+        rate_limited_error = httpx.HTTPStatusError(
+            "rate limited",
+            request=request,
+            response=rate_limited_response,
+        )
+        success = _mock_response(
+            {
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+        )
+        rate_limit_then_success = MagicMock()
+        rate_limit_then_success.raise_for_status.side_effect = [rate_limited_error, None]
+        mock_client = MagicMock()
+        mock_client.post.side_effect = [rate_limit_then_success, success]
+
+        with (
+            patch("dataforge.bench.groq_client.httpx.Client", return_value=mock_client),
+            patch("dataforge.bench.groq_client.time.sleep") as sleep,
+        ):
+            completion = GroqBenchClient(api_key="test").complete(
+                [{"role": "user", "content": "hi"}]
+            )
+
+        assert completion.text == "ok"
+        sleep.assert_called_once_with(2.0)
+
+    def test_gemini_missing_usage_and_unexpected_payload(self) -> None:
+        missing_usage_client = MagicMock()
+        missing_usage_client.post.return_value = _mock_response(
+            {"candidates": [{"content": {"parts": [{"text": "ok"}, {"text": "!"}]}}]}
+        )
+        bad_payload_client = MagicMock()
+        bad_payload_client.post.return_value = _mock_response({"candidates": []})
+
+        with patch("dataforge.bench.groq_client.httpx.Client", return_value=missing_usage_client):
+            completion = GeminiBenchClient(api_key="test").complete(
+                [{"role": "user", "content": "hi"}]
+            )
+
+        assert completion.text == "ok!"
+        assert completion.warnings == ("missing_usage_payload",)
+
+        with (
+            patch("dataforge.bench.groq_client.httpx.Client", return_value=bad_payload_client),
+            pytest.raises(ValueError, match="Unexpected gemini response payload"),
+        ):
+            GeminiBenchClient(api_key="test").complete([{"role": "user", "content": "hi"}])

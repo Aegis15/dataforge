@@ -82,6 +82,27 @@ class TestSqlQuery:
         assert result.observation.latest_result.success is False
         assert result.observation.latest_result.error is not None
 
+    @pytest.mark.parametrize(
+        "query",
+        [
+            "SELECT * FROM data; SELECT * FROM data",
+            "SELECT * FROM read_csv_auto('secret.csv')",
+            "SELECT * FROM other_table",
+        ],
+    )
+    def test_sql_query_sandbox_rejects_duckdb_escape_attempts(
+        self,
+        env: DataForgeEnv,
+        query: str,
+    ) -> None:
+        env.reset(seed=42)
+        result = env.step(SqlQuery(action_type="SQL_QUERY", query=query))
+        latest = result.observation.latest_result
+        assert latest is not None
+        assert latest.success is False
+        assert latest.error is not None
+        assert latest.error["verdict"] == "rejected"
+
 
 class TestStatTest:
     """Tests for STAT_TEST action."""
@@ -255,6 +276,20 @@ class TestServerState:
         body = response.json()
         assert body["step_count"] == 0
         assert body["is_done"] is False
+
+    def test_episode_id_sessions_do_not_cross_contaminate(self) -> None:
+        client = TestClient(app)
+        first = client.post("/reset", params={"seed": 1}).json()["info"]["episode_id"]
+        second = client.post("/reset", params={"seed": 2}).json()["info"]["episode_id"]
+
+        step_response = client.post(
+            "/step",
+            json={"episode_id": first, "action_type": "INSPECT_ROWS", "row_indices": [0]},
+        )
+
+        assert step_response.status_code == 200
+        assert client.get("/state", params={"episode_id": first}).json()["step_count"] == 1
+        assert client.get("/state", params={"episode_id": second}).json()["step_count"] == 0
 
 
 class TestToolHistory:

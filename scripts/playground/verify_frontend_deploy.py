@@ -29,8 +29,9 @@ def verify(frontend_url: str, backend_url: str) -> None:
         frontend = client.get(frontend_url)
         require(frontend.status_code == 200, f"Frontend root returned {frontend.status_code}")
         require("<!DOCTYPE html>" in frontend.text, "Frontend root did not return HTML.")
-        require("./config.js" in frontend.text, "Frontend HTML is missing config.js.")
-        require("./app.js" in frontend.text, "Frontend HTML is missing app.js.")
+        require("/config.js" in frontend.text, "Frontend HTML is missing config.js.")
+        require("/assets/" in frontend.text, "Frontend HTML is missing built assets.")
+        require('id="root"' in frontend.text, "Frontend HTML is missing the React mount node.")
 
         config = client.get(f"{frontend_url}/config.js")
         require(config.status_code == 200, f"config.js returned {config.status_code}")
@@ -38,9 +39,26 @@ def verify(frontend_url: str, backend_url: str) -> None:
             backend_url in config.text,
             f"config.js does not contain backend URL {backend_url}",
         )
+        cache_control = config.headers.get("cache-control", "")
+        require("no-store" in cache_control.lower(), "config.js must be served with no-store.")
+
+        backend_root = client.get(backend_url)
+        require(backend_root.status_code == 200, f"Backend root returned {backend_root.status_code}")
+        root_payload = backend_root.json()
+        require(
+            root_payload.get("service") == "DataForge Playground API",
+            "Backend root must return API metadata, not frontend HTML.",
+        )
 
         health = client.get(f"{backend_url}/api/health")
         require(health.status_code == 200, f"Backend health returned {health.status_code}")
+        health_payload = health.json()
+        require(health_payload.get("status") == "ok", "Backend health is missing status=ok.")
+        require(
+            "advanced_available" in health_payload,
+            "Backend health is missing advanced_available.",
+        )
+        require("max_upload_bytes" in health_payload, "Backend health is missing max_upload_bytes.")
 
         cors = client.get(
             f"{backend_url}/api/health",

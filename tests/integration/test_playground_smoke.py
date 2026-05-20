@@ -121,6 +121,7 @@ def test_profile_hospital(client: TestClient) -> None:
     meta = body["meta"]
     assert meta["rows"] == 10
     assert meta["columns"] == 10
+    assert meta["contract_version"] == "repair_contract_v2"
 
     # Issues are non-empty for the seeded fixture
     issues = body["issues"]
@@ -144,7 +145,10 @@ def test_profile_advanced_unavailable_without_provider_key(client: TestClient) -
         files={"file": ("hospital_10rows.csv", io.BytesIO(csv_bytes), "text/csv")},
     )
     assert response.status_code == 400
-    assert response.json() == {"detail": {"error": "advanced_mode_unavailable"}}
+    body = response.json()
+    assert body["type"].endswith("/advanced_mode_unavailable")
+    assert body["status"] == 400
+    assert body["error"] == "advanced_mode_unavailable"
 
 
 @pytest.mark.integration
@@ -190,6 +194,7 @@ def test_oversize_body_rejected(client: TestClient) -> None:
         files={"file": ("big.csv", io.BytesIO(oversized), "text/csv")},
     )
     assert response.status_code == 413
+    assert response.json()["error"] == "file_too_large"
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +246,7 @@ def test_repair_dry_run(client: TestClient) -> None:
 
     assert "fixes" in body
     assert "txn_journal" in body
+    assert body["meta"]["contract_version"] == "repair_contract_v2"
 
     journal = body["txn_journal"]
     assert "txn_id" in journal
@@ -263,7 +269,7 @@ def test_repair_advanced_unavailable_without_provider_key(client: TestClient) ->
         files={"file": ("hospital_10rows.csv", io.BytesIO(csv_bytes), "text/csv")},
     )
     assert response.status_code == 400
-    assert response.json() == {"detail": {"error": "advanced_mode_unavailable"}}
+    assert response.json()["error"] == "advanced_mode_unavailable"
 
 
 @pytest.mark.integration
@@ -283,4 +289,5 @@ def test_rate_limit_returns_429_on_eleventh_post(client: TestClient) -> None:
         files={"file": ("hospital_10rows.csv", io.BytesIO(csv_bytes), "text/csv")},
     )
     assert response.status_code == 429
+    assert response.headers["retry-after"] == "60"
     assert response.json()["error"] == "rate_limit_exceeded"

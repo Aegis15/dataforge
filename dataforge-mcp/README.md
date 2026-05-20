@@ -5,7 +5,7 @@ verification, and transaction-revert paths as Model Context Protocol tools.
 
 ```bash
 pip install dataforge-mcp
-dataforge-mcp serve
+dataforge-mcp serve --allowed-root /path/to/csv/workspace
 ```
 
 For local development from this repository:
@@ -13,7 +13,7 @@ For local development from this repository:
 ```bash
 cd dataforge-mcp
 python -m pip install -e ".[dev]"
-dataforge-mcp serve
+dataforge-mcp serve --allowed-root ..
 ```
 
 The default transport is stdio, which is what local desktop MCP clients expect.
@@ -21,6 +21,13 @@ For local Streamable HTTP experiments:
 
 ```bash
 dataforge-mcp serve --transport streamable-http --host 127.0.0.1 --port 8000
+```
+
+`dry_run` is the safe default. To allow file mutation through MCP, start the
+server with an explicit allowed root and `--enable-apply`:
+
+```bash
+dataforge-mcp serve --allowed-root /path/to/csv/workspace --enable-apply
 ```
 
 ## Tools
@@ -43,7 +50,7 @@ MCP client that supports stdio servers:
   "mcpServers": {
     "dataforge": {
       "command": "dataforge-mcp",
-      "args": ["serve"]
+      "args": ["serve", "--allowed-root", "/path/to/csv/workspace"]
     }
   }
 }
@@ -70,7 +77,9 @@ source snapshot before mutating the CSV, and `dataforge_revert` restores the
 snapshot only when the current file still matches the recorded post-state hash.
 
 The MCP server does not enable live LLM repair fallback by default. It does not
-send CSV contents to any external model provider.
+send CSV contents to any external model provider. It also rejects CSV and schema
+paths outside the configured allowed roots, and `apply` mode is disabled unless
+the server is started with `--enable-apply` or `DATAFORGE_MCP_ENABLE_APPLY=1`.
 
 ## Release
 

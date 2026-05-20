@@ -1,0 +1,36 @@
+[changelog]
+header = "# Changelog\n\n"
+body = """
+{% if version %}## {{ version | trim_start_matches(pat="v") }}{% else %}## Unreleased{% endif %}
+{% if timestamp %} - {{ timestamp | date(format="%Y-%m-%d") }}{% endif %}
+
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {{ commit.message | split(pat="\n") | first | upper_first }} ([{{ commit.id | truncate(length=7, end="") }}](https://github.com/Praneshrajan15/data_quality_env/commit/{{ commit.id }}))
+{% endfor %}
+
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+conventional_commits = false
+filter_unconventional = false
+split_commits = false
+tag_pattern = "v[0-9]*"
+sort_commits = "oldest"
+
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Fixes" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^ci", group = "CI" },
+  { message = "^deploy", group = "Deployment" },
+  { message = "^chore", group = "Chores" },
+  { message = ".*", group = "Changes" },
+]
+
+protect_breaking_commits = false
+filter_commits = false

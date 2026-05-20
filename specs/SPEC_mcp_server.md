@@ -2,7 +2,7 @@
 
 > Status: Reviewed
 > Owner: Praneshrajan15
-> Last updated: 2026-05-15
+> Last updated: 2026-05-20
 
 ## 1. Purpose
 
@@ -17,6 +17,9 @@ can call DataForge without parsing terminal UI.
 - [x] `dataforge-mcp serve` starts a stdio MCP server with five DataForge tools.
 - [x] MCP tool calls return structured JSON-compatible results backed by the
       real detector, safety, verifier, and transaction paths.
+- [x] Dry-run is the default safe mode; apply mode requires explicit
+      `--enable-apply` or `DATAFORGE_MCP_ENABLE_APPLY=1`.
+- [x] File paths are accepted only under configured allowed roots.
 - [x] A trusted-publishing GitHub Actions workflow can publish the package to
       PyPI from `dataforge-mcp-v*` tags.
 
@@ -38,6 +41,10 @@ can call DataForge without parsing terminal UI.
 - Compatibility: Python `>=3.11,<3.13`.
 - Safety: apply mode must keep DataForge's SafetyFilter -> SMTVerifier ->
   transaction-log invariant.
+- Path sandbox: every CSV and optional schema path must resolve under
+  `--allowed-root` / `DATAFORGE_MCP_ALLOWED_ROOTS`; default root is the server
+  working directory.
+- Mutation safety: MCP apply mode is disabled until explicitly enabled.
 - Transport default: stdio.
 - Documentation must not claim unsupported MCP client configuration features.
 
@@ -66,6 +73,13 @@ can call DataForge without parsing terminal UI.
 - Depends on: 6.2.
 - Estimated complexity: S.
 
+### 6.3.1 MCP safety configuration
+- Acceptance: `dataforge-mcp serve --allowed-root <path> --enable-apply`
+  configures path sandboxing and mutation capability; direct tool functions
+  expose the same settings for tests and embedded hosts.
+- Depends on: 6.2.
+- Estimated complexity: S.
+
 ### 6.4 Release workflow
 - Acceptance: GitHub Actions workflow builds from `dataforge-mcp/` and uses
   PyPI trusted publisher permissions.
@@ -86,6 +100,8 @@ can call DataForge without parsing terminal UI.
 - [x] Dry-run MCP repair does not mutate source bytes.
 - [x] Apply followed by revert restores source bytes.
 - [x] README snippets use `dataforge-mcp serve`.
+- [x] Apply without explicit enablement is rejected.
+- [x] Stdio integration tests configure an allowed root before reading files.
 
 ## Appendix A - Toy cases
 
@@ -100,3 +116,13 @@ Input: same CSV, called with mode `apply`, then `dataforge_revert(txn_id)`.
 Expected output: transaction id is returned and source bytes match the original
 after revert.
 Reasoning: protects the transaction safety invariant.
+
+### Case A.3: Apply disabled by default
+Input: `dataforge_apply_repairs(path, "apply")` without apply enablement.
+Expected output: structured tool error explaining that apply must be explicitly enabled.
+Reasoning: prevents an MCP host from accidentally granting mutation capability.
+
+### Case A.4: Path outside allowed roots
+Input: a CSV path outside the configured root set.
+Expected output: tool rejects the path before reading or writing.
+Reasoning: keeps local MCP access scoped to the user's chosen workspace.

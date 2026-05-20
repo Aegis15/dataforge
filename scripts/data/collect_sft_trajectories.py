@@ -33,6 +33,7 @@ from dataforge.bench.methods import (
     chunk_row_indices,
 )
 from dataforge.datasets.real_world import GroundTruthCell, RealWorldDataset, load_real_world_dataset
+from dataforge.evaluation_contract import InferabilityLabel
 
 Difficulty = Literal["easy", "medium"]
 Preset = Literal["smoke", "full"]
@@ -332,7 +333,7 @@ class ProgressReporter:
 class TrajectoryRecord(BaseModel):
     """Validated on-disk JSONL schema for one SFT trajectory chunk."""
 
-    schema_version: Literal["expert_v1"]
+    schema_version: Literal["expert_v1", "expert_v2", "expert_v3", "expert_v4"]
     trajectory_id: str = Field(min_length=1)
     task_id: str = Field(min_length=1)
     dataset: str = Field(min_length=1)
@@ -347,6 +348,8 @@ class TrajectoryRecord(BaseModel):
     teacher: dict[str, Any]
     metrics: dict[str, Any]
     provenance: dict[str, Any]
+    prompt_contract_version: str | None = None
+    inferability: InferabilityLabel | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,7 +362,7 @@ class ChunkCollection:
 
 def validate_trajectory_record(record: dict[str, Any]) -> dict[str, Any]:
     """Validate and normalize a trajectory record for JSONL serialization."""
-    return TrajectoryRecord.model_validate(record).model_dump(mode="json")
+    return TrajectoryRecord.model_validate(record).model_dump(mode="json", exclude_none=True)
 
 
 def existing_trajectory_keys(path: Path) -> set[TrajectoryKey]:
@@ -1802,17 +1805,23 @@ def push_trajectory_dataset(
     api.create_repo(repo_id=resolved_repo, repo_type="dataset", exist_ok=True, token=token)
     api.upload_file(
         path_or_fileobj=str(output),
-        path_in_repo="expert_v1.jsonl",
+        path_in_repo=output.name,
         repo_id=resolved_repo,
         repo_type="dataset",
         token=token,
         commit_message="Upload Week 9 expert trajectories",
     )
+    config_filename_by_trajectory = {
+        "expert_v2.jsonl": "sft_05b_v2.yaml",
+        "expert_v3.jsonl": "sft_05b_v3.yaml",
+        "expert_v4.jsonl": "sft_05b_v4.yaml",
+    }
+    config_filename = config_filename_by_trajectory.get(output.name, "sft_05b.yaml")
     for path, path_in_repo in (
         (Path("training/DATASET_README.md"), "README.md"),
-        (Path("training/configs/sft_05b.yaml"), "sft_05b.yaml"),
+        (Path("training/configs") / config_filename, config_filename),
         (Path("training/MODEL_CARD_TEMPLATE.md"), "MODEL_CARD_TEMPLATE.md"),
-        (split_manifest, "split_manifest.json"),
+        (split_manifest, split_manifest.name),
     ):
         if path.exists():
             api.upload_file(
@@ -1851,8 +1860,15 @@ def ensure_ready_for_push(
 
     from scripts.data.validate_sft_readiness import validate_sft_readiness
 
+    config_name_by_trajectory = {
+        "expert_v2.jsonl": "sft_05b_v2.yaml",
+        "expert_v3.jsonl": "sft_05b_v3.yaml",
+        "expert_v4.jsonl": "sft_05b_v4.yaml",
+    }
+    config_name = config_name_by_trajectory.get(output.name, "sft_05b.yaml")
     validate_sft_readiness(
         jsonl=output,
+        config_path=Path("training/configs") / config_name,
         split_manifest=split_manifest,
         min_records=ready_min_records,
     )

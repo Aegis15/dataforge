@@ -1,0 +1,153 @@
+schema_version: sft_05b_v3
+
+environment:
+  resolved_on: "2026-05-16"
+  runtime_target: "Remote GPU only: Kaggle T4/P100 or Hugging Face Jobs; no laptop model execution"
+  torch_index_url: "https://download.pytorch.org/whl/cu121"
+  torch_pip_packages:
+    - "torch==2.5.1"
+  uninstall_packages:
+    - "torchvision"
+    - "torchaudio"
+    - "torchtext"
+    - "torchao"
+  pip_packages:
+    - "trl==1.4.0"
+    - "transformers==5.7.0"
+    - "accelerate==1.13.0"
+    - "peft==0.19.1"
+    - "bitsandbytes==0.49.2"
+    - "datasets==4.8.5"
+    - "huggingface_hub==1.13.0"
+    - "pyyaml==6.0.3"
+    - "pandas==2.3.3"
+
+repos:
+  dataset_repo_template: "{hf_user}/dataforge-sft-trajectories"
+  model_repo_template: "{hf_user}/DataForge-0.5B-SFT"
+  trajectory_filename: expert_v3.jsonl
+  split_manifest_filename: split_manifest_v3.json
+  config_filename: sft_05b_v3.yaml
+  model_card_template_filename: MODEL_CARD_TEMPLATE.md
+
+release:
+  require_hf_token: true
+  upload_eval_diagnostics: true
+  max_failure_samples: 25
+  promoted_status: "diagnostic_promoted"
+
+model:
+  base_model: "Qwen/Qwen2.5-0.5B-Instruct"
+  model_license: "apache-2.0"
+  trust_remote_code: true
+  torch_dtype: "float16"
+  quantization:
+    load_in_4bit: true
+    bnb_4bit_quant_type: "nf4"
+    bnb_4bit_use_double_quant: true
+    bnb_4bit_compute_dtype: "float16"
+
+lora:
+  r: 16
+  alpha: 16
+  dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+  target_modules:
+    - "q_proj"
+    - "k_proj"
+    - "v_proj"
+    - "o_proj"
+
+training:
+  output_dir: "/kaggle/working/dataforge-0.5b-sft-v3"
+  adapter_dir: "/kaggle/working/dataforge-0.5b-sft-v3-adapter"
+  merged_dir: "/kaggle/working/DataForge-0.5B-SFT-v3-merged"
+  num_train_epochs: 2
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 16
+  learning_rate: 0.00002
+  lr_scheduler_type: "cosine"
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_seq_length: 1024
+  packing: false
+  logging_steps: 10
+  save_steps: 100
+  save_total_limit: 3
+  fp16: true
+  bf16: false
+  gradient_checkpointing: true
+  loss_type: "chunked_nll"
+  report_to: "none"
+
+collection:
+  schema_version: "expert_v3"
+  prompt_contract_version: "repair_contract_v2"
+  max_trajectories: 2000
+  min_episode_f1: 1.0
+  collection_methods:
+    - "oracle_from_clean_diff"
+  primary_collection_method: "oracle_from_clean_diff"
+  oracle:
+    provider: "oracle"
+    model: "clean-diff-v1"
+    split_seed: 42
+    eval_fraction: 0.1
+    min_eval_rows: 1
+    chunk_rows: 4
+    context_window_rows: 8
+    include_noop_records: true
+    max_repairs_per_record: 8
+    min_noop_ratio: 0.05
+    ready_min_records: 256
+    min_inferable_records: 32
+    inferability: "auto"
+    train_only_inferable: true
+    label_source: "dirty_clean_csv_diff"
+  max_total_requests: 0
+  daily_request_budget: 0
+  teacher_provider: "oracle"
+  teacher_model: "clean-diff-v1"
+  accepted_teachers:
+    - provider: "oracle"
+      model: "clean-diff-v1"
+  datasets:
+    - "hospital"
+    - "flights"
+    - "beers"
+  difficulties:
+    - "easy"
+    - "medium"
+
+evaluation:
+  heldout_tasks: 100
+  seeds_start: 10000
+  chunk_width: 4
+  max_new_tokens: 1024
+  temperature: 0.0
+  parse_success_min: 0.995
+  schema_case_error_max: 0
+  strict_macro_f1_gain_min: 0.03
+  diagnostic_strict_macro_f1_min: 0.10
+  public_strict_macro_f1_min: 0.50
+  require_macro_f1_gain: true
+  remote_only: true
+  datasets:
+    - "hospital"
+    - "flights"
+    - "beers"
+
+data_sources:
+  hospital:
+    dirty_url: "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets/hospital/dirty.csv"
+    clean_url: "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets/hospital/clean.csv"
+    citation: "Mahdavi et al. Raha benchmark dataset (Hospital) via the BigDaMa/raha repository."
+  flights:
+    dirty_url: "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets/flights/dirty.csv"
+    clean_url: "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets/flights/clean.csv"
+    citation: "Mahdavi et al. Raha benchmark dataset (Flights) via the BigDaMa/raha repository."
+  beers:
+    dirty_url: "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets/beers/dirty.csv"
+    clean_url: "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets/beers/clean.csv"
+    citation: "Mahdavi et al. Raha benchmark dataset (Beers) via the BigDaMa/raha repository."

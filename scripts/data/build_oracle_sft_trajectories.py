@@ -8,7 +8,7 @@ import json
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import yaml
 from rich.console import Console
@@ -24,12 +24,26 @@ from dataforge.datasets.real_world import (  # noqa: E402
     RealWorldDataset,
     load_real_world_dataset,
 )
+from dataforge.evaluation_contract import (  # noqa: E402
+    ABSTENTION_SLICES,
+    AUXILIARY_SLICES,
+    PROMOTION_SLICE,
+    InferabilityLabel,
+)
+from dataforge.repair_contract import (  # noqa: E402
+    CONTRACT_VERSION,
+    CONTRACT_VERSION_V1,
+    CONTRACT_VERSION_V2,
+    render_repair_messages,
+)
 from scripts.data.collect_sft_trajectories import (  # noqa: E402
     DEFAULT_DATASET_REPO_NAME,
     DEFAULT_DATASETS,
     DEFAULT_OUTPUT,
     SCHEMA_VERSION,
     Difficulty,
+    NormalizationCandidate,
+    _normalization_candidates,
     ensure_ready_for_push,
     push_trajectory_dataset,
     validate_trajectory_record,
@@ -45,6 +59,14 @@ ORACLE_PROVIDER = "oracle"
 ORACLE_MODEL = "clean-diff-v1"
 COLLECTION_METHOD = "oracle_from_clean_diff"
 SPLIT_MANIFEST_SCHEMA = "split_manifest_v1"
+INFERABLE_LABELS = {"deterministic_normalization", "context_derivable"}
+INFERABILITY_LABELS = INFERABLE_LABELS | {
+    "external_reference_required",
+    "not_inferable_from_prompt",
+}
+INFERABILITY_CHOICES = INFERABILITY_LABELS | {"auto"}
+EXPERT_V4_SCHEMA = "expert_v4"
+InferabilitySetting = InferabilityLabel | Literal["auto"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,10 +81,18 @@ class OracleSettings:
     chunk_rows: int
     context_window_rows: int
     include_noop_records: bool
+    schema_version: str
+    prompt_contract_version: str
+    max_repairs_per_record: int | None
+    min_noop_ratio: float
     ready_min_records: int
     output: Path
     manifest_output: Path
     overwrite: bool
+    inferability: InferabilitySetting = "auto"
+    train_only_inferable: bool = False
+    abstain_noninferable: bool = False
+    include_context_derivable: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +151,12 @@ def _oracle_config(config: dict[str, Any]) -> dict[str, Any]:
     return _as_mapping(raw, name="collection.oracle") if raw else {}
 
 
+def _repos_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return the repos section from the SFT config."""
+    raw = config.get("repos", {})
+    return _as_mapping(raw, name="repos") if raw else {}
+
+
 def resolve_settings(args: argparse.Namespace) -> OracleSettings:
     """Resolve CLI options and YAML defaults into builder settings."""
     config = load_oracle_config(cast(Path, args.config))
@@ -143,6 +179,22 @@ def resolve_settings(args: argparse.Namespace) -> OracleSettings:
         )
         or ("easy", "medium"),
     )
+    repos = _repos_config(config)
+    output = cast(Path, args.output)
+    if output == DEFAULT_OUTPUT and isinstance(repos.get("trajectory_filename"), str):
+        output = DEFAULT_OUTPUT.parent / str(repos["trajectory_filename"])
+    manifest_output = cast(Path, args.manifest_output)
+    if manifest_output == DEFAULT_SPLIT_MANIFEST and isinstance(
+        repos.get("split_manifest_filename"), str
+    ):
+        manifest_output = DEFAULT_SPLIT_MANIFEST.parent / str(repos["split_manifest_filename"])
+    raw_max_repairs = oracle.get("max_repairs_per_record")
+    if args.max_repairs_per_record is not None:
+        max_repairs_per_record = cast(int, args.max_repairs_per_record)
+    elif raw_max_repairs is None:
+        max_repairs_per_record = None
+    else:
+        max_repairs_per_record = int(str(raw_max_repairs))
     settings = OracleSettings(
         datasets=_csv_list(args.datasets, default=datasets_default),
         difficulties=_difficulty_list(args.difficulties, default=difficulties_default),
@@ -173,13 +225,45 @@ def resolve_settings(args: argparse.Namespace) -> OracleSettings:
         ),
         include_noop_records=bool(oracle.get("include_noop_records", False))
         and not cast(bool, args.skip_noop_records),
+        schema_version=str(
+            _collection_config(config).get("schema_version", SCHEMA_VERSION)
+            if args.schema_version is None
+            else cast(str, args.schema_version)
+        ),
+        prompt_contract_version=str(
+            _collection_config(config).get("prompt_contract_version", CONTRACT_VERSION)
+        ),
+        inferability=cast(
+            InferabilitySetting,
+            str(
+                oracle.get(
+                    "inferability",
+                    "auto",
+                )
+                if args.inferability is None
+                else cast(str, args.inferability)
+            ),
+        ),
+        train_only_inferable=bool(
+            oracle.get("train_only_inferable", False)
+            if args.train_only_inferable is None
+            else cast(bool, args.train_only_inferable)
+        ),
+        abstain_noninferable=bool(oracle.get("abstain_noninferable", False)),
+        include_context_derivable=bool(oracle.get("include_context_derivable", True)),
+        max_repairs_per_record=max_repairs_per_record,
+        min_noop_ratio=(
+            float(oracle.get("min_noop_ratio", 0.0))
+            if args.min_noop_ratio is None
+            else cast(float, args.min_noop_ratio)
+        ),
         ready_min_records=(
             int(oracle.get("ready_min_records", 32))
             if args.ready_min_records is None
             else cast(int, args.ready_min_records)
         ),
-        output=cast(Path, args.output),
-        manifest_output=cast(Path, args.manifest_output),
+        output=output,
+        manifest_output=manifest_output,
         overwrite=not cast(bool, args.append),
     )
     validate_settings(settings)
@@ -200,6 +284,21 @@ def validate_settings(settings: OracleSettings) -> None:
         raise ValueError("--chunk-rows must be >= 1.")
     if settings.context_window_rows < 0:
         raise ValueError("--context-window-rows must be >= 0.")
+    if settings.schema_version not in {"expert_v1", "expert_v2", "expert_v3", EXPERT_V4_SCHEMA}:
+        raise ValueError("--schema-version must be expert_v1, expert_v2, expert_v3, or expert_v4.")
+    if settings.inferability not in INFERABILITY_CHOICES:
+        raise ValueError(
+            "--inferability must be one of: " + ", ".join(sorted(INFERABILITY_CHOICES))
+        )
+    if settings.train_only_inferable and settings.inferability not in INFERABLE_LABELS | {"auto"}:
+        raise ValueError(
+            "--train-only-inferable requires inferability deterministic_normalization "
+            "or context_derivable, or --inferability auto."
+        )
+    if settings.max_repairs_per_record is not None and settings.max_repairs_per_record < 1:
+        raise ValueError("--max-repairs-per-record must be >= 1.")
+    if settings.min_noop_ratio < 0.0 or settings.min_noop_ratio >= 1.0:
+        raise ValueError("--min-noop-ratio must be >= 0 and < 1.")
     if settings.ready_min_records < 2:
         raise ValueError("--ready-min-records must be >= 2.")
 
@@ -299,6 +398,92 @@ def _repairs_from_truth(cells: list[GroundTruthCell]) -> list[BenchmarkRepair]:
     ]
 
 
+def _candidate_keys(
+    candidates: list[NormalizationCandidate],
+    *,
+    dataset_name: str,
+    deterministic_only: bool = False,
+) -> set[tuple[int, str, str]]:
+    """Return exact deterministic candidate keys."""
+    keys: set[tuple[int, str, str]] = set()
+    for candidate in candidates:
+        if (
+            deterministic_only
+            and dataset_name == "flights"
+            and candidate.get("tier") != "normalization"
+        ):
+            continue
+        row = candidate.get("row")
+        column = candidate.get("column")
+        suggested_value = candidate.get("suggested_value")
+        if isinstance(row, int) and isinstance(column, str) and isinstance(suggested_value, str):
+            keys.add((row, column, suggested_value))
+    return keys
+
+
+def inferability_for_record(
+    *,
+    dataset: RealWorldDataset,
+    row_indices: tuple[int, ...],
+    context_indices: tuple[int, ...],
+    repairs: list[BenchmarkRepair],
+    configured: InferabilitySetting,
+    strict_deterministic: bool = False,
+) -> InferabilityLabel:
+    """Classify whether the clean labels are inferable from the prompt alone."""
+    if configured != "auto":
+        return configured
+    if not repairs:
+        return "not_inferable_from_prompt" if strict_deterministic else PROMOTION_SLICE
+    candidates = _normalization_candidates(
+        dataset,
+        row_indices=row_indices,
+        context_indices=context_indices,
+    )
+    candidate_keys = _candidate_keys(candidates, dataset_name=dataset.metadata.name)
+    deterministic_keys = _candidate_keys(
+        candidates,
+        dataset_name=dataset.metadata.name,
+        deterministic_only=strict_deterministic,
+    )
+    repair_keys = {(repair.row, repair.column, repair.new_value) for repair in repairs}
+    if repair_keys and repair_keys.issubset(deterministic_keys):
+        return PROMOTION_SLICE
+    if strict_deterministic and repair_keys and repair_keys.issubset(candidate_keys):
+        return "context_derivable"
+    return "external_reference_required"
+
+
+def _v4_output_repairs(
+    repairs: list[BenchmarkRepair],
+    *,
+    inferability: InferabilityLabel,
+    abstain_noninferable: bool,
+) -> list[BenchmarkRepair]:
+    """Return the supervised assistant repairs for the v4 contract."""
+    if not abstain_noninferable:
+        return repairs
+    if inferability in ABSTENTION_SLICES or inferability in AUXILIARY_SLICES:
+        return []
+    return repairs
+
+
+def _diagnosis_for_record(
+    *,
+    output_repairs: list[BenchmarkRepair],
+    original_repairs: list[BenchmarkRepair],
+    inferability: InferabilityLabel,
+) -> list[str]:
+    """Return short audit text for repair or abstention records."""
+    if output_repairs:
+        return [repair.reason for repair in output_repairs]
+    if original_repairs and inferability == "external_reference_required":
+        return ["abstain: exact clean value requires an external reference"]
+    if original_repairs and inferability == "context_derivable":
+        return ["abstain: context-derived repair is reported as auxiliary only"]
+    return ["finish: no deterministic repair is justified by the prompt"]
+
+
 def _messages_for_record(
     *,
     dataset: RealWorldDataset,
@@ -306,46 +491,27 @@ def _messages_for_record(
     target_rows: list[dict[str, str]],
     context_rows: list[dict[str, str]],
     repairs: list[BenchmarkRepair],
+    prompt_contract_version: str = CONTRACT_VERSION,
 ) -> list[dict[str, str]]:
     """Build chat messages for SFT from already-known oracle labels."""
-    return [
-        {
-            "role": "system",
-            "content": (
-                "You are DataForge's oracle supervised-fine-tuning teacher. "
-                "Use only the provided dirty rows and emit exact cell repairs derived from "
-                "audited dirty/clean CSV labels. Return strict JSON with no prose."
-            ),
-        },
-        {
-            "role": "user",
-            "content": json.dumps(
-                {
-                    "schema_summary": schema_summary,
-                    "target_rows": target_rows,
-                    "context_rows": context_rows,
-                    "label_source": COLLECTION_METHOD,
-                    "dataset_note": (
-                        "Flights schedule and actual-time values are supervised from "
-                        "dirty/clean labels; do not infer schedules from incomplete context."
-                        if dataset.metadata.name == "flights"
-                        else "Repairs are supervised from dirty/clean labels."
-                    ),
-                },
-                sort_keys=True,
-            ),
-        },
-        {
-            "role": "assistant",
-            "content": json.dumps(
-                {
-                    "action": "submit_repairs" if repairs else "finish",
-                    "repairs": [repair.model_dump(mode="json") for repair in repairs],
-                },
-                sort_keys=True,
-            ),
-        },
-    ]
+    if prompt_contract_version not in {CONTRACT_VERSION_V1, CONTRACT_VERSION_V2}:
+        raise ValueError(f"Unsupported repair prompt contract: {prompt_contract_version}")
+    return render_repair_messages(
+        schema_summary=schema_summary,
+        target_rows=target_rows,
+        context_rows=context_rows,
+        allowed_columns=dataset.canonical_columns,
+        valid_rows=[int(row["_row"]) for row in target_rows],
+        label_source=COLLECTION_METHOD,
+        dataset_note=(
+            "Flights schedule and actual-time values are supervised from dirty/clean labels; "
+            "do not infer schedules from incomplete context."
+            if dataset.metadata.name == "flights"
+            else "Repairs are supervised from dirty/clean labels."
+        ),
+        repairs=repairs,
+        contract_version=prompt_contract_version,
+    )
 
 
 def build_dataset_records(
@@ -358,8 +524,18 @@ def build_dataset_records(
     chunk_rows: int,
     context_window_rows: int,
     include_noop_records: bool = False,
+    schema_version: str = SCHEMA_VERSION,
+    prompt_contract_version: str = CONTRACT_VERSION,
+    inferability: InferabilitySetting = "auto",
+    train_only_inferable: bool = False,
+    abstain_noninferable: bool = False,
+    include_context_derivable: bool = True,
+    max_repairs_per_record: int | None = None,
 ) -> list[dict[str, Any]]:
     """Build train-only oracle records for one dataset/difficulty pair."""
+    if train_only_inferable and inferability != "auto" and inferability not in INFERABLE_LABELS:
+        return []
+    strict_deterministic = schema_version == EXPERT_V4_SCHEMA
     split = deterministic_row_split(
         dataset_name=dataset.metadata.name,
         n_rows=len(dataset.dirty_df.index),
@@ -381,9 +557,8 @@ def build_dataset_records(
     )
     records: list[dict[str, Any]] = []
     task_id = f"{dataset.metadata.name}:{difficulty}"
-    for chunk_index, row_indices in enumerate(
-        chunk_train_rows(split.train_rows, chunk_rows=chunk_rows)
-    ):
+    chunk_index = 0
+    for row_indices in chunk_train_rows(split.train_rows, chunk_rows=chunk_rows):
         row_set = set(row_indices)
         repairs = [
             repair
@@ -397,11 +572,36 @@ def build_dataset_records(
             row_indices,
             context_window_rows=context_window_rows,
         )
+        record_inferability = inferability_for_record(
+            dataset=dataset,
+            row_indices=row_indices,
+            context_indices=context_indices,
+            repairs=repairs,
+            configured=inferability,
+            strict_deterministic=strict_deterministic,
+        )
+        if train_only_inferable and record_inferability not in INFERABLE_LABELS:
+            continue
+        if (
+            strict_deterministic
+            and record_inferability in AUXILIARY_SLICES
+            and not include_context_derivable
+        ):
+            continue
+        output_repairs = _v4_output_repairs(
+            repairs,
+            inferability=record_inferability,
+            abstain_noninferable=strict_deterministic and abstain_noninferable,
+        )
+        if max_repairs_per_record is not None and len(output_repairs) > max_repairs_per_record:
+            continue
+        if not output_repairs and not include_noop_records:
+            continue
         if eval_set.intersection(row_indices) or eval_set.intersection(context_indices):
             raise RuntimeError("Oracle trajectory construction attempted to include eval rows.")
         chunk_truth = [cell for cell in dataset.ground_truth if cell.row in row_set]
-        chunk_score = score_repairs(chunk_truth, repairs)
-        if not chunk_truth and not repairs:
+        chunk_score = score_repairs(chunk_truth, output_repairs)
+        if not chunk_truth and not output_repairs:
             chunk_metrics = {
                 "chunk_precision": 1.0,
                 "chunk_recall": 1.0,
@@ -426,7 +626,7 @@ def build_dataset_records(
             "split": "train",
         }
         record = {
-            "schema_version": SCHEMA_VERSION,
+            "schema_version": schema_version,
             "trajectory_id": f"{task_id}:{split_seed}:{chunk_index}",
             "task_id": task_id,
             "dataset": dataset.metadata.name,
@@ -446,15 +646,19 @@ def build_dataset_records(
                 },
             },
             "tool_calls": [],
-            "diagnosis": [repair.reason for repair in repairs]
-            or ["no dirty/clean differences in this train chunk"],
-            "fix": [repair.model_dump(mode="json") for repair in repairs],
+            "diagnosis": _diagnosis_for_record(
+                output_repairs=output_repairs,
+                original_repairs=repairs,
+                inferability=record_inferability,
+            ),
+            "fix": [repair.model_dump(mode="json") for repair in output_repairs],
             "messages": _messages_for_record(
                 dataset=dataset,
                 schema_summary=schema_summary,
                 target_rows=target_rows,
                 context_rows=context_rows,
-                repairs=repairs,
+                repairs=output_repairs,
+                prompt_contract_version=prompt_contract_version,
             ),
             "teacher": {"provider": ORACLE_PROVIDER, "model": ORACLE_MODEL},
             "metrics": {
@@ -479,9 +683,14 @@ def build_dataset_records(
                 "split_seed": split_seed,
                 "eval_fraction": eval_fraction,
                 "eval_rows": list(split.eval_rows),
+                "prompt_contract_version": prompt_contract_version,
+                "inferability": record_inferability,
             },
+            "prompt_contract_version": prompt_contract_version,
+            "inferability": record_inferability,
         }
         records.append(validate_trajectory_record(record))
+        chunk_index += 1
     return records
 
 
@@ -528,6 +737,11 @@ def build_split_manifest(
             "No clean values, ground-truth cells, suggested values, or repair labels are "
             "stored in this manifest."
         ),
+        "inferability": settings.inferability,
+        "train_only_inferable": settings.train_only_inferable,
+        "abstain_noninferable": settings.abstain_noninferable,
+        "include_context_derivable": settings.include_context_derivable,
+        "promotion_slice": PROMOTION_SLICE,
         "split_seed": settings.split_seed,
         "eval_fraction": settings.eval_fraction,
         "min_eval_rows": settings.min_eval_rows,
@@ -561,7 +775,22 @@ def build_oracle_trajectories(
                     chunk_rows=settings.chunk_rows,
                     context_window_rows=settings.context_window_rows,
                     include_noop_records=settings.include_noop_records,
+                    schema_version=settings.schema_version,
+                    prompt_contract_version=settings.prompt_contract_version,
+                    inferability=settings.inferability,
+                    train_only_inferable=settings.train_only_inferable,
+                    abstain_noninferable=settings.abstain_noninferable,
+                    include_context_derivable=settings.include_context_derivable,
+                    max_repairs_per_record=settings.max_repairs_per_record,
                 )
+            )
+    if records and settings.min_noop_ratio > 0.0:
+        noop_records = sum(1 for record in records if not record["fix"])
+        noop_ratio = noop_records / len(records)
+        if noop_ratio < settings.min_noop_ratio:
+            raise RuntimeError(
+                "Oracle trajectory set does not meet the configured no-op ratio "
+                f"({noop_ratio:.3f} < {settings.min_noop_ratio:.3f})."
             )
     return records
 
@@ -579,6 +808,21 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-eval-rows", type=int, default=None)
     parser.add_argument("--chunk-rows", type=int, default=None)
     parser.add_argument("--context-window-rows", type=int, default=None)
+    parser.add_argument("--schema-version", default=None)
+    parser.add_argument(
+        "--inferability",
+        choices=tuple(sorted(INFERABILITY_CHOICES)),
+        default=None,
+        help="Inferability label applied to generated oracle records.",
+    )
+    parser.add_argument(
+        "--train-only-inferable",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Emit records only when the selected inferability label is trainable.",
+    )
+    parser.add_argument("--max-repairs-per-record", type=int, default=None)
+    parser.add_argument("--min-noop-ratio", type=float, default=None)
     parser.add_argument("--skip-noop-records", action="store_true")
     parser.add_argument("--cache-root", type=Path, default=None)
     parser.add_argument("--append", action="store_true")

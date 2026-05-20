@@ -2,7 +2,7 @@
 
 > Status: Reviewed
 > Owner: @Praneshrajan15
-> Last updated: 2026-04-27
+> Last updated: 2026-05-20
 
 ## 1. Purpose (2 sentences)
 
@@ -17,6 +17,8 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - [ ] `GET /` returns stable API service metadata and never tries to serve a SPA.
 - [ ] `POST /api/profile` on `hospital_10rows.csv` returns a valid issue list within 5 s warm.
 - [ ] `POST /api/repair?dry_run=true` returns fixes plus a redacted journal derived from a real `RepairTransaction`.
+- [ ] API errors use RFC 9457 `application/problem+json` while preserving stable error codes as extension members.
+- [ ] OpenAPI snapshots under `specs/openapi/` match the generated Playground and OpenEnv schemas.
 - [ ] `advanced=true` is rejected with 400 when no provider key is configured and accepted when one is present.
 - [ ] Uploaded CSV files larger than 1 MiB are rejected with 413; valid near-limit CSVs are not rejected only because of multipart overhead.
 - [ ] Production CORS allows only exact origins from `DATAFORGE_PLAYGROUND_ORIGINS`; localhost is regex-allowed only when `DATAFORGE_PLAYGROUND_DEV=1`.
@@ -51,6 +53,9 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Safety: no endpoint may silently bypass safety or verifier failures.
 - Hosting: single-worker Space runtime, `PORT` honored, UID 1000, all temporary I/O under a request-local temp directory.
 - Quality gate: `make lint`, `make type`, `make test`, playground smoke tests, and regression smoke must all pass.
+- Contract gate: `make backend-gate` verifies OpenAPI drift, README truth,
+  MCP tests, secret scan, dependency-audit availability, and package-build
+  availability in addition to lint/type/test.
 
 ## 5. Prior decisions (locked - require new spec to change)
 
@@ -69,7 +74,8 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Estimated complexity: M
 
 ### 6.2 Shared repair-pipeline reuse
-- Acceptance: `/api/repair` uses the same orchestration shape as the CLI and returns a redacted `RepairTransaction` view.
+- Acceptance: `/api/repair` calls `dataforge.engine.repair.run_repair_pipeline`
+  and returns a redacted `RepairTransaction` view.
 - Depends on: 6.1
 - Estimated complexity: L
 
@@ -91,6 +97,13 @@ and the backend is served as an API-only Hugging Face Docker Space.
 ### 6.6 Quality gate expansion
 - Acceptance: Makefile and CI cover the shipped Week 5 Python paths and playground contract tests.
 - Depends on: 6.1 to 6.5
+- Estimated complexity: S
+
+### 6.7 Problem details and OpenAPI contracts
+- Acceptance: expected HTTP failures return RFC 9457 problem details with
+  stable `error` extension values, and `scripts/ci/openapi_contract.py --check`
+  fails on schema drift.
+- Depends on: 6.1, 6.2
 - Estimated complexity: S
 
 ## 7. Verification
@@ -145,3 +158,13 @@ Reasoning: prevents another Cloudflare account from calling the API by virtue of
 Input: `python scripts/playground/stage_space.py --output-dir <tmp>`
 Expected output: staged repo contains every Docker COPY source and omits the frontend tree
 Reasoning: prevents deploy docs from drifting away from the actual Docker build context.
+
+### Case A.8: Problem detail shape
+Input: `POST /api/profile?advanced=true` without a provider key.
+Expected output: 400 `application/problem+json` with `type`, `title`, `status`, `detail`, and `error="advanced_mode_unavailable"`.
+Reasoning: gives clients a stable error contract without preserving ad hoc FastAPI exception wrappers.
+
+### Case A.9: OpenAPI drift check
+Input: generated Playground or OpenEnv schema differs from `specs/openapi/*.json`.
+Expected output: backend gate fails and asks the contributor to regenerate snapshots intentionally.
+Reasoning: treats API schema as a reviewed contract artifact.

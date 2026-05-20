@@ -106,6 +106,14 @@ def _validate_required_metrics(metrics: dict[str, Any]) -> None:
         raise ModelCardError("model_license must be apache-2.0 after verifying base metadata.")
 
 
+def _metrics_with_card_defaults(metrics: dict[str, Any], *, repo_id: str) -> dict[str, Any]:
+    """Add model-card fields that older diagnostic metrics did not record."""
+    enriched = dict(metrics)
+    enriched.setdefault("repo_id", repo_id)
+    enriched.setdefault("trajectory_filename", "expert_v3.jsonl")
+    return enriched
+
+
 def publish_model(
     *,
     model_dir: Path,
@@ -128,8 +136,7 @@ def publish_model(
     metrics = _load_metrics(model_dir)
     _validate_required_metrics(metrics)
     resolved_repo_id = resolve_repo_id(repo_id, api=api, token=token)
-    metrics = dict(metrics)
-    metrics.setdefault("repo_id", resolved_repo_id)
+    metrics = _metrics_with_card_defaults(metrics, repo_id=resolved_repo_id)
     card_text = render_model_card(card_template.read_text(encoding="utf-8"), metrics)
     (model_dir / "README.md").write_text(card_text, encoding="utf-8")
 

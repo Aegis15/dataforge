@@ -1,0 +1,117 @@
+{
+  "dataset": {
+    "files": [
+      ".gitattributes",
+      "MODEL_CARD_TEMPLATE.md",
+      "README.md",
+      "expert_v1.jsonl",
+      "expert_v2.jsonl",
+      "sft_05b.yaml",
+      "sft_05b_v2.yaml",
+      "split_manifest.json",
+      "split_manifest_v2.json"
+    ],
+    "repo_id": "Praneshrajan15/dataforge-sft-trajectories",
+    "repo_type": "dataset",
+    "sha": "1e8612e5ddd48ef2d7ab78592059d187bd67ba3e"
+  },
+  "dataset_readme_checked": true,
+  "dataset_records": 1326,
+  "dataset_sha_metric_checked": true,
+  "eval_diagnostics_checked": true,
+  "metrics": {
+    "base_eval": {
+      "dataset_f1": {
+        "beers": 0.0061,
+        "flights": 0.0,
+        "hospital": 0.0
+      },
+      "failure_taxonomy": {
+        "missed_repair": 634,
+        "overrepair": 153,
+        "schema_case_error": 42,
+        "wrong_cell": 15,
+        "wrong_value": 69
+      },
+      "macro_f1": 0.002,
+      "mean_f1": 0.002,
+      "parse_success_rate": 1.0,
+      "schema_case_error_count": 42
+    },
+    "base_f1": 0.002,
+    "base_model": "Qwen/Qwen2.5-0.5B-Instruct",
+    "config_sha256": "e54824dd8f849f1c7a643970f7a56ce3408d6e05e3985f9392104d8b2522dc64",
+    "dataset_records": 1326,
+    "dataset_repo": "Praneshrajan15/dataforge-sft-trajectories",
+    "dataset_sha": "1e8612e5ddd48ef2d7ab78592059d187bd67ba3e",
+    "evaluation_chunk_width": 4,
+    "evaluation_max_new_tokens": 1024,
+    "heldout_examples": 100,
+    "heldout_leakage_detected": false,
+    "kaggle_hours": 0.794,
+    "model_license": "apache-2.0",
+    "model_name": "DataForge-0.5B-SFT",
+    "parse_success_rate": 0.94,
+    "prompt_contract_drift": false,
+    "quality_gate_failures": [
+      "sft_f1>base_f1",
+      "parse_success_rate>=0.99",
+      "schema_case_error_count==0"
+    ],
+    "quality_milestone": false,
+    "release_status": "diagnostic_complete_no_gain",
+    "repo_id": "Praneshrajan15/DataForge-0.5B-SFT",
+    "schema_case_error_count": 45,
+    "sft_eval": {
+      "dataset_f1": {
+        "beers": 0.0,
+        "flights": 0.0,
+        "hospital": 0.0
+      },
+      "failure_taxonomy": {
+        "missed_repair": 678,
+        "overrepair": 125,
+        "schema_case_error": 45,
+        "truncated_json": 6,
+        "wrong_cell": 24,
+        "wrong_value": 26
+      },
+      "macro_f1": 0.0,
+      "mean_f1": 0.0,
+      "parse_success_rate": 0.94,
+      "schema_case_error_count": 45
+    },
+    "sft_f1": 0.0,
+    "split_manifest_sha256": "dc47b3a5736c99c7147b4b6dc239a654055279a35b1026f6a23eb9f2a29dc5a6",
+    "teacher_model": "clean-diff-v1",
+    "training_examples": 1226,
+    "trajectory_sha256": "519142a594ebe3fb56070f6f3b80b7c13abc869840cbcdbd340494e2915fabe0"
+  },
+  "model": {
+    "files": [
+      ".gitattributes",
+      "README.md",
+      "chat_template.jinja",
+      "config.json",
+      "eval_diagnostics.json",
+      "generation_config.json",
+      "model.safetensors",
+      "tokenizer.json",
+      "tokenizer_config.json",
+      "training_metrics.json"
+    ],
+    "repo_id": "Praneshrajan15/DataForge-0.5B-SFT",
+    "repo_type": "model",
+    "sha": "4ba2b5196cb1dc7a423b98d7a1cdbaa3e6bebd1b"
+  },
+  "model_readme_checked": true,
+  "quality_gate_failures": [
+    "sft_f1>base_f1",
+    "parse_success_rate>=0.99",
+    "schema_case_error_count==0"
+  ],
+  "quality_milestone": false,
+  "release_status": "diagnostic_complete_no_gain",
+  "split_manifest_filename": "split_manifest_v2.json",
+  "trajectory_filename": "expert_v2.jsonl"
+}
