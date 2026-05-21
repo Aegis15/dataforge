@@ -1,7 +1,8 @@
 """CI check: verify README claims match shipped code.
 
-Asserts that every `dataforge <subcommand>` shown in the root README
-resolves to a registered Typer command. Also checks that the playground
+Asserts that every `dataforge15 <subcommand>` or compatibility
+`dataforge <subcommand>` shown in the root README resolves to a registered
+Typer command. Also checks that the playground
 URL (once added) returns HTTP 200.
 
 Usage:
@@ -19,8 +20,8 @@ README = PROJECT_ROOT / "README.md"
 
 
 def extract_subcommands_from_readme(text: str) -> set[str]:
-    """Find all `dataforge <subcommand>` references in the README."""
-    pattern = re.compile(r"dataforge\s+([a-z][a-z0-9_-]*)")
+    """Find all DataForge15 CLI subcommand references in the README."""
+    pattern = re.compile(r"\bdataforge(?:15)?\s+([a-z][a-z0-9_-]*)")
     return {m.group(1) for m in pattern.finditer(text)}
 
 

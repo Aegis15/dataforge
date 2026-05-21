@@ -1,9 +1,14 @@
-# DataForge
+# DataForge15
 
-DataForge is a CLI-first data-quality repair toolkit for tabular data. It
+DataForge15 is the official release name for the DataForge codebase, a
+CLI-first data-quality repair toolkit for tabular data. It
 detects common CSV issues, proposes deterministic repairs, checks proposed
 changes through safety and verification gates, and records applied changes in a
 reversible transaction log.
+
+The PyPI distribution is `dataforge15`. The Python import namespace remains
+`dataforge` for the 0.1 line to avoid unnecessary churn, so users install with
+`pip install dataforge15` and import with `import dataforge`.
 
 The current repository is an alpha implementation. It also contains the
 OpenEnv-compatible training environment, the SFT warmup workflow, a local MCP
@@ -14,8 +19,8 @@ production model-quality claims remain future work.
 
 Shipped in the current worktree:
 
-- `dataforge profile`, `dataforge repair`, `dataforge revert`, and
-  `dataforge bench`
+- `dataforge15 profile`, `dataforge15 repair`, `dataforge15 revert`, and
+  `dataforge15 bench`
 - Three detector families: `type_mismatch`, `decimal_shift`, `fd_violation`
 - Matching deterministic repairers wired through SafetyFilter -> SMTVerifier
 - Reversible transaction journals with immutable source snapshots
@@ -24,7 +29,7 @@ Shipped in the current worktree:
 - OpenEnv-compatible HTTP environment with eight typed actions, including
   read-only `ROOT_CAUSE`
 - Causal root-cause analyzer for cascading data-quality errors
-- Standalone `dataforge-mcp` package exposing DataForge tools over MCP
+- Standalone `dataforge15-mcp` package exposing DataForge15 tools over MCP
 - Week 9 SFT oracle trajectory workflow, readiness gate, Kaggle notebook, and
   release verifier
 - Separate Gradio model-demo Space source for the published 0.5B SFT smoke
@@ -41,17 +46,20 @@ Not shipped yet:
 
 ```bash
 python -m pip install -e ".[dev]"
-dataforge profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
-dataforge repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
-dataforge bench --methods llm_zeroshot --datasets hospital --seeds 1
+dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
+dataforge15 repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
+dataforge15 bench --methods llm_zeroshot --datasets hospital --seeds 1
 ```
+
+`dataforge` remains a temporary CLI compatibility alias for the first
+DataForge15 release.
 
 To apply repairs, use `--apply`. Applied repairs write a transaction journal and
 source snapshot before mutating the CSV, so they can be reverted:
 
 ```bash
-dataforge repair path/to/file.csv --schema path/to/schema.yaml --apply
-dataforge revert <txn-id>
+dataforge15 repair path/to/file.csv --schema path/to/schema.yaml --apply
+dataforge15 revert <txn-id>
 ```
 
 ## Week 9 SFT Warmup
@@ -74,14 +82,17 @@ bundle only after the readiness gate passes:
 
 ```powershell
 $env:HF_TOKEN="..."
-.\.venv\Scripts\python.exe scripts\data\build_oracle_sft_trajectories.py --push-to-hub --hf-dataset-repo Praneshrajan15/dataforge-sft-trajectories
+.\.venv\Scripts\python.exe scripts\data\build_oracle_sft_trajectories.py --push-to-hub --hf-dataset-repo Praneshrajan15/dataforge15-sft-trajectories
 ```
 
-The published smoke checkpoint is
+The current historical smoke checkpoint still uses the old DataForge artifact
+name:
 `Praneshrajan15/DataForge-0.5B-SFT`, with trajectories at
-`Praneshrajan15/dataforge-sft-trajectories`. It proves the dataset, Kaggle
-training, merge, evaluation, and Hub upload path. It is not a model-quality
-claim. Verify release artifacts before citing them:
+`Praneshrajan15/dataforge-sft-trajectories`. New public artifacts should use
+DataForge15 names, for example `DataForge15-0.5B-SFT` and
+`dataforge15-sft-trajectories`. The historical checkpoint proves the dataset,
+Kaggle training, merge, evaluation, and Hub upload path; it is not a
+model-quality claim. Verify release artifacts before citing them:
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\model\verify_sft_release.py --output eval\results\sft_release_v0_smoke.json
@@ -113,13 +124,14 @@ After GRPO eval evidence exists:
 
 ## MCP Server
 
-The nested `dataforge-mcp/` package is a standalone distribution that exposes
-DataForge through local MCP clients:
+The nested `dataforge-mcp/` source directory builds the standalone
+`dataforge15-mcp` distribution that exposes DataForge15 through local MCP
+clients:
 
 ```bash
 cd dataforge-mcp
 python -m pip install -e ".[dev]"
-dataforge-mcp serve
+dataforge15-mcp serve
 ```
 
 Tools: `dataforge_profile`, `dataforge_detect_errors`,
@@ -130,8 +142,9 @@ Streamable HTTP is available for local experiments.
 
 ## Playground And Model Demo
 
-- `playground/api/` is the API backend for the CSV playground. It is staged into
-  a Hugging Face Docker Space.
+- `playground/api/` is the API backend for the CSV playground. New public Space
+  deployments should use `dataforge15-playground`; older `dataforge-playground`
+  deployments are historical.
 - `playground/web/` is the static browser UI deployed through Cloudflare
   Workers Static Assets.
 - `playground-model/` is a separate Gradio Space demo for the published
@@ -169,7 +182,7 @@ Make recipes. Python support is `>=3.11,<3.13`.
 `make backend-gate` is the release-quality backend check: lint, format, strict
 mypy, root tests, MCP tests, README truth, OpenAPI snapshot drift, secret scan,
 dependency audit availability, SBOM generation availability, and package build
-availability for both `dataforge` and `dataforge-mcp`.
+availability for both `dataforge15` and `dataforge15-mcp`.
 
 Windows setup:
 
@@ -193,11 +206,11 @@ Provider keys belong in a root `.env` file, which is gitignored and loaded with
 - `OPENROUTER_API_KEY`
 - `HF_TOKEN`
 
-## When DataForge Is The Wrong Tool
+## When DataForge15 Is The Wrong Tool
 
-Do not use DataForge for streaming data, very large warehouse tables, regulated
+Do not use DataForge15 for streaming data, very large warehouse tables, regulated
 workflows where every fix must be human-authored, strict low-latency SLAs, or
-teams already well served by maintained Great Expectations/dbt suites. DataForge
+teams already well served by maintained Great Expectations/dbt suites. DataForge15
 is currently best suited to local CSV profiling, repair experiments, benchmark
 runs, and training/evaluation research.
 

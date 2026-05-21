@@ -1,6 +1,6 @@
 # Safety
 
-DataForge is designed for conservative repair. A repair is acceptable only when
+DataForge15 is designed for conservative repair. A repair is acceptable only when
 it is explainable, narrowly scoped, and reversible.
 
 ## Public safety guarantees

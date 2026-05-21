@@ -99,6 +99,8 @@ test("sample path profiles, repairs, exports evidence, and passes automated acce
   await context.grantPermissions(["clipboard-write"]);
   await page.goto("/");
 
+  await expect(page.getByRole("banner", { name: "DataForge command bar" })).toBeVisible();
+  await expect(page.getByText("Stateless dry run")).toBeVisible();
   await page.getByRole("button", { name: /Hospital/ }).click();
   await expect(page.getByRole("heading", { name: "Current CSV" })).toBeVisible();
   await expect(page.getByText("1020")).toBeVisible();
@@ -158,3 +160,53 @@ test("tabs support arrow-key navigation", async ({ page }) => {
 
   await expect(page.getByRole("tab", { name: "Repair" })).toHaveAttribute("aria-selected", "true");
 });
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`premium institutional console supports the full sample flow in ${colorScheme} mode`, async ({
+    page,
+    context,
+  }) => {
+    await context.grantPermissions(["clipboard-write"]);
+    await page.emulateMedia({ colorScheme });
+    await page.goto("/");
+
+    const rootTokens = await page.evaluate(() => {
+      const styles = getComputedStyle(document.documentElement);
+      return {
+        bg: styles.getPropertyValue("--df-bg").trim(),
+        text: styles.getPropertyValue("--df-text-1").trim(),
+        action: styles.getPropertyValue("--df-action-bg").trim(),
+        success: styles.getPropertyValue("--df-status-safe-bg").trim(),
+        agent: styles.getPropertyValue("--df-agent-bg").trim(),
+      };
+    });
+    expect(rootTokens.bg).not.toEqual("");
+    expect(rootTokens.text).not.toEqual("");
+    expect(rootTokens.action).not.toEqual("");
+    expect(rootTokens.action).not.toEqual(rootTokens.success);
+    expect(rootTokens.agent).not.toEqual("");
+    await expect(page.getByRole("banner", { name: "DataForge command bar" })).toBeVisible();
+    await expect(page.getByText("Verified CSV repair workbench")).toBeVisible();
+    await expect(page.getByText("Stateless dry run")).toBeVisible();
+
+    await page.getByRole("button", { name: /Hospital/ }).click();
+    await page.getByRole("button", { name: "Profile" }).click();
+    await expect(page.getByText("unsafe", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: /Repair dry run/ }).click();
+    await expect(page.getByText("Tenfold outlier")).toBeVisible();
+
+    await page.getByRole("tab", { name: "Journal" }).click();
+    await expect(page.getByText("txn-demo", { exact: true })).toBeVisible();
+
+    await page.getByRole("button", { name: "Copy" }).click();
+    await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Export" }).click();
+    await expect((await download).suggestedFilename()).toContain("dataforge-dry-run");
+
+    const scan = await new AxeBuilder({ page }).analyze();
+    expect(scan.violations).toEqual([]);
+  });
+}

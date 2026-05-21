@@ -1,9 +1,13 @@
-# DataForge
+# DataForge15
 
-DataForge is a CLI-first toolkit for finding and repairing data-quality issues
-in tabular files. It profiles CSVs, proposes deterministic repairs, checks
+DataForge15 is the official release name for the DataForge codebase. It is a
+CLI-first toolkit for finding and repairing data-quality issues in tabular
+files. It profiles CSVs, proposes deterministic repairs, checks
 changes through safety and verification gates, and records applied fixes in a
 reversible transaction log.
+
+Install the PyPI distribution as `dataforge15`. The 0.1 line intentionally keeps
+the Python import namespace as `dataforge`.
 
 The 0.1.0 release is an alpha meant for local CSV profiling, repair
 experiments, benchmarks, and training/evaluation research. It is not a
@@ -11,8 +15,8 @@ warehouse-native service and it does not make production model-quality claims.
 
 ## What ships in 0.1.0
 
-- `dataforge profile`, `dataforge repair`, `dataforge revert`, and
-  `dataforge bench`.
+- `dataforge15 profile`, `dataforge15 repair`, `dataforge15 revert`, and
+  `dataforge15 bench`.
 - Detector families for type mismatches, decimal shifts, and functional
   dependency violations.
 - Deterministic repairers wired through `SafetyFilter` and `SMTVerifier`.

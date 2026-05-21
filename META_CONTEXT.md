@@ -1,26 +1,26 @@
-# DataForge Meta-Context
+# DataForge15 Meta-Context
 
 Last updated: 2026-05-15.
 
 This document is the pre-work context for any agent or maintainer editing
-DataForge. Read it before making product, architecture, or documentation
+DataForge15. Read it before making product, architecture, or documentation
 changes.
 
-## 0.1 What DataForge Is
+## 0.1 What DataForge15 Is
 
-DataForge is an open-source data-quality repair project for tabular data. The
+DataForge15 is an open-source data-quality repair project for tabular data. The
 current shipped core is a local CLI/library that profiles CSVs, proposes repairs
 for three detector families, verifies proposed changes, and records reversible
 transactions.
 
 Current surfaces:
 
-- CLI: `dataforge profile`, `dataforge repair`, `dataforge revert`,
-  `dataforge bench`
+- CLI: `dataforge15 profile`, `dataforge15 repair`, `dataforge15 revert`,
+  `dataforge15 bench`
 - OpenEnv-compatible RL environment with eight typed actions
 - Real-world benchmark harness for Hospital, Flights, and Beers
 - Causal root-cause analyzer for cascading tabular errors
-- Local MCP server package under `dataforge-mcp/`
+- Local MCP server package under `dataforge-mcp/`, published as `dataforge15-mcp`
 - Hugging Face Docker Space backend and Cloudflare static playground frontend
 - Week 9 SFT warmup workflow, dataset/model cards, Kaggle notebook, and release
   verifier
@@ -34,7 +34,7 @@ agent-patterns libraries, and production model families.
 
 - Data engineers who need a local, auditable CSV profiling and repair workflow.
 - Applied AI engineers testing data-repair agents and OpenEnv training loops.
-- Maintainers integrating DataForge into local agent tools through MCP.
+- Maintainers integrating DataForge15 into local agent tools through MCP.
 - Reviewers evaluating whether the project is honest about what is shipped.
 
 ## 0.3 Quality Bar
@@ -60,7 +60,7 @@ Anti-signals:
 1. Public behavior changes require a spec update.
 2. Existing tests are not weakened to make an implementation pass.
 3. Applied repairs pass through SafetyFilter -> SMTVerifier -> transaction log.
-4. `dataforge revert <txn_id>` must preserve byte-for-byte restore semantics.
+4. `dataforge15 revert <txn_id>` must preserve byte-for-byte restore semantics.
 5. No browser storage APIs in the playground unless a future spec explicitly
    changes the privacy model.
 6. No browser-visible API keys and no browser-run LLM calls.
@@ -92,7 +92,7 @@ Generated or staged mirrors are not source docs:
 
 ## 0.6 Pre-Mortem
 
-Likely ways DataForge fails:
+Likely ways DataForge15 fails:
 
 - Scope fragmentation: many half-built surfaces instead of one credible core.
 - README drift: public docs claim features the code does not ship.
@@ -112,12 +112,12 @@ Mitigations:
 
 ## 0.7 Competitive Positioning
 
-DataForge is not a data catalog, observability platform, warehouse, lineage
+DataForge15 is not a data catalog, observability platform, warehouse, lineage
 system, or replacement for Great Expectations/dbt tests. Its differentiator is
 the conjunction of executable repair proposals, safety gating, SMT verification,
 and reversible transactions in a local open-source workflow.
 
-Do not use DataForge today for streaming data, very large warehouse-scale jobs,
+Do not use DataForge15 today for streaming data, very large warehouse-scale jobs,
 strict regulated workflows where every fix must be human-authored, or production
 autonomous repair. Use it for local CSV repair experiments, auditable demos,
 benchmarking, environment research, and agent integration prototypes.

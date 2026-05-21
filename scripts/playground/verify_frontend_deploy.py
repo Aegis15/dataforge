@@ -43,7 +43,9 @@ def verify(frontend_url: str, backend_url: str) -> None:
         require("no-store" in cache_control.lower(), "config.js must be served with no-store.")
 
         backend_root = client.get(backend_url)
-        require(backend_root.status_code == 200, f"Backend root returned {backend_root.status_code}")
+        require(
+            backend_root.status_code == 200, f"Backend root returned {backend_root.status_code}"
+        )
         root_payload = backend_root.json()
         require(
             root_payload.get("service") == "DataForge Playground API",

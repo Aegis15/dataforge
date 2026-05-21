@@ -20,10 +20,13 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
+For a released install, use `python -m pip install dataforge15`. The import
+namespace remains `dataforge` for the 0.1 line.
+
 ## 2. Profile the hospital fixture
 
 ```bash
-dataforge profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
+dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
 ```
 
 The command prints a Rich table of detected issues, including issue type,
@@ -32,7 +35,7 @@ severity, confidence, and reason.
 ## 3. Preview repairs
 
 ```bash
-dataforge repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
+dataforge15 repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
 ```
 
 Dry-run mode exercises detection, repair proposal, safety, and verification
@@ -42,8 +45,8 @@ without writing to disk.
 
 ```bash
 cp fixtures/hospital_10rows.csv /tmp/hospital_10rows.csv
-dataforge repair /tmp/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --apply
-dataforge revert <txn-id>
+dataforge15 repair /tmp/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --apply
+dataforge15 revert <txn-id>
 ```
 
 Applied repairs write a transaction journal and source snapshot before the CSV

@@ -3,11 +3,11 @@
 ## CLI
 
 ```bash
-dataforge profile <csv> [--schema schema.yaml]
-dataforge repair <csv> [--schema schema.yaml] --dry-run
-dataforge repair <csv> [--schema schema.yaml] --apply
-dataforge revert <txn-id>
-dataforge bench --methods heuristic --datasets hospital --seeds 1
+dataforge15 profile <csv> [--schema schema.yaml]
+dataforge15 repair <csv> [--schema schema.yaml] --dry-run
+dataforge15 repair <csv> [--schema schema.yaml] --apply
+dataforge15 revert <txn-id>
+dataforge15 bench --methods heuristic --datasets hospital --seeds 1
 ```
 
 ## Public modules
@@ -25,5 +25,5 @@ dataforge bench --methods heuristic --datasets hospital --seeds 1
 
 ## Version support
 
-DataForge 0.1.0 supports Python 3.11 and 3.12. The core package is intentionally
+DataForge15 0.1.0 supports Python 3.11 and 3.12. The core package is intentionally
 separate from playground, training, and model-demo dependencies.

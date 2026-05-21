@@ -1,12 +1,12 @@
 [project]
-name = "dataforge-mcp"
+name = "dataforge15-mcp"
 version = "0.1.0"
-description = "Model Context Protocol server for DataForge data-quality tools."
+description = "Model Context Protocol server for DataForge15 data-quality tools."
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "dataforge>=0.1.0",
+    "dataforge15>=0.1.0",
     "mcp>=1.27",
 ]
 classifiers = [
@@ -14,7 +14,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
-keywords = ["data-quality", "dataforge", "mcp", "model-context-protocol"]
+keywords = ["data-quality", "dataforge15", "dataforge", "mcp", "model-context-protocol"]
 
 [project.optional-dependencies]
 dev = [
@@ -22,6 +22,7 @@ dev = [
 ]
 
 [project.scripts]
+dataforge15-mcp = "dataforge_mcp.server:main"
 dataforge-mcp = "dataforge_mcp.server:main"
 
 [build-system]

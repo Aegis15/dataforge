@@ -1,9 +1,9 @@
-name: Publish dataforge-mcp
+name: Publish dataforge15-mcp
 
 on:
   push:
     tags:
-      - "dataforge-mcp-v*"
+      - "dataforge15-mcp-v*"
   workflow_dispatch:
 
 permissions:
@@ -32,4 +32,3 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dataforge-mcp/dist
-

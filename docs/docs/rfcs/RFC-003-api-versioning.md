@@ -2,7 +2,7 @@
 
 ## Problem
 
-DataForge now exposes a CLI, Python modules, an OpenEnv environment, benchmark
+DataForge15 now exposes a CLI, Python modules, an OpenEnv environment, benchmark
 JSON, MCP tools, and playground APIs. Versioning must make compatibility
 expectations clear before downstream integrations rely on unstable shapes.
 

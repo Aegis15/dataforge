@@ -1,4 +1,4 @@
-"""Canonical backend release-quality gate for DataForge."""
+"""Canonical backend release-quality gate for DataForge15."""
 
 from __future__ import annotations
 
@@ -177,14 +177,14 @@ def main() -> int:
     build_optional = not (args.require_optional or os.environ.get("DATAFORGE_REQUIRE_BUILD"))
     checks.append(
         _run(
-            "dataforge package build",
+            "dataforge15 package build",
             [PYTHON, "-m", "build", "--sdist", "--wheel"],
             optional=build_optional,
         )
     )
     checks.append(
         _run(
-            "dataforge-mcp package build",
+            "dataforge15-mcp package build",
             [PYTHON, "-m", "build", "--sdist", "--wheel", "dataforge-mcp"],
             optional=build_optional,
         )

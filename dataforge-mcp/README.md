@@ -1,11 +1,11 @@
-# dataforge-mcp
+# dataforge15-mcp
 
-`dataforge-mcp` exposes DataForge's shipped CSV profiling, detection, repair,
+`dataforge15-mcp` exposes DataForge15's shipped CSV profiling, detection, repair,
 verification, and transaction-revert paths as Model Context Protocol tools.
 
 ```bash
-pip install dataforge-mcp
-dataforge-mcp serve --allowed-root /path/to/csv/workspace
+pip install dataforge15-mcp
+dataforge15-mcp serve --allowed-root /path/to/csv/workspace
 ```
 
 For local development from this repository:
@@ -13,21 +13,21 @@ For local development from this repository:
 ```bash
 cd dataforge-mcp
 python -m pip install -e ".[dev]"
-dataforge-mcp serve --allowed-root ..
+dataforge15-mcp serve --allowed-root ..
 ```
 
 The default transport is stdio, which is what local desktop MCP clients expect.
 For local Streamable HTTP experiments:
 
 ```bash
-dataforge-mcp serve --transport streamable-http --host 127.0.0.1 --port 8000
+dataforge15-mcp serve --transport streamable-http --host 127.0.0.1 --port 8000
 ```
 
 `dry_run` is the safe default. To allow file mutation through MCP, start the
 server with an explicit allowed root and `--enable-apply`:
 
 ```bash
-dataforge-mcp serve --allowed-root /path/to/csv/workspace --enable-apply
+dataforge15-mcp serve --allowed-root /path/to/csv/workspace --enable-apply
 ```
 
 ## Tools
@@ -49,7 +49,7 @@ MCP client that supports stdio servers:
 {
   "mcpServers": {
     "dataforge": {
-      "command": "dataforge-mcp",
+      "command": "dataforge15-mcp",
       "args": ["serve", "--allowed-root", "/path/to/csv/workspace"]
     }
   }
@@ -60,13 +60,13 @@ If your client cannot resolve the console script, replace `command` with the
 absolute path returned by your shell:
 
 ```bash
-which dataforge-mcp
+which dataforge15-mcp
 ```
 
 On Windows PowerShell:
 
 ```powershell
-Get-Command dataforge-mcp
+Get-Command dataforge15-mcp
 ```
 
 ## Safety Model
@@ -83,12 +83,12 @@ the server is started with `--enable-apply` or `DATAFORGE_MCP_ENABLE_APPLY=1`.
 
 ## Release
 
-The package is released independently from the nested `dataforge-mcp/`
+The package is released independently from the nested `dataforge-mcp/` source
 directory. The trusted-publishing workflow builds on tags matching:
 
 ```text
-dataforge-mcp-v*
+dataforge15-mcp-v*
 ```
 
-The package depends on `dataforge` and the official Python `mcp` SDK; it does
-not vendor DataForge or add MCP dependencies to the core package.
+The package depends on `dataforge15` and the official Python `mcp` SDK; it does
+not vendor DataForge15 or add MCP dependencies to the core package.

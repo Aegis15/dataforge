@@ -2,7 +2,7 @@
 
 ## Reproduction
 
-`dataforge bench --methods llm_zeroshot --datasets hospital --seeds 1`
+`dataforge15 bench --methods llm_zeroshot --datasets hospital --seeds 1`
 
 ## Configuration
 

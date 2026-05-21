@@ -1,1 +1,1 @@
-"""The dbt integration lives in the separate ``dataforge-dbt`` package."""
+"""The dbt integration lives in the separate ``dataforge15-dbt`` package."""

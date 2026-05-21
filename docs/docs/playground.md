@@ -1,6 +1,6 @@
 # Playground
 
-The DataForge playground is the browser surface for the same safety model as
+The DataForge15 playground is the browser surface for the same safety model as
 the CLI: profile the data, preview repairs, verify the evidence, and keep
 revert semantics clear. It is built for quick practitioner review, not account
 management or production data processing.
@@ -54,10 +54,11 @@ controls stay gated by that capability response.
 
 ## Model Demo
 
-The separate Gradio Space for
+The separate Gradio Space for the historical
 [DataForge-0.5B-SFT](https://huggingface.co/Praneshrajan15/DataForge-0.5B-SFT)
-is intentionally labeled as experimental. It can propose repairs for short CSV
-snippets, but it does not apply fixes, does not produce verified transaction
+checkpoint is intentionally labeled as experimental. New public model and Space
+artifacts should use DataForge15 names. The demo can propose repairs for short
+CSV snippets, but it does not apply fixes, does not produce verified transaction
 evidence, and should not be cited as the authoritative product workflow.
 
 ## Deployment Checks

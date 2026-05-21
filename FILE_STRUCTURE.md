@@ -1,4 +1,4 @@
-# DataForge File Structure
+# DataForge15 File Structure
 
 Last updated: 2026-05-15.
 
@@ -23,7 +23,7 @@ data_quality_env/
     transactions/            Append-only journals, snapshots, revert.
     ui/                      Rich rendering helpers.
     verifier/                SMT verifier and explanations.
-  dataforge-mcp/             Standalone MCP package and tests.
+  dataforge-mcp/             Standalone MCP source package and tests; publishes as dataforge15-mcp.
   playground/
     api/                     Hugging Face Docker Space backend.
     web/                     Cloudflare Workers Static Assets frontend.
@@ -82,11 +82,11 @@ logs/
 
 The following product surfaces remain future work unless a spec says otherwise:
 
-- `dataforge-dbt`
+- `dataforge15-dbt`
 - `dataforge-airbyte`
 - warehouse-native adapters
-- standalone `dataforge-evals`
-- standalone `dataforge-agent-patterns`
+- standalone `dataforge15-evals`
+- standalone `dataforge15-agent-patterns`
 - production model family beyond the current verified SFT/GRPO release evidence
 - hosted product domain and docs site
 

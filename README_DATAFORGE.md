@@ -1,4 +1,4 @@
-# DataForge Reference README
+# DataForge15 Reference README
 
 This file is reference material for a future public README. The shipped public
 README is `README.md`. Do not copy claims from this file into `README.md` until
@@ -6,14 +6,14 @@ the corresponding features are implemented, tested, and documented.
 
 ## Current Core
 
-DataForge currently ships a CLI-first CSV repair workflow:
+DataForge15 currently ships a CLI-first CSV repair workflow:
 
 ```bash
-dataforge profile path/to/data.csv
-dataforge repair path/to/data.csv --dry-run
-dataforge repair path/to/data.csv --apply
-dataforge revert <txn-id>
-dataforge bench --methods llm_zeroshot --datasets hospital --seeds 1
+dataforge15 profile path/to/data.csv
+dataforge15 repair path/to/data.csv --dry-run
+dataforge15 repair path/to/data.csv --apply
+dataforge15 revert <txn-id>
+dataforge15 bench --methods llm_zeroshot --datasets hospital --seeds 1
 ```
 
 The repair path uses detectors, deterministic repairers, SafetyFilter,
@@ -35,7 +35,7 @@ harness, OpenEnv environment, MCP package, and SFT smoke-release evidence.
 
 ## Wrong-Tool Language
 
-DataForge is not a data catalog, lineage system, observability platform,
+DataForge15 is not a data catalog, lineage system, observability platform,
 warehouse, or replacement for maintained Great Expectations/dbt suites. It is
 not currently appropriate for production autonomous repair, streaming data, or
 strict regulated workflows requiring human-authored fixes.

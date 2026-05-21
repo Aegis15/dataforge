@@ -26,6 +26,10 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - [ ] The frontend uses relative assets plus `config.js` and never assumes HF static hosting.
 - [ ] No browser storage APIs or frontend API keys appear under `playground/web/`.
 - [ ] The authoritative HF deploy path uses `scripts/playground/stage_space.py`, not subtree push.
+- [ ] The frontend imports the generated DataForge color system, passes
+  `npm run colors:check`, and contains no hand-authored raw hex colors.
+- [ ] Light and dark playground schemes preserve WCAG 2.2 contrast gates:
+  primary text 7:1, secondary text 4.5:1, and non-text affordances 3:1.
 
 ## 3. Scope
 
@@ -51,6 +55,11 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Performance: warm `/api/profile` and `/api/repair` on the 10-row sample should complete within 5 s.
 - Compatibility: Python 3.11/3.12 development, Python 3.12 Docker runtime, modern evergreen browsers.
 - Safety: no endpoint may silently bypass safety or verifier failures.
+- Visual quality: color tokens come from `SPEC_color_system.md`; color never
+  carries critical state without adjacent text, iconography, or ARIA semantics.
+  The playground uses an institutional-console shell with a command bar,
+  neutral-first surfaces, cobalt primary action, and subdued success green only
+  for verified-safe states.
 - Hosting: single-worker Space runtime, `PORT` honored, UID 1000, all temporary I/O under a request-local temp directory.
 - Quality gate: `make lint`, `make type`, `make test`, playground smoke tests, and regression smoke must all pass.
 - Contract gate: `make backend-gate` verifies OpenAPI drift, README truth,
@@ -111,7 +120,9 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Integration tests: `tests/integration/test_playground_smoke.py`
 - Unit tests: `tests/unit/test_playground_stage_space.py`, `tests/unit/test_playground_web_contract.py`
 - Regression tests: `tests/regression/test_env.py`
-- CI assertions: no browser storage APIs, no frontend API keys, valid HF Space front matter
+- Frontend visual contract: `npm run colors:check`, `npm run audit:colors`
+- CI assertions: no browser storage APIs, no frontend API keys, no raw
+  hand-authored hex colors, valid HF Space front matter
 
 ## 8. Acceptance gate (ALL must be TRUE to mark SPEC complete)
 

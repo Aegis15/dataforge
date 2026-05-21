@@ -1,7 +1,7 @@
 [project]
-name = "dataforge"
+name = "dataforge15"
 version = "0.1.0"
-description = "Scaffold for a CLI-first data-quality repair agent."
+description = "DataForge15: CLI-first data-quality detection and reversible repair for tabular data."
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.11,<3.13"
@@ -71,10 +71,11 @@ openenv = [
     "openenv-core[core]>=0.2.2",
 ]
 all = [
-    "dataforge[dev,train,eval,playground,openenv]",
+    "dataforge15[dev,train,eval,playground,openenv]",
 ]
 
 [project.scripts]
+dataforge15 = "dataforge.cli:app"
 dataforge = "dataforge.cli:app"
 
 [build-system]
@@ -83,7 +84,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["dataforge*", "data_quality_env*"]
+include = ["dataforge", "dataforge.*", "data_quality_env", "data_quality_env.*"]
 
 [tool.ruff]
 line-length = 100

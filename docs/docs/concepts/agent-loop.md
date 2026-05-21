@@ -1,6 +1,6 @@
 # Agent Loop
 
-DataForge separates environment actions from repair execution. The agent loop
+DataForge15 separates environment actions from repair execution. The agent loop
 can inspect rows, query the in-memory dataset, run statistics, record
 hypotheses, diagnose issues, propose fixes, and ask for root-cause analysis.
 

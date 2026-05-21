@@ -263,12 +263,19 @@ function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <p className="eyebrow">DataForge Playground</p>
-          <h1>Profile CSV issues and preview verified repairs</h1>
+      <header className="topbar" aria-label="DataForge command bar">
+        <div className="brand-lockup">
+          <span className="product-mark" aria-hidden="true">DF</span>
+          <div>
+            <p className="eyebrow">DataForge Playground</p>
+            <h1>Verified CSV repair workbench</h1>
+          </div>
         </div>
-        <BackendStatus state={backendState} capability={capability} onRetry={() => window.location.reload()} />
+        <div className="command-meta" aria-label="Playground operating constraints">
+          <span>Stateless dry run</span>
+          <span>{Math.floor(maxUploadBytes / 1024)} KiB CSV cap</span>
+          <BackendStatus state={backendState} capability={capability} onRetry={() => window.location.reload()} />
+        </div>
       </header>
 
       <main className="workspace" aria-busy={busy}>
@@ -476,7 +483,7 @@ function DatasetBadge({ dataset }: { dataset: DatasetInput | null }) {
 
 function CsvPreviewTable({ preview }: { preview: CsvPreview }) {
   return (
-    <div className="table-frame">
+    <div className="table-frame" tabIndex={0} aria-label="CSV preview table">
       <table>
         <thead>
           <tr>
@@ -615,7 +622,7 @@ function ProfileView({
 
 function IssueTable({ issues }: { issues: IssueGroup[] }) {
   return (
-    <div className="table-frame">
+    <div className="table-frame" tabIndex={0} aria-label="Grouped profile issues">
       <table>
         <thead>
           <tr>

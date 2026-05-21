@@ -1,4 +1,4 @@
-"""Typer application entrypoint for DataForge.
+"""Typer application entrypoint for DataForge15.
 
 Each CLI subcommand is defined in its own module under ``dataforge.cli.*``
 and registered here. The ``app`` object is the entry point referenced by
@@ -13,7 +13,7 @@ from dataforge.cli.repair import repair
 from dataforge.cli.revert import revert
 
 app: typer.Typer = typer.Typer(
-    help="DataForge — AI-powered data-quality detection and repair.",
+    help="DataForge15 - AI-powered data-quality detection and repair.",
     no_args_is_help=True,
 )
 
@@ -28,11 +28,11 @@ def _main(
         is_eager=True,
     ),
 ) -> None:
-    """DataForge — AI-powered data-quality detection and repair."""
+    """DataForge15 - AI-powered data-quality detection and repair."""
     if version:
         from dataforge import __version__
 
-        typer.echo(f"dataforge {__version__}")
+        typer.echo(f"dataforge15 {__version__}")
         raise typer.Exit()
 
 

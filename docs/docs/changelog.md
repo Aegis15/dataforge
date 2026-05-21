@@ -2,7 +2,7 @@
 
 ## 0.1.0
 
-- Added the CLI-first DataForge repair pipeline with profile, repair, revert,
+- Added the CLI-first DataForge15 repair pipeline with profile, repair, revert,
   and bench commands.
 - Added detectors for type mismatches, decimal shifts, and functional
   dependency violations.

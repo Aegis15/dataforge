@@ -18,7 +18,7 @@ We aim to acknowledge reports within 48 hours and patch critical issues within
 ## In Scope
 
 - `dataforge/` CLI and library code
-- `dataforge-mcp/` local MCP server package
+- `dataforge-mcp/` local MCP server source package, published as `dataforge15-mcp`
 - `playground/api/` backend
 - safety filter and SMT verifier
 - transaction log integrity and revert behavior
@@ -26,7 +26,7 @@ We aim to acknowledge reports within 48 hours and patch critical issues within
 
 ## Out Of Scope
 
-- Third-party dependencies, except where DataForge configuration makes an issue
+- Third-party dependencies, except where DataForge15 configuration makes an issue
   exploitable
 - Static playground frontend issues that do not expose secrets or user data
 - Generated local cache or staging directories
@@ -39,5 +39,5 @@ We aim to acknowledge reports within 48 hours and patch critical issues within
 
 ## Disclosure
 
-DataForge follows coordinated disclosure. Reporters are credited in the
+DataForge15 follows coordinated disclosure. Reporters are credited in the
 `CHANGELOG.md` entry for the fix unless anonymity is requested.

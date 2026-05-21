@@ -1,6 +1,7 @@
 # Architecture
 
-DataForge is a local, auditable data-quality repair system. The core package is
+DataForge15 is the official release name for the DataForge codebase: a local,
+auditable data-quality repair system. The core package is
 kept separate from playground, training, and model-demo surfaces so the CLI can
 remain installable without web or model dependencies.
 
@@ -43,8 +44,9 @@ flowchart LR
 - **Training and model demos**: SFT trajectory builders, GRPO reward/config
   hooks, readiness and release verifiers, Kaggle notebooks, Hub metadata, and a
   separate Gradio model-demo Space.
-- **MCP integration**: nested standalone `dataforge-mcp/` package exposing
-  structured DataForge tools over stdio by default.
+- **MCP integration**: nested standalone `dataforge-mcp/` source directory
+  building the `dataforge15-mcp` package and exposing structured DataForge15
+  tools over stdio by default.
 
 ## Safety Invariant
 
@@ -118,15 +120,18 @@ Optional extras and scoped dependencies:
 - `eval`: plotting libraries for evaluation summaries.
 - `playground`: FastAPI, Uvicorn, multipart upload, and rate limiting.
 - `openenv`: OpenEnv protocol dependency.
-- `dataforge-mcp/`: separate PyPI package with MCP dependencies.
+- `dataforge-mcp/`: source directory for the separate `dataforge15-mcp` PyPI
+  package with MCP dependencies.
 - `playground-model/`: Gradio and model-demo dependencies only.
 
 ## Release Boundaries
 
-- `dataforge` is the core CLI/library distribution and is released from `v*`
+- `dataforge15` is the core CLI/library distribution and is released from `v*`
   tags only after local gates and PyPI trusted-publisher ownership are verified.
-- `dataforge-mcp` is a nested standalone distribution released from
-  `dataforge-mcp-v*` tags.
+  It intentionally keeps the `dataforge` Python import namespace for the 0.1
+  line.
+- `dataforge15-mcp` is a nested standalone distribution released from
+  `dataforge15-mcp-v*` tags.
 - SFT datasets and checkpoints are Hugging Face artifacts verified by
   `scripts/model/verify_sft_release.py`.
 - GRPO checkpoints are Hugging Face artifacts verified by
