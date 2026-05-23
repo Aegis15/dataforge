@@ -12,7 +12,11 @@ from playground.api.app import _build_cors_origin_regex, _build_cors_origins
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WRANGLER_PATH = PROJECT_ROOT / "wrangler.toml"
+WRANGLER_DATAFORGE_DEV_PATH = PROJECT_ROOT / "wrangler.dataforge-dev.toml"
 ASSETSIGNORE_PATH = PROJECT_ROOT / "playground" / "web" / "public" / ".assetsignore"
+WEB_PACKAGE_PATH = PROJECT_ROOT / "playground" / "web" / "package.json"
+WEB_CONFIG_PATH = PROJECT_ROOT / "playground" / "web" / "config.js"
+PUBLIC_CONFIG_PATH = PROJECT_ROOT / "playground" / "web" / "public" / "config.js"
 HEADERS_PATH = PROJECT_ROOT / "playground" / "web" / "public" / "_headers"
 RENDERER_PATH = PROJECT_ROOT / "scripts" / "playground" / "render_web_config.py"
 VERIFIER_PATH = PROJECT_ROOT / "scripts" / "playground" / "verify_frontend_deploy.py"
@@ -29,24 +33,48 @@ def _load_renderer_module():
     return module
 
 
-def test_wrangler_config_declares_assets_only_worker() -> None:
+def test_wrangler_config_declares_subpath_worker_assets() -> None:
     """The frontend deploy contract names the Worker and assets directory explicitly."""
     body = WRANGLER_PATH.read_text(encoding="utf-8")
     assert 'name = "dataforge"' in body
+    assert 'main = "./playground/web/worker.js"' in body
     assert 'compatibility_date = "2026-04-27"' in body
+    assert "workers_dev = true" in body
     assert 'directory = "./playground/web/dist"' in body
-    assert 'not_found_handling = "404-page"' in body
+    assert 'binding = "ASSETS"' in body
+    assert 'not_found_handling = "single-page-application"' in body
+
+
+def test_dataforge_dev_route_config_is_explicitly_release_gated() -> None:
+    """The custom domain route is kept separate so invisible zones do not break Worker deploys."""
+    body = WRANGLER_DATAFORGE_DEV_PATH.read_text(encoding="utf-8")
+    assert 'name = "dataforge"' in body
+    assert 'pattern = "dataforge.dev/playground*"' in body
+    assert 'zone_name = "dataforge.dev"' in body
+    assert 'directory = "./playground/web/dist"' in body
 
 
 def test_assetsignore_and_headers_protect_runtime_config() -> None:
     """Non-public docs stay out of the asset upload and config.js stays uncached."""
     assert "DEPLOY.md" in ASSETSIGNORE_PATH.read_text(encoding="utf-8")
     headers = HEADERS_PATH.read_text(encoding="utf-8")
-    assert "/config.js" in headers
+    assert "/playground/config.js" in headers
     assert "Cache-Control: no-store" in headers
-    assert "/assets/*" in headers
+    assert "/playground/assets/*" in headers
     assert "immutable" in headers
     assert VERIFIER_PATH.exists()
+
+
+def test_cloudflare_dashboard_config_path_is_supported() -> None:
+    """Cloudflare's sed-based dashboard build command edits playground/web/config.js."""
+    package = WEB_PACKAGE_PATH.read_text(encoding="utf-8")
+    web_config = WEB_CONFIG_PATH.read_text(encoding="utf-8")
+    public_config = PUBLIC_CONFIG_PATH.read_text(encoding="utf-8")
+
+    assert "config:sync" in package
+    assert "scripts/sync_runtime_config.mjs" in package
+    assert 'BACKEND_URL: ""' in web_config
+    assert "https://Praneshrajan15-dataforge-playground.hf.space" in public_config
 
 
 def test_hf_sync_workflow_targets_dataforge_playground_space() -> None:

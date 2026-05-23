@@ -20,7 +20,7 @@ def test_index_uses_relative_asset_paths_and_config_contract() -> None:
     """The static frontend must be deployable from Cloudflare assets without HF static assumptions."""
     body = INDEX_PATH.read_text(encoding="utf-8")
     assert "/static/" not in body
-    assert 'src="/config.js"' in body
+    assert 'src="%BASE_URL%config.js"' in body
     assert 'src="/src/main.tsx"' in body
 
 

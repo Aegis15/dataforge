@@ -3,7 +3,8 @@
 This document contains the authoritative steps to deploy the React/Vite
 playground frontend to Cloudflare Workers Static Assets. The API backend stays
 in the separate Hugging Face Docker Space and is wired through
-`playground/web/public/config.js`.
+`playground/web/config.js`, which is copied into
+`playground/web/public/config.js` during `npm run build`.
 
 ## Prerequisites
 
@@ -14,17 +15,23 @@ in the separate Hugging Face Docker Space and is wired through
 
 ## Step 1: Configure the backend URL
 
-In the Cloudflare project settings, add:
+Set the backend URL in the shell that builds the frontend:
 
-| Variable | Value | Scope |
-| -------- | ----- | ----- |
-| `BACKEND_URL` | `https://<hf-user>-dataforge-playground.hf.space` | Production |
-| `BACKEND_URL` | `https://<hf-user>-dataforge-playground.hf.space` | Preview |
+If deploying from Cloudflare's dashboard build settings, set the user build
+command to edit `playground/web/config.js` before running the build:
 
-The build must render this value before Vite copies public assets:
+```powershell
+sed -i "s|BACKEND_URL: \"[^\"]*\"|BACKEND_URL: \"$BACKEND_URL\"|g" playground/web/config.js
+npm --prefix playground/web ci
+npm --prefix playground/web run build
+```
 
-```bash
-python scripts/playground/render_web_config.py
+For local scripted deployments, either edit `playground/web/config.js` directly
+or render the public config file:
+
+```powershell
+$env:BACKEND_URL = "https://Praneshrajan15-dataforge-playground.hf.space"
+python scripts/playground/render_web_config.py --output-path playground/web/config.js
 ```
 
 ## Step 2: Build the static app
@@ -36,29 +43,46 @@ npm --prefix playground/web ci
 npm --prefix playground/web run build
 ```
 
-The build writes `playground/web/dist`. `wrangler.toml` points Cloudflare at
-that directory. `public/_headers` is copied into the build so `config.js` is
-served with `Cache-Control: no-store` and hashed assets are long-cacheable.
+The build first syncs `playground/web/config.js` into
+`playground/web/public/config.js`, then writes `playground/web/dist` with Vite
+base `/playground/`.
+`wrangler.toml` binds those assets to a tiny Worker router that strips the
+`/playground` prefix before serving assets. `public/_headers` is copied into
+the build so `config.js` is served with `Cache-Control: no-store` and hashed
+assets are long-cacheable.
 
 ## Step 3: Deploy
 
 ```bash
-npx wrangler@4.85.0 deploy --config wrangler.toml
+npx wrangler@4.94.0 deploy --config wrangler.toml
 ```
 
-No Worker script is required; this remains an assets-only frontend deploy.
+The default config deploys to the enabled Worker URL:
+`https://dataforge.praneshrajan15.workers.dev/playground`.
+
+The release-gated custom-domain config is `wrangler.dataforge-dev.toml`. Use it
+only after `python -m dataforge release doctor --json` reports
+`cloudflare_zone_visible: true` for `dataforge.dev`:
+
+```bash
+npx wrangler@4.94.0 deploy --config wrangler.dataforge-dev.toml
+```
+
+The configured custom route is `dataforge.dev/playground*`. The Cloudflare zone
+for `dataforge.dev` must be present in the same Cloudflare account; otherwise
+Wrangler will upload the Worker but fail route activation.
 
 ## Step 4: Verify
 
 ```bash
 python scripts/playground/verify_frontend_deploy.py \
-  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev \
-  --backend-url https://<hf-user>-dataforge-playground.hf.space
+  --frontend-url https://dataforge.dev/playground \
+  --backend-url https://Praneshrajan15-dataforge-playground.hf.space
 ```
 
 The verifier checks that:
 
-- The Cloudflare root serves the built React shell and hashed assets.
+- `https://dataforge.dev/playground` serves the built React shell and hashed assets.
 - `config.js` contains the Hugging Face backend URL and is uncached.
 - The backend root returns API metadata instead of stale frontend HTML.
 - `/api/health` exposes `status`, `advanced_available`, and `max_upload_bytes`.

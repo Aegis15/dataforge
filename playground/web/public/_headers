@@ -1,7 +1,7 @@
-/config.js
+/playground/config.js
   Cache-Control: no-store
 
-/assets/*
+/playground/assets/*
   Cache-Control: public, max-age=31536000, immutable
 
 /*

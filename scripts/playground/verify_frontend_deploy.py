@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -12,6 +13,11 @@ DEFAULT_BACKEND_URL = "https://Praneshrajan15-dataforge-playground.hf.space"
 def normalize_url(value: str) -> str:
     """Strip whitespace and trailing slashes from a URL."""
     return value.strip().rstrip("/")
+
+
+def _join_url(base_url: str, path: str) -> str:
+    """Join a normalized base URL and an absolute path fragment."""
+    return f"{base_url}/{path.lstrip('/')}"
 
 
 def require(condition: bool, message: str) -> None:
@@ -24,16 +30,18 @@ def verify(frontend_url: str, backend_url: str) -> None:
     """Run the end-to-end deployment checks."""
     frontend_url = normalize_url(frontend_url)
     backend_url = normalize_url(backend_url)
+    parts = urlsplit(frontend_url)
+    frontend_origin = f"{parts.scheme}://{parts.netloc}"
 
     with httpx.Client(follow_redirects=True, timeout=30.0) as client:
         frontend = client.get(frontend_url)
         require(frontend.status_code == 200, f"Frontend root returned {frontend.status_code}")
-        require("<!DOCTYPE html>" in frontend.text, "Frontend root did not return HTML.")
-        require("/config.js" in frontend.text, "Frontend HTML is missing config.js.")
-        require("/assets/" in frontend.text, "Frontend HTML is missing built assets.")
+        require("<!doctype html>" in frontend.text.lower(), "Frontend root did not return HTML.")
+        require("config.js" in frontend.text, "Frontend HTML is missing config.js.")
+        require("/playground/assets/" in frontend.text, "Frontend HTML is missing built assets.")
         require('id="root"' in frontend.text, "Frontend HTML is missing the React mount node.")
 
-        config = client.get(f"{frontend_url}/config.js")
+        config = client.get(_join_url(frontend_url, "config.js"))
         require(config.status_code == 200, f"config.js returned {config.status_code}")
         require(
             backend_url in config.text,
@@ -64,11 +72,11 @@ def verify(frontend_url: str, backend_url: str) -> None:
 
         cors = client.get(
             f"{backend_url}/api/health",
-            headers={"Origin": frontend_url},
+            headers={"Origin": frontend_origin},
         )
         require(cors.status_code == 200, f"CORS health probe returned {cors.status_code}")
         require(
-            cors.headers.get("access-control-allow-origin") == frontend_url,
+            cors.headers.get("access-control-allow-origin") == frontend_origin,
             "Backend CORS response does not allow the deployed frontend origin.",
         )
 
