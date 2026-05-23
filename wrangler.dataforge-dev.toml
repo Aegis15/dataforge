@@ -5,6 +5,9 @@ routes = [
   { pattern = "dataforge.dev/playground*", zone_name = "dataforge.dev" },
 ]
 
+[build]
+command = "npm --prefix playground/web install && npm --prefix playground/web run build"
+
 [assets]
 directory = "./playground/web/dist"
 binding = "ASSETS"

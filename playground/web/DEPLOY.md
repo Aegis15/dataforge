@@ -59,6 +59,8 @@ npx wrangler@4.94.0 deploy --config wrangler.toml
 
 The default config deploys to the enabled Worker URL:
 `https://dataforge.praneshrajan15.workers.dev/playground`.
+`wrangler.toml` includes a `[build]` command, so `npx wrangler deploy` creates
+`playground/web/dist` before Wrangler checks the static assets directory.
 
 The release-gated custom-domain config is `wrangler.dataforge-dev.toml`. Use it
 only after `python -m dataforge release doctor --json` reports
