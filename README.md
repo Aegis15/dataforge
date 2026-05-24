@@ -6,24 +6,49 @@ detects common CSV issues, proposes deterministic repairs, checks proposed
 changes through safety and verification gates, and records applied changes in a
 reversible transaction log.
 
-The PyPI distribution is `dataforge15`. The Python import namespace remains
-`dataforge` for the 0.1 line to avoid unnecessary churn, so users install with
-`pip install dataforge15` and import with `import dataforge`.
+The planned PyPI distribution is `dataforge15`, but it is not published yet.
+The Python import namespace remains `dataforge` for the 0.1 line to avoid
+unnecessary churn. Use the source install below for now; after PyPI publication,
+the install name will be `dataforge15` and the import will be `import dataforge`.
 
 The current repository is an alpha implementation. It also contains the
 OpenEnv-compatible training environment, the SFT warmup workflow, a local MCP
 server package, and playground/demo sources. Warehouse integrations and
 production model-quality claims remain future work.
 
+## Reproducible Benchmark Snapshot
+
+Generated from `eval/results/agent_comparison.json` on commit `829e8a2`
+(`2026-05-11`, 3 seeds). Reproduce with:
+
+```bash
+dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --json
+```
+
+95% confidence intervals use a t interval over the three seed-level F1 scores.
+Only locally reproducible DataForge baselines are shown here; citation-only
+HoloClean/Raha/BClean rows intentionally stay out of the first-screen table.
+
+| Method | Dataset | F1 mean (95% CI) | Precision | Recall | Avg steps | Provider |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| heuristic | hospital | 0.4000 [0.4000, 0.4000] | 0.5000 | 0.3333 | 3.0 | local |
+| random | hospital | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 25.0 | local |
+| random | flights | 0.0004 [0.0000, 0.0021] | 0.0050 | 0.0002 | 200.0 | local |
+| heuristic | flights | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 93.0 | local |
+| random | beers | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 200.0 | local |
+| heuristic | beers | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 270.0 | local |
+
 ## Current Status
 
 Shipped in the current worktree:
 
-- `dataforge15 profile`, `dataforge15 repair`, `dataforge15 revert`, and
-  `dataforge15 bench`
+- `dataforge15 profile`, `dataforge15 repair`, `dataforge15 revert`,
+  `dataforge15 watch`, `dataforge15 audit`, and `dataforge15 bench`
 - Three detector families: `type_mismatch`, `decimal_shift`, `fd_violation`
+- Reviewable schema inference in `profile --json`, including inferred column
+  types, domains, regex candidates, uniqueness, and FD candidates
 - Matching deterministic repairers wired through SafetyFilter -> SMTVerifier
-- Reversible transaction journals with immutable source snapshots
+- Reversible hash-chained transaction journals with immutable source snapshots
 - Public backend repair engine at `dataforge.engine.repair`
 - Real-world benchmark harness for Hospital, Flights, and Beers
 - OpenEnv-compatible HTTP environment with eight typed actions, including
@@ -39,6 +64,7 @@ Not shipped yet:
 
 - warehouse-native or external adapter packages
 - a hosted product domain
+- design-partner, pilot-user, or customer validation evidence is not yet claimed
 - A production-quality trained model family
 - Autonomous repair in the playground or model demo
 
@@ -48,7 +74,8 @@ Not shipped yet:
 python -m pip install -e ".[dev]"
 dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
 dataforge15 repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
-dataforge15 bench --methods llm_zeroshot --datasets hospital --seeds 1
+dataforge15 watch fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --once --json
+dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3
 ```
 
 `dataforge` remains a temporary CLI compatibility alias for the first
@@ -59,8 +86,14 @@ source snapshot before mutating the CSV, so they can be reverted:
 
 ```bash
 dataforge15 repair path/to/file.csv --schema path/to/schema.yaml --apply
+dataforge15 audit <txn-id>
 dataforge15 revert <txn-id>
 ```
+
+New transaction logs are local tamper-evident hash chains. `dataforge15 audit`
+verifies the chain head, event order, replayability, and revert prerequisites;
+legacy v1 logs remain replayable but are reported as unverified because they do
+not contain event hashes.
 
 ## Week 9 SFT Warmup
 
@@ -125,8 +158,8 @@ After GRPO eval evidence exists:
 ## MCP Server
 
 The nested `dataforge-mcp/` source directory builds the standalone
-`dataforge15-mcp` distribution that exposes DataForge15 through local MCP
-clients:
+`dataforge15-mcp` distribution. It is not published yet, so install it from
+source while release ownership is pending:
 
 ```bash
 cd dataforge-mcp
@@ -161,7 +194,8 @@ Generated from `eval/results/agent_comparison.json`.
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
-| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 | 0.0000 |
+| heuristic | 0.1667 | 0.1111 | 0.1333 | 122.00 | 0.0000 | 0.0000 |
+| random | 0.0017 | 0.0001 | 0.0001 | 141.67 | 0.0000 | 0.0000 |
 
 See `BENCHMARK_REPORT.md` for per-dataset tables, error bars, and citation-only SOTA rows.
 <!-- BENCH:END -->
@@ -182,7 +216,20 @@ Make recipes. Python support is `>=3.11,<3.13`.
 `make backend-gate` is the release-quality backend check: lint, format, strict
 mypy, root tests, MCP tests, README truth, OpenAPI snapshot drift, secret scan,
 dependency audit availability, SBOM generation availability, and package build
-availability for both `dataforge15` and `dataforge15-mcp`.
+availability for both `dataforge15` and `dataforge15-mcp`. The gate covers the
+core `dataforge` distribution and release surfaces; the historical
+`data_quality_env` namespace remains source-tree regression coverage, not part
+of the `dataforge15` wheel.
+
+Release doctor scopes:
+
+```bash
+dataforge15 release doctor --core --json
+dataforge15 release doctor --maintainer-deploy --json
+```
+
+`--core` is the default OSS release check. `--maintainer-deploy` additionally
+checks maintainer-specific Hugging Face, Kaggle, Cloudflare, and domain state.
 
 Windows setup:
 

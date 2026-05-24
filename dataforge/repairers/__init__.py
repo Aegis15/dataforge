@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pandas as pd
-
 from dataforge.detectors.base import Issue, Schema
 from dataforge.repairers.base import ProposedFix, RepairAttempt, Repairer, RetryContext
 from dataforge.repairers.decimal_shift import DecimalShiftRepairer
 from dataforge.repairers.fd_violation import FDViolationRepairer
 from dataforge.repairers.type_mismatch import TypeMismatchRepairer
+from dataforge.table import TableLike
 
 __all__ = [
     "DecimalShiftRepairer",
@@ -45,7 +44,7 @@ def build_repairers(
 
 def propose_fixes(
     issues: list[Issue],
-    df: pd.DataFrame,
+    df: TableLike,
     schema: Schema | None,
     *,
     cache_dir: Path | None,

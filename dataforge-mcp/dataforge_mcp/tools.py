@@ -1,24 +1,34 @@
-"""Structured MCP tool functions backed by DataForge internals."""
+"""Structured MCP tool functions backed by DataForge's public API."""
 
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Literal, Sequence
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from dataforge.cli.common import load_schema, read_csv
-from dataforge.detectors import run_all_detectors
-from dataforge.detectors.base import Issue, Schema
-from dataforge.engine.repair import RepairPipelineRequest, VerifiedFix, run_repair_pipeline
-from dataforge.repairers.base import ProposedFix
-from dataforge.repair_contract import CONTRACT_VERSION
-from dataforge.safety import SafetyContext, SafetyFilter, SafetyVerdict
-from dataforge.transactions.log import TransactionLogError
-from dataforge.transactions.revert import revert_transaction
-from dataforge.transactions.txn import CellFix
-from dataforge.verifier import SMTVerifier, VerificationVerdict
+from dataforge import (
+    CONTRACT_VERSION,
+    CellFix,
+    Issue,
+    ProposedFix,
+    RepairPipelineRequest,
+    SafetyContext,
+    SafetyFilter,
+    SafetyVerdict,
+    Schema,
+    SMTVerifier,
+    TransactionLogError,
+    VerificationVerdict,
+    VerifiedFix,
+    load_schema,
+    read_csv,
+    revert_transaction,
+    run_all_detectors,
+    run_repair_pipeline,
+)
 
 _APPLY_ENABLED = False
 _ALLOWED_ROOTS: tuple[Path, ...] | None = None
@@ -147,7 +157,9 @@ def _ensure_under_allowed_root(path: Path) -> Path:
         if resolved == root or resolved.is_relative_to(root):
             return resolved
     allowed = ", ".join(str(root) for root in roots)
-    raise ValueError(f"Path is outside configured MCP allowed roots: {resolved}. Allowed: {allowed}")
+    raise ValueError(
+        f"Path is outside configured MCP allowed roots: {resolved}. Allowed: {allowed}"
+    )
 
 
 def _resolve_csv_path(path: str) -> Path:

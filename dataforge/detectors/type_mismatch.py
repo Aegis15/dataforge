@@ -10,14 +10,9 @@ The detector is **pure**: no LLM calls, no I/O, no side effects.
 from __future__ import annotations
 
 import re
-from typing import TYPE_CHECKING
-
-import pandas as pd
 
 from dataforge.detectors.base import Issue, Schema, Severity
-
-if TYPE_CHECKING:
-    pass
+from dataforge.table import TableLike, column_names, column_values
 
 # Compiled regexes for type inference.
 _NUMERIC_RE = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
@@ -69,7 +64,7 @@ class TypeMismatchDetector:
         'N/A'
     """
 
-    def detect(self, df: pd.DataFrame, schema: Schema | None = None) -> list[Issue]:
+    def detect(self, df: TableLike, schema: Schema | None = None) -> list[Issue]:
         """Detect type-mismatch issues in the DataFrame.
 
         Args:
@@ -84,13 +79,13 @@ class TypeMismatchDetector:
         """
         issues: list[Issue] = []
 
-        for col_name in df.columns:
+        for col_name in column_names(df):
             col_issues = self._check_column(df, str(col_name))
             issues.extend(col_issues)
 
         return issues
 
-    def _check_column(self, df: pd.DataFrame, col_name: str) -> list[Issue]:
+    def _check_column(self, df: TableLike, col_name: str) -> list[Issue]:
         """Check a single column for type mismatches.
 
         Args:
@@ -100,12 +95,10 @@ class TypeMismatchDetector:
         Returns:
             Issues found in this column.
         """
-        series = df[col_name]
-
         # Collect (index, value, type) for non-null entries.
         classified: list[tuple[int, str, str]] = []
-        for row_idx, val in enumerate(series.tolist()):
-            if pd.isna(val):
+        for row_idx, val in enumerate(column_values(df, col_name)):
+            if val is None:
                 continue
             str_val = str(val).strip()
             if not str_val:

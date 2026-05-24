@@ -97,6 +97,7 @@ def run_agent_comparison(
     output_json: Path,
     really_run_big_bench: bool,
     cache_root: Path | None = None,
+    reproduction_command: str | None = None,
 ) -> BenchmarkRunOutput:
     """Run the selected benchmark methods across real-world datasets."""
     load_dotenv()
@@ -110,7 +111,7 @@ def run_agent_comparison(
         really_run_big_bench=really_run_big_bench,
     )
 
-    reproduction_command = _reproduction_command(methods, datasets, seeds)
+    reproduction_command = reproduction_command or _reproduction_command(methods, datasets, seeds)
     records: list[SeedBenchmarkResult] = []
     loaded_datasets = {
         dataset_name: load_real_world_dataset(dataset_name, cache_root=cache_root)

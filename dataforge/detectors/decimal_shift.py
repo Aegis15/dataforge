@@ -10,15 +10,10 @@ The detector is **pure**: no LLM calls, no I/O, no side effects.
 from __future__ import annotations
 
 import math
-from typing import TYPE_CHECKING
-
-import numpy as np
-import pandas as pd
+from statistics import median
 
 from dataforge.detectors.base import Issue, Schema, Severity
-
-if TYPE_CHECKING:
-    pass
+from dataforge.table import TableLike, column_names, column_values
 
 # Minimum non-null numeric values required for meaningful statistics.
 _MIN_COLUMN_SIZE = 5
@@ -70,7 +65,7 @@ class DecimalShiftDetector:
         3
     """
 
-    def detect(self, df: pd.DataFrame, schema: Schema | None = None) -> list[Issue]:
+    def detect(self, df: TableLike, schema: Schema | None = None) -> list[Issue]:
         """Detect decimal-shift issues in the DataFrame.
 
         Args:
@@ -83,13 +78,13 @@ class DecimalShiftDetector:
         """
         issues: list[Issue] = []
 
-        for col_name in df.columns:
+        for col_name in column_names(df):
             col_issues = self._check_column(df, str(col_name))
             issues.extend(col_issues)
 
         return issues
 
-    def _check_column(self, df: pd.DataFrame, col_name: str) -> list[Issue]:
+    def _check_column(self, df: TableLike, col_name: str) -> list[Issue]:
         """Check a single column for decimal-shift outliers.
 
         Args:
@@ -101,7 +96,7 @@ class DecimalShiftDetector:
         """
         # Parse all values to float, keeping track of original indices.
         parsed: list[tuple[int, float, str]] = []
-        for row_idx, val in enumerate(df[col_name].tolist()):
+        for row_idx, val in enumerate(column_values(df, col_name)):
             fval = _try_float(val)
             if fval is not None:
                 parsed.append((row_idx, fval, str(val)))
@@ -109,11 +104,10 @@ class DecimalShiftDetector:
         if len(parsed) < _MIN_COLUMN_SIZE:
             return []
 
-        values = np.array([v for _, v, _ in parsed])
-        median = float(np.median(values))
+        center = float(median([v for _, v, _ in parsed]))
 
         # If median is zero or very close, we cannot compute meaningful ratios.
-        if abs(median) < 1e-10:
+        if abs(center) < 1e-10:
             return []
 
         issues: list[Issue] = []
@@ -121,7 +115,7 @@ class DecimalShiftDetector:
             if abs(fval) < 1e-10:
                 continue
 
-            ratio = fval / median
+            ratio = fval / center
             if abs(ratio) < 1e-10:
                 continue
 
@@ -147,13 +141,13 @@ class DecimalShiftDetector:
                     reason = (
                         f"Value {fval:g} in column '{col_name}' appears to be "
                         f"~{int(correction_factor)}x the typical value "
-                        f"(median ~{median:g})"
+                        f"(median ~{center:g})"
                     )
                 else:
                     reason = (
                         f"Value {fval:g} in column '{col_name}' appears to be "
                         f"~{1.0 / correction_factor:g}x too small compared to "
-                        f"the typical value (median ~{median:g})"
+                        f"the typical value (median ~{center:g})"
                     )
 
                 issues.append(

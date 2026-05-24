@@ -17,6 +17,8 @@ mutation and every revert must restore the exact original bytes.
 - [ ] `dataforge.engine.repair.run_repair_pipeline()` exposes the public repair pipeline used by non-CLI backends.
 - [ ] `dataforge revert <txn_id>` restores the exact original bytes and verifies the original SHA-256.
 - [ ] Transaction logs are append-only JSONL with a schema-version field on every event.
+- [ ] Newly written transaction logs use a v2 local hash chain and
+  `dataforge audit <txn_id>` verifies event order, payload hashes, and replay.
 - [ ] `type_mismatch` and `decimal_shift` repairers are deterministic and never call the LLM provider.
 - [ ] `fd_violation` repairer prefers deterministic majority rules and caches any LLM fallback under `.dataforge/cache/`.
 - [ ] All Appendix A toy cases pass, including apply -> revert byte-identity round-trip.
@@ -26,11 +28,13 @@ mutation and every revert must restore the exact original bytes.
 **IN**:
 - `CellFix` and `RepairTransaction` Pydantic models
 - Append-only per-transaction JSONL journal at `.dataforge/transactions/<txn_id>.jsonl`
+- Local tamper-evident v2 event hash chain for newly written transaction logs
 - Immutable source snapshot persisted before apply
 - `repair` CLI with `--dry-run` and `--apply`
 - Public engine API: `RepairPipelineRequest`, `RepairPipelineResult`,
   `RepairReceipt`, `CandidateFix`, `VerifiedFix`, and `RepairFailure`
 - `revert` CLI with post-state hash guard
+- `audit` CLI with v2 hash-chain verification and legacy v1 unverified status
 - Repairer protocol and three Week 1 repairers
 - Thin safety + verifier gate scaffolds in the apply path
 - Property test proving exact byte restoration after revert
@@ -72,8 +76,15 @@ mutation and every revert must restore the exact original bytes.
 - Estimated complexity: M
 
 ### 6.3 Revert flow
-- Acceptance: revert restores snapshot bytes, verifies `source_sha256`, and refuses when the current file hash differs from recorded post-state.
+- Acceptance: revert restores snapshot bytes, verifies `source_sha256`, refuses when the current file hash differs from recorded post-state, and refuses tampered v2 transaction logs before mutation.
 - Depends on: 6.1, 6.2
+- Estimated complexity: M
+
+### 6.3a Transaction audit verification
+- Acceptance: new v2 events record `event_index`, `previous_event_sha256`,
+  and `event_sha256`; `dataforge audit <txn_id>` exits 0 only for verified v2
+  logs and reports legacy v1 logs as `legacy_unverified`.
+- Depends on: 6.2
 - Estimated complexity: M
 
 ### 6.4 Repairers
@@ -170,6 +181,13 @@ Reasoning: deterministic majority rules should handle the common case without th
 Input: a small CSV, at least one valid `CellFix`, and a full apply followed by revert.
 Expected output: `sha256(reverted_file_bytes) == sha256(original_file_bytes)` and `reverted_file_bytes == original_file_bytes`.
 Reasoning: the Week 2 headline guarantee is byte-identical restoration.
+
+### Case A.6a: Tampered transaction log is refused
+Input: apply a repair, edit the JSONL transaction payload without updating the
+event hash, then run `dataforge audit <txn_id>` and `dataforge revert <txn_id>`.
+Expected output: audit reports `tampered`; revert refuses before mutating the
+source file.
+Reasoning: the local audit claim requires tamper-evident transaction evidence.
 
 ### Case A.7: Stale-source apply is refused
 Input: detect fixes against source bytes, edit the CSV before apply, then call apply with the old source bytes.

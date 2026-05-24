@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from importlib import resources
 from pathlib import Path
 from typing import cast
 
-import pandas as pd
 import typer
 import yaml
 
+from dataforge.table import Table
+from dataforge.table import read_csv as read_table_csv
 from dataforge.verifier.schema import (
     AggregateDependency,
     AggregateLiteral,
@@ -17,6 +19,27 @@ from dataforge.verifier.schema import (
     FunctionalDependency,
     Schema,
 )
+
+_PACKAGED_DEMO_FIXTURES = {
+    "fixtures/hospital_10rows.csv": "fixtures/hospital_10rows.csv",
+    "fixtures/hospital_schema.yaml": "fixtures/hospital_schema.yaml",
+}
+
+
+def resolve_cli_path(path: Path) -> Path:
+    """Resolve a user path, including DataForge's packaged demo fixture aliases."""
+    if path.exists():
+        return path
+
+    normalized = path.as_posix().replace("\\", "/").lstrip("./")
+    packaged_name = _PACKAGED_DEMO_FIXTURES.get(normalized)
+    if packaged_name is None:
+        return path
+
+    fixture = resources.files("dataforge").joinpath(packaged_name)
+    if not fixture.is_file():
+        return path
+    return Path(str(fixture))
 
 
 def schema_from_mapping(raw_mapping: object) -> Schema:
@@ -149,13 +172,13 @@ def load_schema(schema_path: Path) -> Schema:
     return schema_from_mapping(raw)
 
 
-def read_csv(path: Path) -> pd.DataFrame:
+def read_csv(path: Path) -> Table:
     """Read a CSV using conservative string-preserving defaults.
 
     Args:
         path: CSV path.
 
     Returns:
-        A DataFrame with string-preserved values.
+        A string-preserving DataForge table.
     """
-    return pd.read_csv(path, dtype=str, keep_default_na=False, na_filter=False)
+    return read_table_csv(path)

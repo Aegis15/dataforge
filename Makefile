@@ -19,7 +19,7 @@ help:
 	@echo "  setup-all     Install ALL extras (pip install -e '.[all]')"
 	@echo "  lint          Run ruff check + ruff format --check"
 	@echo "  format        Auto-fix: ruff format + ruff check --fix"
-	@echo "  type          Run mypy --strict on core + shipped Week 5 Python paths"
+	@echo "  type          Run mypy --strict on core + shipped Python paths"
 	@echo "  test          Run the full test suite"
 	@echo "  test-mapped   Run tests for a changed source file (FILE=path)"
 	@echo "  frontend-gate Run Vite typecheck, unit tests, build budget, and Playwright"
@@ -41,15 +41,15 @@ setup-all:
 	$(PYTHON) -m pip install -e ".[all]"
 
 lint:
-	$(PYTHON) -m ruff check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
-	$(PYTHON) -m ruff format --check dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff check dataforge tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff format --check dataforge tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
 
 format:
-	$(PYTHON) -m ruff format dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
-	$(PYTHON) -m ruff check --fix dataforge data_quality_env tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff format dataforge tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
+	$(PYTHON) -m ruff check --fix dataforge tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
 
 type:
-	$(PYTHON) -m mypy --strict dataforge data_quality_env playground/api/app.py scripts/ci/readme_truth.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
+	$(PYTHON) -m mypy --strict dataforge playground/api/app.py scripts/ci/readme_truth.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
 
 test:
 	$(PYTHON) -m pytest tests/ -x -v
@@ -81,7 +81,7 @@ bench:
 	$(PYTHON) -m pytest tests/benchmarks/ --benchmark-only --benchmark-autosave
 
 bench-free:
-	$(PYTHON) scripts/bench/run_agent_comparison.py --methods random,heuristic,llm_zeroshot,llm_react --datasets hospital,flights,beers --seeds 3 --really-run-big-bench
+	$(PYTHON) scripts/bench/run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval/results/agent_comparison.json
 	$(PYTHON) scripts/bench/run_sota_comparison.py
 	$(PYTHON) scripts/bench/generate_report.py
 

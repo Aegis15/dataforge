@@ -9,17 +9,13 @@ atomic mutation -> byte-identical revert.
 from __future__ import annotations
 
 import hashlib
-import io
 import os
-import secrets
-import time
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
-import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataforge.detectors import run_all_detectors
@@ -29,6 +25,27 @@ from dataforge.repair_contract import CONTRACT_VERSION
 from dataforge.repairers import build_repairers
 from dataforge.repairers.base import ProposedFix, RepairAttempt, RetryContext
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
+from dataforge.table import (
+    Table,
+    TableLike,
+    cell_value,
+    column_names,
+    copy_table,
+    row_count,
+    set_cell_value,
+    table_to_csv_bytes,
+)
+from dataforge.table import (
+    read_csv as read_table_csv,
+)
+from dataforge.transactions.files import (
+    SourceLockError,
+    atomic_write_bytes,
+    lock_path_for,
+)
+from dataforge.transactions.files import (
+    source_path_lock as transaction_source_path_lock,
+)
 from dataforge.transactions.log import (
     append_applied_event,
     append_created_transaction,
@@ -135,6 +152,11 @@ class RepairReceipt(BaseModel):
     txn_id: str | None = None
     allowed_columns: list[str] = Field(default_factory=list)
     valid_rows: list[int] = Field(default_factory=list)
+    safety_verdict: str = Field(default="allow", min_length=1)
+    verifier_verdict: str = Field(default="not_run", min_length=1)
+    candidate_provenance: list[str] = Field(default_factory=list)
+    abstentions: list[str] = Field(default_factory=list)
+    failure_reasons: list[str] = Field(default_factory=list)
     issues_count: int = Field(ge=0)
     fixes_count: int = Field(ge=0)
     reason: str = Field(min_length=1)
@@ -181,23 +203,12 @@ class RepairPipelineResult(BaseModel):
 
 def _atomic_write_bytes(path: Path, payload: bytes) -> None:
     """Write bytes to ``path`` through an atomic same-directory replacement."""
-    resolved = path.resolve()
-    resolved.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = resolved.with_name(f".{resolved.name}.{secrets.token_hex(8)}.tmp")
-    try:
-        with temp_path.open("xb") as handle:
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp_path, resolved)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
+    atomic_write_bytes(path, payload)
 
 
-def read_csv(path: Path) -> pd.DataFrame:
+def read_csv(path: Path) -> Table:
     """Read a CSV using conservative string-preserving defaults."""
-    return pd.read_csv(path, dtype=str, keep_default_na=False, na_filter=False)
+    return read_table_csv(path)
 
 
 def _csv_bytes_after_fixes(path: Path, fixes: list[CellFix]) -> bytes:
@@ -206,22 +217,20 @@ def _csv_bytes_after_fixes(path: Path, fixes: list[CellFix]) -> bytes:
     for fix in fixes:
         if fix.operation != "update":
             raise ValueError(f"Unsupported repair operation '{fix.operation}' for row {fix.row}.")
-        if fix.column not in df.columns:
+        if fix.column not in column_names(df):
             raise ValueError(f"Column '{fix.column}' not found in '{path}'.")
-        if fix.row < 0 or fix.row >= len(df.index):
+        if fix.row < 0 or fix.row >= row_count(df):
             raise ValueError(f"Row {fix.row} is out of bounds for '{path}'.")
 
-        current_value = str(df.at[fix.row, fix.column])
+        current_value = cell_value(df, fix.row, fix.column)
         if current_value != fix.old_value:
             raise ValueError(
                 f"Refusing to apply stale fix for row {fix.row}, column '{fix.column}': "
                 f"expected '{fix.old_value}', found '{current_value}'."
             )
-        df.at[fix.row, fix.column] = fix.new_value
+        set_cell_value(df, fix.row, fix.column, fix.new_value)
 
-    output = io.StringIO()
-    df.to_csv(output, index=False, lineterminator="\n")
-    return output.getvalue().encode("utf-8")
+    return table_to_csv_bytes(df)
 
 
 def apply_fixes_to_csv(path: Path, fixes: list[CellFix]) -> str:
@@ -233,8 +242,7 @@ def apply_fixes_to_csv(path: Path, fixes: list[CellFix]) -> str:
 
 def _lock_path_for(source_path: Path) -> Path:
     """Return the filesystem lock path for a source file."""
-    digest = hashlib.sha256(str(source_path.resolve()).encode("utf-8")).hexdigest()[:24]
-    return source_path.resolve().parent / ".dataforge" / "locks" / f"{digest}.lock"
+    return lock_path_for(source_path)
 
 
 @contextmanager
@@ -245,40 +253,15 @@ def source_path_lock(
     stale_after_seconds: float = 300.0,
 ) -> Iterator[None]:
     """Acquire an exclusive lock for a source path using an atomic lock file."""
-    lock_path = _lock_path_for(source_path)
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        try:
-            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            try:
-                payload = f"{os.getpid()} {datetime.now(UTC).isoformat()}\n".encode()
-                os.write(fd, payload)
-            finally:
-                os.close(fd)
-            break
-        except FileExistsError as exc:
-            try:
-                age = time.time() - lock_path.stat().st_mtime
-            except OSError:
-                age = 0.0
-            if age > stale_after_seconds:
-                try:
-                    lock_path.unlink()
-                    continue
-                except OSError:
-                    pass
-            if time.monotonic() >= deadline:
-                raise TransactionApplyError(
-                    f"Timed out waiting for DataForge source lock: {source_path.resolve()}"
-                ) from exc
-            time.sleep(0.05)
-
     try:
-        yield
-    finally:
-        with suppress(FileNotFoundError):
-            lock_path.unlink()
+        with transaction_source_path_lock(
+            source_path,
+            timeout_seconds=timeout_seconds,
+            stale_after_seconds=stale_after_seconds,
+        ):
+            yield
+    except SourceLockError as exc:
+        raise TransactionApplyError(str(exc)) from exc
 
 
 def _write_snapshot_once(snapshot_path: Path, source_bytes: bytes) -> None:
@@ -388,7 +371,7 @@ def _build_retry_context(issue: Issue, attempts: list[RepairAttempt]) -> RetryCo
 def propose_repairs(
     issues: list[Issue],
     path: Path,
-    working_df: pd.DataFrame,
+    working_df: TableLike,
     schema: Schema | None,
     *,
     allow_llm: bool,
@@ -495,7 +478,12 @@ def propose_repairs(
                 verifier_result = verifier.verify(working_df, [preferred], schema)
             if verifier_result.verdict == VerificationVerdict.ACCEPT:
                 accepted_fixes.append(preferred)
-                working_df.at[preferred.fix.row, preferred.fix.column] = preferred.fix.new_value
+                set_cell_value(
+                    working_df,
+                    preferred.fix.row,
+                    preferred.fix.column,
+                    preferred.fix.new_value,
+                )
                 attempts.append(
                     RepairAttempt(
                         issue=issue,
@@ -577,18 +565,33 @@ def _failed_attempts(attempt_groups: list[list[RepairAttempt]]) -> list[RepairFa
     ]
 
 
+def _receipt_verifier_verdict(
+    fixes: list[ProposedFix],
+    failures: list[RepairFailure],
+) -> str:
+    """Summarize verifier outcomes for the public repair receipt."""
+    statuses = {failure.status for failure in failures}
+    if "unknown" in statuses:
+        return "unknown"
+    if "rejected" in statuses:
+        return "reject"
+    if fixes:
+        return "accept"
+    return "not_run"
+
+
 def run_repair_pipeline(request: RepairPipelineRequest) -> RepairPipelineResult:
     """Run the public repair pipeline from detection through optional apply."""
     source_path = request.source_path.resolve()
     source_bytes = source_path.read_bytes()
     df = read_csv(source_path)
-    with repair_stage_span("dataforge.repair.detect", row_count=len(df.index)):
+    with repair_stage_span("dataforge.repair.detect", row_count=row_count(df)):
         issues = run_all_detectors(df, request.repair_schema)
     with repair_stage_span("dataforge.repair.propose", issue_count=len(issues)):
         accepted_fixes, attempt_groups = propose_repairs(
             issues,
             source_path,
-            df.copy(deep=True),
+            copy_table(df),
             request.repair_schema,
             allow_llm=request.allow_llm,
             model=request.model,
@@ -641,8 +644,13 @@ def run_repair_pipeline(request: RepairPipelineRequest) -> RepairPipelineResult:
         source_sha256=sha256_bytes(source_bytes),
         post_sha256=post_sha256,
         txn_id=txn_id,
-        allowed_columns=[str(column) for column in df.columns],
-        valid_rows=list(range(len(df.index))),
+        allowed_columns=column_names(df),
+        valid_rows=list(range(row_count(df))),
+        safety_verdict=batch_safety.verdict.value,
+        verifier_verdict=_receipt_verifier_verdict(accepted_fixes, failures),
+        candidate_provenance=sorted({fix.provenance for fix in accepted_fixes}),
+        abstentions=[failure.reason for failure in failures],
+        failure_reasons=[failure.reason for failure in failures],
         issues_count=len(issues),
         fixes_count=len(accepted_fixes),
         reason=reason,

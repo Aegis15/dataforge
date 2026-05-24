@@ -5,9 +5,9 @@ from __future__ import annotations
 import enum
 from typing import Literal, Protocol
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
+from dataforge.table import TableLike
 from dataforge.verifier.schema import (
     AggregateDependency,
     DomainBound,
@@ -114,23 +114,23 @@ class Issue(BaseModel):
 class Detector(Protocol):
     """Structural protocol that every detector must implement.
 
-    A detector is a pure function over tabular data: it receives a DataFrame
+    A detector is a pure function over tabular data: it receives a table
     and an optional Schema, and returns a list of Issue objects. No LLM calls,
     no disk I/O, no side effects.
 
     Example:
         >>> class MyDetector:
         ...     def detect(
-        ...         self, df: pd.DataFrame, schema: Schema | None = None
+        ...         self, df: TableLike, schema: Schema | None = None
         ...     ) -> list[Issue]:
         ...         return []
     """
 
-    def detect(self, df: pd.DataFrame, schema: Schema | None = None) -> list[Issue]:
+    def detect(self, df: TableLike, schema: Schema | None = None) -> list[Issue]:
         """Detect data-quality issues in the given DataFrame.
 
         Args:
-            df: The input DataFrame to analyze.
+            df: The input table to analyze.
             schema: Optional declared schema with column types and constraints.
 
         Returns:

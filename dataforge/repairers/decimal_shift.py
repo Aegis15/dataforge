@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-import pandas as pd
-
 from dataforge.detectors.base import Issue, Schema
 from dataforge.repairers.base import ProposedFix, RetryContext
+from dataforge.table import TableLike, cell_value, column_names, row_count
 from dataforge.transactions.txn import CellFix
 
 
@@ -15,7 +14,7 @@ class DecimalShiftRepairer:
     def propose(
         self,
         issue: Issue,
-        df: pd.DataFrame,
+        df: TableLike,
         schema: Schema | None,
         retry_context: RetryContext | None = None,
     ) -> ProposedFix | None:
@@ -23,10 +22,10 @@ class DecimalShiftRepairer:
         del schema, retry_context
         if issue.issue_type != "decimal_shift" or issue.expected is None:
             return None
-        if issue.row >= len(df.index) or issue.column not in df.columns:
+        if issue.row >= row_count(df) or issue.column not in column_names(df):
             return None
 
-        old_value = str(df.at[issue.row, issue.column])
+        old_value = cell_value(df, issue.row, issue.column)
         if old_value == issue.expected:
             return None
 

@@ -112,3 +112,15 @@ class TestBenchCommand:
         assert captured["methods"] == ["heuristic"]
         assert captured["datasets"] == ["hospital"]
         assert captured["seeds"] == 3
+
+    def test_bench_json_output(self, monkeypatch: Any) -> None:
+        def _fake_run_agent_comparison(**kwargs: Any) -> BenchmarkRunOutput:
+            return _stub_output()
+
+        monkeypatch.setattr(bench_module, "run_agent_comparison", _fake_run_agent_comparison)
+
+        result = runner.invoke(app, ["bench", "--json"])
+
+        assert result.exit_code == 0
+        assert '"aggregates"' in result.output
+        assert '"method": "heuristic"' in result.output

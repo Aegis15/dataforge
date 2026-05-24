@@ -12,12 +12,11 @@ deduplicated, severity-sorted issue list.
 
 from __future__ import annotations
 
-import pandas as pd
-
 from dataforge.detectors.base import Detector, Issue, Schema, Severity
 from dataforge.detectors.decimal_shift import DecimalShiftDetector
 from dataforge.detectors.fd_violation import FDViolationDetector
 from dataforge.detectors.type_mismatch import TypeMismatchDetector
+from dataforge.table import TableLike
 
 __all__ = [
     "DecimalShiftDetector",
@@ -33,14 +32,14 @@ __all__ = [
 _SEVERITY_ORDER = {Severity.UNSAFE: 0, Severity.REVIEW: 1, Severity.SAFE: 2}
 
 
-def run_all_detectors(df: pd.DataFrame, schema: Schema | None = None) -> list[Issue]:
+def run_all_detectors(df: TableLike, schema: Schema | None = None) -> list[Issue]:
     """Run all registered detectors and return a merged, sorted issue list.
 
     Issues are deduplicated by (row, column, issue_type) and sorted by
     severity (UNSAFE first) then confidence (highest first).
 
     Args:
-        df: The input DataFrame to analyze.
+        df: The input table to analyze.
         schema: Optional declared schema with column types and constraints.
 
     Returns:

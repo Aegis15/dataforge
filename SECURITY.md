@@ -21,8 +21,16 @@ We aim to acknowledge reports within 48 hours and patch critical issues within
 - `dataforge-mcp/` local MCP server source package, published as `dataforge15-mcp`
 - `playground/api/` backend
 - safety filter and SMT verifier
-- transaction log integrity and revert behavior
+- transaction hash-chain integrity, audit verification, and revert behavior
 - provider-call paths that could leak user data or API keys
+
+## Transaction Audit Boundary
+
+New transaction logs are tamper-evident local hash chains. Audit verification
+detects local JSONL payload edits, event reordering, and broken replay before a
+v2 transaction is reverted. DataForge15 does not claim external non-repudiation
+unless a deployment separately anchors the transaction head hash in a trusted
+system.
 
 ## Out Of Scope
 

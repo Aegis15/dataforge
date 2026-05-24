@@ -3,35 +3,38 @@ name = "dataforge15"
 version = "0.1.0"
 description = "DataForge15: CLI-first data-quality detection and reversible repair for tabular data."
 readme = "README.md"
-license = { text = "Apache-2.0" }
+license = "Apache-2.0"
 requires-python = ">=3.11,<3.13"
 keywords = ["data-quality", "ai-agent", "llm", "rl", "smt", "dbt"]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
 dependencies = [
-    "pandas>=2.2",
-    "pyarrow>=16.0",
     "pydantic>=2.7",
     "typer>=0.24,<0.25",
     "rich>=13.7",
     "z3-solver>=4.13",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+bench = [
+    "pandas>=2.2",
+    "httpx>=0.27",
+    "tenacity>=8.3",
+    "python-dotenv>=1.0",
+    "pyarrow>=16.0",
+]
+causal = [
+    "pandas>=2.2",
+    "numpy>=1.26",
     "networkx>=3.3",
     "causal-learn>=0.1.4",
     "hyppo>=0.5.2",
     "scipy>=1.13",
-    "httpx>=0.27",
-    "tenacity>=8.3",
-    "python-dotenv>=1.0",
-    "pyyaml>=6.0",
-    "sqlglot>=25.0",
-    "duckdb>=1.0",
 ]
-
-[project.optional-dependencies]
 dev = [
     "pytest>=8.2",
     "pytest-cov>=5.0",
@@ -39,11 +42,27 @@ dev = [
     "pytest-xdist>=3.6",
     "hypothesis>=6.100",
     "mutmut>=3.5",
+    "build>=1.2",
+    "pip-audit>=2.10,<3",
+    "cyclonedx-bom>=7.3,<8",
+    "idna>=3.15",
+    "pip>=26.1.1",
+    "urllib3>=2.7",
     "ruff>=0.11",
     "mypy>=1.10",
     "pandas-stubs>=2.2",
     "types-PyYAML",
     "huggingface_hub==1.13.0",
+    "httpx>=0.27",
+    "tenacity>=8.3",
+    "python-dotenv>=1.0",
+    "pyarrow>=16.0",
+    "networkx>=3.3",
+    "causal-learn>=0.1.4",
+    "hyppo>=0.5.2",
+    "scipy>=1.13",
+    "sqlglot>=25.0",
+    "duckdb>=1.0",
 ]
 train = [
     "trl==1.4.0",
@@ -61,17 +80,34 @@ eval = [
     "matplotlib>=3.9",
     "seaborn>=0.13",
 ]
+providers = [
+    "httpx>=0.27",
+    "tenacity>=8.3",
+    "python-dotenv>=1.0",
+]
+pandas = [
+    "pandas>=2.2",
+]
 playground = [
-    "fastapi>=0.111",
+    "pandas>=2.2",
+    "fastapi>=0.136.1",
+    "starlette>=0.49.1,<2",
     "uvicorn[standard]>=0.35",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.27",
     "slowapi>=0.1.9",
 ]
 openenv = [
+    "pandas>=2.2",
     "openenv-core[core]>=0.2.2",
+    "duckdb>=1.0",
+    "sqlglot>=25.0",
+    "scipy>=1.13",
+    "networkx>=3.3",
+    "causal-learn>=0.1.4",
+    "hyppo>=0.5.2",
 ]
 all = [
-    "dataforge15[dev,train,eval,playground,openenv]",
+    "dataforge15[bench,causal,dev,eval,pandas,playground,providers,train,openenv]",
 ]
 
 [project.scripts]
@@ -84,7 +120,18 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["dataforge", "dataforge.*", "data_quality_env", "data_quality_env.*"]
+include = ["dataforge", "dataforge.*"]
+exclude = ["data_quality_env", "data_quality_env.*"]
+
+[tool.setuptools.package-data]
+dataforge = [
+    "py.typed",
+    "fixtures/*.csv",
+    "fixtures/*.yaml",
+    "datasets/embedded/**/*.csv",
+    "safety/constitutions/*.yaml",
+    "safety/adversarial/*.yaml",
+]
 
 [tool.ruff]
 line-length = 100
@@ -119,10 +166,6 @@ exclude = [
     "^[^/]*\\.py$",          # loose root-level scripts (hackathon legacy)
     "^(training|playground|benchmark_results|datasets)/",
 ]
-
-[[tool.mypy.overrides]]
-module = ["data_quality_env.*"]
-ignore_errors = true
 
 [tool.pytest.ini_options]
 minversion = "8.0"

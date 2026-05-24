@@ -12,14 +12,8 @@ The detector is **pure**: no LLM calls, no I/O, no side effects.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-import pandas as pd
-
 from dataforge.detectors.base import Issue, Schema, Severity
-
-if TYPE_CHECKING:
-    pass
+from dataforge.table import TableLike, cell_value, column_names, row_count
 
 
 class FDViolationDetector:
@@ -49,7 +43,7 @@ class FDViolationDetector:
         2
     """
 
-    def detect(self, df: pd.DataFrame, schema: Schema | None = None) -> list[Issue]:
+    def detect(self, df: TableLike, schema: Schema | None = None) -> list[Issue]:
         """Detect FD-violation issues in the DataFrame.
 
         Args:
@@ -73,7 +67,7 @@ class FDViolationDetector:
 
     def _check_fd(
         self,
-        df: pd.DataFrame,
+        df: TableLike,
         determinant: tuple[str, ...],
         dependent: str,
     ) -> list[Issue]:
@@ -91,34 +85,37 @@ class FDViolationDetector:
 
         # Verify all columns exist in the DataFrame.
         all_cols = [*determinant_columns, dependent]
+        available_columns = set(column_names(df))
         for col in all_cols:
-            if col not in df.columns:
+            if col not in available_columns:
                 return []
 
-        # Drop rows with null values in determinant columns.
-        subset = df[all_cols].copy()
-        mask = subset[determinant_columns].notna().all(axis=1)
-        subset = subset[mask]
+        groups: dict[tuple[str, ...], list[int]] = {}
+        for row in range(row_count(df)):
+            group_key = tuple(cell_value(df, row, column) for column in determinant_columns)
+            if any(value == "" for value in group_key):
+                continue
+            groups.setdefault(group_key, []).append(row)
 
-        if subset.empty:
+        if not groups:
             return []
 
-        # Group by determinant and find groups with multiple distinct
-        # dependent values.
         issues: list[Issue] = []
-
-        grouped = subset.groupby(determinant_columns, sort=False)
-        for group_key, group_df in grouped:
-            unique_deps = group_df[dependent].dropna().unique()
+        for group_key, row_indices in groups.items():
+            unique_deps: list[str] = []
+            for row in row_indices:
+                value = cell_value(df, row, dependent)
+                if value == "" or value in unique_deps:
+                    continue
+                unique_deps.append(value)
             if len(unique_deps) <= 1:
                 continue
 
-            # All rows in this group are part of the violation.
             det_desc = self._format_determinant(determinant, group_key)
             unique_str = ", ".join(repr(str(v)) for v in unique_deps)
 
-            for idx in group_df.index:
-                actual_val = str(group_df.at[idx, dependent])
+            for idx in row_indices:
+                actual_val = cell_value(df, idx, dependent)
                 reason = (
                     f"Functional dependency {determinant} -> {dependent} "
                     f"violated: {det_desc} maps to multiple values: "

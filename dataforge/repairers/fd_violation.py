@@ -6,15 +6,28 @@ import asyncio
 import json
 from collections import Counter
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
 
-import pandas as pd
-
-from dataforge.agent.providers import Message, complete
 from dataforge.detectors.base import FunctionalDependency, Issue, Schema
 from dataforge.repairers.base import ProposedFix, ProvenanceLiteral, RetryContext
+from dataforge.table import TableLike, cell_value, column_names, row_count
 from dataforge.transactions.log import sha256_bytes
 from dataforge.transactions.txn import CellFix
+
+if TYPE_CHECKING:
+    from dataforge.agent.providers import Message
+
+
+async def complete(messages: list[Message], *, model: str, temperature: float) -> str:
+    """Lazy provider wrapper kept patchable for tests."""
+    try:
+        from dataforge.agent.providers import complete as provider_complete
+    except ImportError as exc:
+        raise RuntimeError(
+            "LLM-backed FD repair requires the provider extra: "
+            "pip install 'dataforge15[providers]'."
+        ) from exc
+    return await provider_complete(messages, model=model, temperature=temperature)
 
 
 def _normalize_cell(value: object) -> str:
@@ -46,7 +59,7 @@ class FDViolationRepairer:
     def _propose(
         self,
         issue: Issue,
-        df: pd.DataFrame,
+        df: TableLike,
         schema: Schema | None,
         retry_context: RetryContext | None,
     ) -> ProposedFix | None:
@@ -54,7 +67,7 @@ class FDViolationRepairer:
         del retry_context
         if issue.issue_type != "fd_violation" or schema is None:
             return None
-        if issue.row >= len(df.index) or issue.column not in df.columns:
+        if issue.row >= row_count(df) or issue.column not in column_names(df):
             return None
 
         for fd in schema.functional_dependencies:
@@ -64,11 +77,11 @@ class FDViolationRepairer:
             if group_df is None:
                 continue
 
-            counts = Counter(_normalize_cell(value) for value in group_df[fd.dependent])
+            counts = Counter(row[fd.dependent] for row in group_df)
             if len(counts) <= 1:
                 continue
 
-            old_value = _normalize_cell(df.at[issue.row, issue.column])
+            old_value = cell_value(df, issue.row, issue.column)
             chosen_majority = self._deterministic_choice(counts)
             if chosen_majority is not None:
                 if chosen_majority == old_value:
@@ -85,7 +98,7 @@ class FDViolationRepairer:
     def propose(
         self,
         issue: Issue,
-        df: pd.DataFrame,
+        df: TableLike,
         schema: Schema | None,
         retry_context: RetryContext | None = None,
     ) -> ProposedFix | None:
@@ -94,23 +107,29 @@ class FDViolationRepairer:
 
     def _matching_group(
         self,
-        df: pd.DataFrame,
+        df: TableLike,
         row_index: int,
         fd: FunctionalDependency,
-    ) -> pd.DataFrame | None:
+    ) -> list[dict[str, str]] | None:
         """Return the determinant group containing the issue row."""
         required_columns = [*fd.determinant, fd.dependent]
-        if any(column not in df.columns for column in required_columns):
+        if any(column not in column_names(df) for column in required_columns):
             return None
 
-        mask = pd.Series([True] * len(df.index), index=df.index)
-        for column in fd.determinant:
-            mask &= df[column].astype(str) == _normalize_cell(df.at[row_index, column])
-
-        group_df = df.loc[mask, required_columns]
-        if group_df.empty:
+        determinant_values = {
+            column: cell_value(df, row_index, column) for column in fd.determinant
+        }
+        group_rows: list[dict[str, str]] = []
+        for row in range(row_count(df)):
+            if all(
+                cell_value(df, row, column) == value for column, value in determinant_values.items()
+            ):
+                group_rows.append(
+                    {column: cell_value(df, row, column) for column in required_columns}
+                )
+        if not group_rows:
             return None
-        return group_df
+        return group_rows
 
     @staticmethod
     def _deterministic_choice(counts: Counter[str]) -> str | None:
@@ -125,7 +144,7 @@ class FDViolationRepairer:
     def _choose_with_cache(
         self,
         fd: FunctionalDependency,
-        group_df: pd.DataFrame,
+        group_df: list[dict[str, str]],
         old_value: str,
     ) -> _Choice | None:
         """Choose a repaired value via cache-backed LLM fallback."""
@@ -135,7 +154,7 @@ class FDViolationRepairer:
         prompt_payload = {
             "determinant": fd.determinant,
             "dependent": fd.dependent,
-            "rows": group_df.to_dict(orient="records"),
+            "rows": group_df,
             "current_value": old_value,
         }
         prompt_text = json.dumps(prompt_payload, sort_keys=True)

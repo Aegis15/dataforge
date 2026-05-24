@@ -26,13 +26,23 @@ def main() -> int:
         default=Path("eval/results/agent_comparison.json"),
     )
     args = parser.parse_args()
+    methods = _parse_csv_list(args.methods)
+    datasets = _parse_csv_list(args.datasets)
+    reproduction_command = (
+        "python scripts\\bench\\run_agent_comparison.py "
+        f"--methods {','.join(methods)} "
+        f"--datasets {','.join(datasets)} "
+        f"--seeds {args.seeds} "
+        f"--output-json {args.output_json}"
+    )
 
     run_agent_comparison(
-        methods=_parse_csv_list(args.methods),
-        datasets=_parse_csv_list(args.datasets),
+        methods=methods,
+        datasets=datasets,
         seeds=args.seeds,
         output_json=args.output_json,
         really_run_big_bench=args.really_run_big_bench,
+        reproduction_command=reproduction_command,
     )
     return 0
 

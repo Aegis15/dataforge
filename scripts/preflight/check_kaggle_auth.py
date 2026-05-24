@@ -3,66 +3,66 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata as metadata
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-DEFAULT_KAGGLE_JSON = Path.home() / ".kaggle" / "kaggle.json"
-
-
-def _sibling_kaggle_cli() -> Path:
-    """Return the kaggle executable beside the current Python interpreter."""
-    scripts_dir = Path(sys.executable).resolve().parent
-    exe_name = "kaggle.exe" if os.name == "nt" else "kaggle"
-    return scripts_dir / exe_name
+DEFAULT_KAGGLE_CREDENTIALS = Path.home() / ".kaggle" / "credentials.json"
+STALE_KAGGLE_JSON = Path.home() / ".kaggle" / "kaggle.json"
 
 
 def _load_credentials(path: Path) -> dict[str, Any]:
-    """Load Kaggle credentials without returning the secret key."""
+    """Load Kaggle OAuth credentials without returning tokens."""
+    if path.name == "kaggle.json":
+        raise RuntimeError(
+            f"Refusing to read stale legacy Kaggle API key file: {path}. "
+            f"Use OAuth credentials at {DEFAULT_KAGGLE_CREDENTIALS}."
+        )
     if not path.exists():
         raise RuntimeError(f"Missing Kaggle credentials file: {path}")
     payload = json.loads(path.read_text(encoding="utf-8-sig"))
     if not isinstance(payload, dict):
-        raise RuntimeError("kaggle.json must contain a JSON object")
+        raise RuntimeError("Kaggle credentials must contain a JSON object")
+    required = {"refresh_token", "access_token", "access_token_expiration", "username", "scopes"}
+    missing = sorted(required - set(payload))
+    if missing:
+        raise RuntimeError("Kaggle OAuth credentials missing fields: " + ", ".join(missing))
     username = payload.get("username")
-    key = payload.get("key")
+    scopes = payload.get("scopes")
     if not isinstance(username, str) or not username:
-        raise RuntimeError("kaggle.json is missing username")
-    if not isinstance(key, str) or not key:
-        raise RuntimeError("kaggle.json is missing key")
+        raise RuntimeError("Kaggle OAuth credentials are missing username")
+    if not isinstance(scopes, list) or not scopes:
+        raise RuntimeError("Kaggle OAuth credentials are missing scopes")
     return {
         "credentials_present": True,
         "credential_path": str(path),
+        "credential_type": "oauth",
         "username": username,
-        "key_present": True,
-        "key_printed": False,
+        "scopes_count": len(scopes),
+        "legacy_kaggle_json_exists": STALE_KAGGLE_JSON.exists(),
+        "legacy_kaggle_json_used": False,
+        "tokens_printed": False,
     }
 
 
 def check_kaggle_auth(
     *,
-    kaggle_json: Path = DEFAULT_KAGGLE_JSON,
+    kaggle_json: Path = DEFAULT_KAGGLE_CREDENTIALS,
     kaggle_cli: Path | None = None,
 ) -> dict[str, Any]:
     """Return masked Kaggle auth and CLI status without printing the API key."""
     report = _load_credentials(kaggle_json)
-    cli = kaggle_cli or _sibling_kaggle_cli()
-    if not cli.exists():
-        raise RuntimeError(f"Kaggle CLI not found at {cli}")
-    result = subprocess.run(
-        [str(cli), "--version"],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    del kaggle_cli
+    try:
+        kaggle_version = metadata.version("kaggle")
+    except metadata.PackageNotFoundError as exc:
+        raise RuntimeError("Python package 'kaggle' is not installed") from exc
     report.update(
         {
-            "cli": str(cli),
-            "cli_version": result.stdout.strip(),
+            "client": "kaggle_python_package",
+            "client_version": kaggle_version,
         }
     )
     return report
@@ -70,7 +70,7 @@ def check_kaggle_auth(
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--kaggle-json", type=Path, default=DEFAULT_KAGGLE_JSON)
+    parser.add_argument("--kaggle-json", type=Path, default=DEFAULT_KAGGLE_CREDENTIALS)
     parser.add_argument("--kaggle-cli", type=Path, default=None)
     return parser
 

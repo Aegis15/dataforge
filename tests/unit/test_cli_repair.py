@@ -157,6 +157,16 @@ class TestRepairCommand:
         assert "decimal_shift" in result.output
         assert not (tmp_path / ".dataforge").exists()
 
+    def test_dry_run_json(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "data.csv"
+        _write_repairable_csv(csv_path)
+
+        result = runner.invoke(app, ["repair", str(csv_path), "--dry-run", "--json"])
+
+        assert result.exit_code == 0
+        assert '"mode": "dry_run"' in result.output
+        assert '"fixes_count": 1' in result.output
+
     def test_dry_run_returns_one_when_no_fixes_exist(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "clean.csv"
         csv_path.write_text("id,amount\n1,100\n2,101\n3,102\n4,103\n5,104\n", encoding="utf-8")
@@ -185,7 +195,7 @@ class TestRepairCommand:
             path.write_bytes(mutated)
             return hashlib.sha256(mutated).hexdigest()
 
-        with patch("dataforge.cli.repair.apply_fixes_to_csv", side_effect=fake_apply):
+        with patch("dataforge.engine.repair.apply_fixes_to_csv", side_effect=fake_apply):
             result = runner.invoke(app, ["repair", str(csv_path), "--apply"])
 
         assert result.exit_code == 0
@@ -218,7 +228,7 @@ class TestRepairCommand:
         original_bytes = csv_path.read_bytes()
 
         with patch(
-            "dataforge.cli.repair.append_created_transaction", side_effect=OSError("disk full")
+            "dataforge.engine.repair.append_created_transaction", side_effect=OSError("disk full")
         ):
             result = runner.invoke(app, ["repair", str(csv_path), "--apply"])
 
@@ -244,7 +254,7 @@ class TestRepairCommand:
         _write_repairable_csv(csv_path)
 
         with patch(
-            "dataforge.cli.repair.SafetyFilter.evaluate",
+            "dataforge.engine.repair.SafetyFilter.evaluate",
             return_value=SafetyResult(
                 verdict=SafetyVerdict.DENY,
                 reason="blocked by safety",
@@ -261,14 +271,14 @@ class TestRepairCommand:
 
         with (
             patch(
-                "dataforge.cli.repair.SafetyFilter.evaluate",
+                "dataforge.engine.repair.SafetyFilter.evaluate",
                 return_value=SafetyResult(
                     verdict=SafetyVerdict.ALLOW,
                     reason="ok",
                 ),
             ),
             patch(
-                "dataforge.cli.repair.SMTVerifier.verify",
+                "dataforge.engine.repair.SMTVerifier.verify",
                 return_value=VerificationResult(
                     verdict=VerificationVerdict.REJECT,
                     reason="verifier rejected",
@@ -293,7 +303,7 @@ class TestRepairCommand:
         def fake_append_applied(*args: object, **kwargs: object) -> None:
             raise OSError("append failed")
 
-        with patch("dataforge.cli.repair.append_applied_event", side_effect=fake_append_applied):
+        with patch("dataforge.engine.repair.append_applied_event", side_effect=fake_append_applied):
             result = runner.invoke(app, ["repair", str(csv_path), "--apply"])
 
         assert result.exit_code == 1
@@ -347,7 +357,7 @@ class TestRepairCommand:
 
         with (
             patch(
-                "dataforge.cli.repair._propose_repairs",
+                "dataforge.engine.repair.propose_repairs",
                 return_value=(
                     [accepted_fix],
                     [
@@ -364,7 +374,7 @@ class TestRepairCommand:
                 ),
             ),
             patch(
-                "dataforge.cli.repair.SafetyFilter.evaluate_batch",
+                "dataforge.engine.repair.SafetyFilter.evaluate_batch",
                 return_value=SafetyResult(
                     verdict=SafetyVerdict.DENY,
                     reason="batch blocked",
@@ -392,7 +402,7 @@ class TestRepairCommand:
 
         with (
             patch(
-                "dataforge.cli.repair._propose_repairs",
+                "dataforge.engine.repair.propose_repairs",
                 return_value=(
                     [accepted_fix],
                     [
@@ -410,10 +420,12 @@ class TestRepairCommand:
                 ),
             ),
             patch(
-                "dataforge.cli.repair.SafetyFilter.evaluate_batch",
+                "dataforge.engine.repair.SafetyFilter.evaluate_batch",
                 return_value=SafetyResult(verdict=SafetyVerdict.ALLOW, reason="ok"),
             ),
-            patch("dataforge.cli.repair._apply_transaction", return_value="txn-2026-04-21-abcdef"),
+            patch(
+                "dataforge.engine.repair.apply_transaction", return_value="txn-2026-04-21-abcdef"
+            ),
         ):
             result = runner.invoke(app, ["repair", str(csv_path), "--apply"])
 
@@ -444,7 +456,7 @@ class TestRepairHelpers:
         path = tmp_path / "data.csv"
         path.write_text("amount\n1020\n", encoding="utf-8")
 
-        with patch("dataforge.cli.repair.build_repairers", return_value={}):
+        with patch("dataforge.engine.repair.build_repairers", return_value={}):
             accepted, attempts = _propose_repairs(
                 [_issue()],
                 path,
@@ -469,11 +481,11 @@ class TestRepairHelpers:
 
         with (
             patch(
-                "dataforge.cli.repair.build_repairers",
+                "dataforge.engine.repair.build_repairers",
                 return_value={"decimal_shift": _StaticRepairer(candidate)},
             ),
             patch(
-                "dataforge.cli.repair.SafetyFilter.evaluate",
+                "dataforge.engine.repair.SafetyFilter.evaluate",
                 return_value=SafetyResult(
                     verdict=SafetyVerdict.ESCALATE,
                     reason="needs confirmation",

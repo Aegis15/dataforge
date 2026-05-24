@@ -35,8 +35,9 @@ from dataforge.agent.tool_actions import (
     StatTest,
     parse_action,
 )
+from dataforge.cli.common import load_schema
 from dataforge.detectors import run_all_detectors
-from dataforge.detectors.base import Issue
+from dataforge.detectors.base import Issue, Schema
 from dataforge.env.observation import DataForgeObservation, ToolResult
 from dataforge.env.reward import (
     P_FALSE_POS,
@@ -160,6 +161,7 @@ class DataForgeEnv:
         self._tool_history: list[ToolResult] = []
         self._reward_engine = RewardEngine()
         self._schema_info: dict[str, str] = {}
+        self._schema: Schema | None = None
         self._causal_dag_cache: Any = None
         self._root_cause_labels: set[int] = set()
 
@@ -193,16 +195,13 @@ class DataForgeEnv:
         # Load fixture dataset
         self._df = pd.read_csv(_DEFAULT_CSV, dtype=str)
         self._schema_info = dict.fromkeys(self._df.columns, "str")
+        self._schema = None
         if _DEFAULT_SCHEMA.exists():
-            import yaml
-
-            with open(_DEFAULT_SCHEMA, encoding="utf-8") as f:
-                schema_data = yaml.safe_load(f)
-            if schema_data and "columns" in schema_data:
-                self._schema_info = schema_data["columns"]
+            self._schema = load_schema(_DEFAULT_SCHEMA)
+            self._schema_info = dict(self._schema.columns)
 
         # Run detectors for hidden ground truth
-        self._ground_truth = run_all_detectors(self._df)
+        self._ground_truth = run_all_detectors(self._df, self._schema)
         logger.info(
             "Episode %s: %d rows, %d ground-truth issues",
             self._episode_id[:8],
@@ -786,12 +785,12 @@ class DataForgeEnv:
 
             sf = SafetyFilter()
             ctx = SafetyContext()
-            sr = sf.evaluate(proposed, None, ctx)
+            sr = sf.evaluate(proposed, self._schema, ctx)
             if sr.verdict == SafetyVerdict.DENY:
                 return False, f"Safety filter denied: {sr.reason}"
 
             verifier = SMTVerifier()
-            vr = verifier.verify(self._df, [proposed])
+            vr = verifier.verify(self._df, [proposed], self._schema)
             if vr.verdict == VerificationVerdict.REJECT:
                 return False, f"SMT verifier rejected: {vr.reason}"
             if vr.verdict == VerificationVerdict.UNKNOWN:

@@ -98,7 +98,8 @@ Likely ways DataForge15 fails:
 - README drift: public docs claim features the code does not ship.
 - Weak safety evidence: repair safety exists only in prose, not tests.
 - Synthetic-only benchmarks: numbers do not reflect real-world data.
-- No user feedback: design-partner artifacts remain empty.
+- Design Partner Gate is not met: no attributed design-partner evidence is
+  claimed until permissioned feedback artifacts exist.
 - Model overclaiming: a smoke checkpoint is presented as a quality milestone.
 - Key/data leakage: playground or MCP paths silently send data to providers.
 

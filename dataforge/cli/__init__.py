@@ -7,10 +7,13 @@ and registered here. The ``app`` object is the entry point referenced by
 
 import typer
 
+from dataforge.cli.audit import audit
 from dataforge.cli.bench import bench
 from dataforge.cli.profile import profile
+from dataforge.cli.release import release_app
 from dataforge.cli.repair import repair
 from dataforge.cli.revert import revert
+from dataforge.cli.watch import watch
 
 app: typer.Typer = typer.Typer(
     help="DataForge15 - AI-powered data-quality detection and repair.",
@@ -39,4 +42,7 @@ def _main(
 app.command(name="profile")(profile)
 app.command(name="repair")(repair)
 app.command(name="revert")(revert)
+app.command(name="audit")(audit)
 app.command(name="bench")(bench)
+app.command(name="watch")(watch)
+app.add_typer(release_app, name="release")

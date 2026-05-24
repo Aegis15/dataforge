@@ -12,12 +12,14 @@ DataForge15 currently ships a CLI-first CSV repair workflow:
 dataforge15 profile path/to/data.csv
 dataforge15 repair path/to/data.csv --dry-run
 dataforge15 repair path/to/data.csv --apply
+dataforge15 watch path/to/data.csv --once --json
+dataforge15 audit <txn-id>
 dataforge15 revert <txn-id>
-dataforge15 bench --methods llm_zeroshot --datasets hospital --seeds 1
+dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3
 ```
 
 The repair path uses detectors, deterministic repairers, SafetyFilter,
-SMTVerifier, and reversible transaction logs.
+SMTVerifier, and reversible hash-chained transaction logs.
 
 ## Future Public Positioning
 

@@ -2,38 +2,25 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import json
 from pathlib import Path
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
-import pandas as pd
 import typer
 from rich.console import Console
 from rich.panel import Panel
 
-from dataforge.cli.common import load_schema, read_csv
-from dataforge.detectors import run_all_detectors
+from dataforge.cli.common import load_schema, resolve_cli_path
 from dataforge.detectors.base import Issue, Schema
-from dataforge.engine.repair import (
-    _atomic_write_bytes,
-    source_path_lock,
-)
-from dataforge.engine.repair import (
-    apply_fixes_to_csv as engine_apply_fixes_to_csv,
-)
-from dataforge.repairers import build_repairers
-from dataforge.repairers.base import ProposedFix, RepairAttempt, RetryContext
-from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
-from dataforge.transactions.log import (
-    append_applied_event,
-    append_created_transaction,
-    cache_dir_for,
-    sha256_bytes,
-    snapshot_path_for,
-)
-from dataforge.transactions.txn import CellFix, RepairTransaction, generate_txn_id
+from dataforge.repairers.base import ProposedFix, RepairAttempt
+from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult
+from dataforge.transactions.txn import CellFix
 from dataforge.ui.repair_diff import render_repair_diff
-from dataforge.verifier import SMTVerifier, VerificationVerdict
+
+if TYPE_CHECKING:
+    import pandas as pd
+
+    from dataforge.engine.repair import RepairPipelineResult
 
 _console = Console(stderr=True)
 
@@ -51,6 +38,8 @@ def apply_fixes_to_csv(path: Path, fixes: list[CellFix]) -> str:
     Raises:
         ValueError: If a fix references a missing row/column or stale old value.
     """
+    from dataforge.engine.repair import apply_fixes_to_csv as engine_apply_fixes_to_csv
+
     return engine_apply_fixes_to_csv(path, fixes)
 
 
@@ -58,7 +47,10 @@ def _resolve_schema(schema_path: Path | None) -> Schema | None:
     """Resolve an optional schema path into a parsed Schema."""
     if schema_path is None:
         return None
-    return load_schema(schema_path)
+    resolved_schema = resolve_cli_path(schema_path)
+    if not resolved_schema.exists():
+        raise typer.BadParameter(f"Schema file '{schema_path}' does not exist.")
+    return load_schema(resolved_schema)
 
 
 def _print_error(message: str, *, hint: str | None = None) -> None:
@@ -82,157 +74,21 @@ def _propose_repairs(
     confirm_escalations: bool,
     interactive: bool,
 ) -> tuple[list[ProposedFix], list[list[RepairAttempt]]]:
-    """Run repairers and gates issue-by-issue against the working dataframe."""
-    repairers = build_repairers(
-        cache_dir=cache_dir_for(path),
+    """Compatibility wrapper around the shared repair engine proposal stage."""
+    from dataforge.engine.repair import propose_repairs as engine_propose_repairs
+
+    return engine_propose_repairs(
+        issues,
+        path,
+        working_df,
+        schema,
         allow_llm=allow_llm,
         model=model,
-    )
-    safety_filter = SafetyFilter()
-    verifier = SMTVerifier()
-    safety_context = SafetyContext(
         allow_pii=allow_pii,
         confirm_pii=confirm_pii,
         confirm_escalations=confirm_escalations,
-    )
-
-    accepted_fixes: list[ProposedFix] = []
-    attempt_groups: list[list[RepairAttempt]] = []
-
-    for issue in issues:
-        attempts: list[RepairAttempt] = []
-        repairer = repairers.get(issue.issue_type)
-        if repairer is None:
-            attempts.append(
-                RepairAttempt(
-                    issue=issue,
-                    attempt_number=1,
-                    status="attempted_not_fixed",
-                    reason="No repairer is registered for this issue type.",
-                )
-            )
-            attempt_groups.append(attempts)
-            continue
-
-        accepted = False
-        retry_context = RetryContext(issue=issue)
-        for attempt_number in range(1, 4):
-            candidate = repairer.propose(issue, working_df, schema, retry_context=retry_context)
-            if candidate is None:
-                attempts.append(
-                    RepairAttempt(
-                        issue=issue,
-                        attempt_number=attempt_number,
-                        status="attempted_not_fixed",
-                        reason="No repair proposal was available for this issue.",
-                    )
-                )
-                break
-
-            preferred = safety_filter.choose_preferred([candidate], schema, safety_context)
-            safety_result = safety_filter.evaluate(preferred, schema, safety_context)
-            if safety_result.verdict == SafetyVerdict.ESCALATE and interactive:
-                safety_context, safety_result = _resolve_escalation(
-                    preferred,
-                    schema,
-                    safety_context,
-                    safety_filter,
-                    safety_result,
-                )
-
-            if safety_result.verdict == SafetyVerdict.DENY:
-                attempts.append(
-                    RepairAttempt(
-                        issue=issue,
-                        attempt_number=attempt_number,
-                        fix=preferred,
-                        status="denied",
-                        reason=safety_result.reason,
-                    )
-                )
-                retry_context = _build_retry_context(issue, attempts)
-                continue
-
-            if safety_result.verdict == SafetyVerdict.ESCALATE:
-                attempts.append(
-                    RepairAttempt(
-                        issue=issue,
-                        attempt_number=attempt_number,
-                        fix=preferred,
-                        status="escalated",
-                        reason=safety_result.reason,
-                    )
-                )
-                break
-
-            verifier_result = verifier.verify(working_df, [preferred], schema)
-            if verifier_result.verdict == VerificationVerdict.ACCEPT:
-                accepted_fixes.append(preferred)
-                working_df.at[preferred.fix.row, preferred.fix.column] = preferred.fix.new_value
-                attempts.append(
-                    RepairAttempt(
-                        issue=issue,
-                        attempt_number=attempt_number,
-                        fix=preferred,
-                        status="accepted",
-                        reason=verifier_result.reason,
-                    )
-                )
-                accepted = True
-                break
-
-            attempts.append(
-                RepairAttempt(
-                    issue=issue,
-                    attempt_number=attempt_number,
-                    fix=preferred,
-                    status=(
-                        "rejected"
-                        if verifier_result.verdict == VerificationVerdict.REJECT
-                        else "unknown"
-                    ),
-                    reason=verifier_result.reason,
-                    unsat_core=verifier_result.unsat_core,
-                )
-            )
-            retry_context = _build_retry_context(issue, attempts)
-
-        if (
-            not accepted
-            and attempts
-            and attempts[-1].status not in {"attempted_not_fixed", "escalated"}
-        ):
-            last_reason = attempts[-1].reason
-            attempts[-1] = attempts[-1].model_copy(
-                update={
-                    "status": "attempted_not_fixed",
-                    "reason": (
-                        f"Issue was attempted but not fixed after {len(attempts)} attempt(s). "
-                        f"Last failure: {last_reason}"
-                    ),
-                }
-            )
-        attempt_groups.append(attempts)
-
-    return accepted_fixes, attempt_groups
-
-
-def _build_retry_context(issue: Issue, attempts: list[RepairAttempt]) -> RetryContext:
-    """Build retry hints from previous failed attempts."""
-    rejected_values = frozenset(
-        attempt.fix.fix.new_value
-        for attempt in attempts
-        if attempt.fix is not None and attempt.status in {"denied", "rejected", "unknown"}
-    )
-    hints: list[str] = []
-    for attempt in attempts:
-        hints.append(attempt.reason)
-        hints.extend(attempt.unsat_core)
-    return RetryContext(
-        issue=issue,
-        previous_attempts=tuple(attempts),
-        rejected_values=rejected_values,
-        hints=tuple(hints),
+        interactive=interactive,
+        escalation_resolver=_resolve_escalation,
     )
 
 
@@ -297,52 +153,46 @@ def _render_attempt_summary(
     return len(failed_groups)
 
 
+def _render_failure_summary(result: RepairPipelineResult, console: Console) -> int:
+    """Render a summary for issues that the shared engine could not repair."""
+    if not result.failures:
+        return 0
+
+    console.print("[bold yellow]Attempted But Not Fixed[/bold yellow]")
+    for failure in result.failures:
+        prefix = ""
+        if any(label.startswith("fd::") for label in failure.unsat_core):
+            prefix = "functional dependency rejection - "
+        elif any(label.startswith("domain::") for label in failure.unsat_core):
+            prefix = "domain bound rejection - "
+        console.print(
+            f"{failure.issue_type} at {failure.row}:{failure.column} "
+            f"after {failure.attempt_count} attempt(s): {prefix}{failure.reason}",
+            overflow="fold",
+        )
+    return len(result.failures)
+
+
+def _json_result(result: RepairPipelineResult) -> str:
+    """Serialize a repair result for CLI/MCP/CI consumers."""
+    return json.dumps(result.model_dump(mode="json"), indent=2, sort_keys=True)
+
+
 def _apply_transaction(
     path: Path,
     fixes: list[ProposedFix],
     source_bytes: bytes,
 ) -> str:
-    """Write a transaction record, apply fixes, and append the applied event."""
-    resolved_path = path.resolve()
-    with source_path_lock(resolved_path):
-        if resolved_path.read_bytes() != source_bytes:
-            raise RuntimeError(
-                "Refusing to apply repairs because the source file changed after detection."
-            )
+    """Compatibility wrapper around the shared repair engine transaction path."""
+    from dataforge.engine.repair import apply_transaction as engine_apply_transaction
 
-        txn_id = generate_txn_id()
-        snapshot_path = snapshot_path_for(resolved_path, txn_id)
-        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
-        with snapshot_path.open("xb") as handle:
-            handle.write(source_bytes)
-
-        transaction = RepairTransaction(
-            txn_id=txn_id,
-            created_at=datetime.now(UTC),
-            source_path=str(resolved_path),
-            source_sha256=sha256_bytes(source_bytes),
-            source_snapshot_path=str(snapshot_path.resolve()),
-            fixes=[proposal.fix for proposal in fixes],
-            applied=False,
-        )
-        log_path = append_created_transaction(transaction)
-
-        try:
-            post_sha256 = apply_fixes_to_csv(path, [proposal.fix for proposal in fixes])
-            append_applied_event(log_path, txn_id, post_sha256=post_sha256)
-        except Exception:
-            _atomic_write_bytes(resolved_path, source_bytes)
-            raise
-
-    return txn_id
+    return engine_apply_transaction(path, fixes, source_bytes)
 
 
 def repair(
     path: Annotated[
         Path,
         typer.Argument(
-            exists=True,
-            readable=True,
             help="Path to the CSV file to repair.",
         ),
     ],
@@ -350,8 +200,6 @@ def repair(
         Path | None,
         typer.Option(
             "--schema",
-            exists=True,
-            readable=True,
             help="Path to a YAML schema file with column types and FDs.",
         ),
     ] = None,
@@ -395,6 +243,10 @@ def repair(
         str,
         typer.Option("--llm-model", help="Model name for fd_violation LLM fallback."),
     ] = "gemini-2.0-flash",
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print repair result as JSON."),
+    ] = False,
 ) -> None:
     """Detect, propose, and optionally apply reversible repairs to a CSV."""
     if dry_run == apply:
@@ -405,58 +257,66 @@ def repair(
         raise typer.Exit(code=2)
 
     try:
+        resolved_path = resolve_cli_path(path)
+        if not resolved_path.exists():
+            raise typer.BadParameter(f"CSV file '{path}' does not exist.")
         parsed_schema = _resolve_schema(schema)
-        df = read_csv(path)
     except Exception as exc:
         _print_error(str(exc))
         raise typer.Exit(code=2) from exc
 
-    issues = run_all_detectors(df, parsed_schema)
-    accepted_fixes, attempt_groups = _propose_repairs(
-        issues,
-        path,
-        df.copy(deep=True),
-        parsed_schema,
-        allow_llm=allow_llm,
-        model=llm_model,
-        allow_pii=allow_pii,
-        confirm_pii=confirm_pii,
-        confirm_escalations=confirm_escalations,
-        interactive=apply,
-    )
+    try:
+        from dataforge.engine.repair import RepairPipelineRequest, run_repair_pipeline
+
+        result = run_repair_pipeline(
+            RepairPipelineRequest(
+                source_path=resolved_path,
+                mode="apply" if apply else "dry_run",
+                schema=parsed_schema,
+                allow_llm=allow_llm,
+                model=llm_model,
+                allow_pii=allow_pii,
+                confirm_pii=confirm_pii,
+                confirm_escalations=confirm_escalations,
+                interactive=apply,
+            )
+        )
+    except Exception as exc:
+        _print_error(
+            f"Failed to apply repairs: {exc}" if apply else f"Failed to repair: {exc}",
+            hint="The source file was restored to its pre-apply bytes." if apply else None,
+        )
+        raise typer.Exit(code=1 if apply else 2) from exc
+
+    if json_output:
+        typer.echo(_json_result(result))
+        raise typer.Exit(code=0 if result.fixes else 1)
 
     output_console = Console()
-    render_repair_diff(accepted_fixes, output_console, file_path=str(path))
-    failed_issue_count = _render_attempt_summary(attempt_groups, output_console)
+    render_repair_diff(result.fixes, output_console, file_path=str(resolved_path))
+    failed_issue_count = _render_failure_summary(result, output_console)
 
-    if not accepted_fixes and failed_issue_count == 0:
+    if not result.fixes and failed_issue_count == 0:
+        if result.receipt.reason != "No accepted fixes were produced.":
+            output_console.print(
+                Panel(
+                    f"[yellow]{result.receipt.reason}[/yellow]",
+                    title="Repair Summary",
+                    style="yellow",
+                )
+            )
         raise typer.Exit(code=1)
 
     if dry_run:
-        raise typer.Exit(code=0 if accepted_fixes else 1)
+        raise typer.Exit(code=0 if result.fixes else 1)
 
-    if not accepted_fixes:
+    if not result.fixes or not result.receipt.applied:
         raise typer.Exit(code=1)
-
-    batch_safety = SafetyFilter().evaluate_batch(accepted_fixes)
-    if batch_safety.verdict != SafetyVerdict.ALLOW:
-        _print_error(batch_safety.reason)
-        raise typer.Exit(code=1)
-
-    source_bytes = path.read_bytes()
-    try:
-        txn_id = _apply_transaction(path, accepted_fixes, source_bytes)
-    except Exception as exc:
-        _print_error(
-            f"Failed to apply repairs: {exc}",
-            hint="The source file was restored to its pre-apply bytes.",
-        )
-        raise typer.Exit(code=1) from exc
 
     output_console.print(
         Panel(
-            f"[green]Applied {len(accepted_fixes)} fix(es).[/green]\n"
-            f"Transaction ID: [bold]{txn_id}[/bold]",
+            f"[green]Applied {len(result.fixes)} fix(es).[/green]\n"
+            f"Transaction ID: [bold]{result.receipt.txn_id}[/bold]",
             title="Repair Applied",
             style="green",
         )

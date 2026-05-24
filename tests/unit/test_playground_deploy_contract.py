@@ -41,7 +41,10 @@ def test_wrangler_config_declares_subpath_worker_assets() -> None:
     assert 'compatibility_date = "2026-04-27"' in body
     assert "workers_dev = true" in body
     assert "[build]" in body
-    assert 'command = "npm --prefix playground/web install && npm --prefix playground/web run build"' in body
+    assert (
+        'command = "npm --prefix playground/web install && npm --prefix playground/web run build"'
+        in body
+    )
     assert 'directory = "./playground/web/dist"' in body
     assert 'binding = "ASSETS"' in body
     assert 'not_found_handling = "single-page-application"' in body
@@ -54,7 +57,10 @@ def test_dataforge_dev_route_config_is_explicitly_release_gated() -> None:
     assert 'pattern = "dataforge.dev/playground*"' in body
     assert 'zone_name = "dataforge.dev"' in body
     assert "[build]" in body
-    assert 'command = "npm --prefix playground/web install && npm --prefix playground/web run build"' in body
+    assert (
+        'command = "npm --prefix playground/web install && npm --prefix playground/web run build"'
+        in body
+    )
     assert 'directory = "./playground/web/dist"' in body
 
 

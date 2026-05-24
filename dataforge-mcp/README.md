@@ -4,7 +4,8 @@
 verification, and transaction-revert paths as Model Context Protocol tools.
 
 ```bash
-pip install dataforge15-mcp
+cd dataforge-mcp
+python -m pip install -e ".[dev]"
 dataforge15-mcp serve --allowed-root /path/to/csv/workspace
 ```
 
@@ -83,8 +84,10 @@ the server is started with `--enable-apply` or `DATAFORGE_MCP_ENABLE_APPLY=1`.
 
 ## Release
 
-The package is released independently from the nested `dataforge-mcp/` source
-directory. The trusted-publishing workflow builds on tags matching:
+The package is intended to release independently from the nested
+`dataforge-mcp/` source directory, but it is not published yet. After PyPI
+ownership and Trusted Publishing are configured, the workflow will build on tags
+matching:
 
 ```text
 dataforge15-mcp-v*

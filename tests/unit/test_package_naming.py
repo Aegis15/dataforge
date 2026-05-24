@@ -19,13 +19,16 @@ def test_core_distribution_uses_dataforge15_name_and_cli_aliases() -> None:
 
     assert project["name"] == "dataforge15"
     assert (
-        "dataforge15[dev,train,eval,playground,openenv]" in project["optional-dependencies"]["all"]
+        "dataforge15[bench,causal,dev,eval,pandas,playground,providers,train,openenv]"
+        in project["optional-dependencies"]["all"]
     )
     assert project["scripts"]["dataforge15"] == "dataforge.cli:app"
     assert project["scripts"]["dataforge"] == "dataforge.cli:app"
     assert pyproject["tool"]["setuptools"]["packages"]["find"]["include"] == [
         "dataforge",
         "dataforge.*",
+    ]
+    assert pyproject["tool"]["setuptools"]["packages"]["find"]["exclude"] == [
         "data_quality_env",
         "data_quality_env.*",
     ]

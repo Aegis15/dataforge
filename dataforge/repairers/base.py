@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Literal, Protocol
 
-import pandas as pd
 from pydantic import BaseModel, Field
 
 from dataforge.detectors.base import Issue, Schema
+from dataforge.table import TableLike
 from dataforge.transactions.txn import CellFix
 
 ProvenanceLiteral = Literal["deterministic", "llm_cache", "llm_live"]
@@ -69,7 +69,7 @@ class Repairer(Protocol):
     def propose(
         self,
         issue: Issue,
-        df: pd.DataFrame,
+        df: TableLike,
         schema: Schema | None,
         retry_context: RetryContext | None = None,
     ) -> ProposedFix | None:

@@ -10,6 +10,24 @@ from dataforge.bench.report import write_benchmark_outputs
 from dataforge.bench.runner import run_agent_comparison
 
 
+def load_grpo_release_evidence(path: Path) -> dict[str, object]:
+    """Load GRPO release evidence before public trained-model benchmark refresh."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing GRPO release evidence: {path}. "
+            "Run scripts/model/verify_grpo_release.py before refreshing README claims."
+        )
+    import json
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("GRPO release evidence must be a JSON object.")
+    metrics = payload.get("metrics")
+    if not isinstance(metrics, dict) or metrics.get("acceptance_gate_passed") is not True:
+        raise ValueError("GRPO release evidence does not show acceptance_gate_passed=true.")
+    return payload
+
+
 def load_trained_model_output(path: Path) -> BenchmarkRunOutput:
     """Load trained model benchmark rows, failing loudly if evidence is absent."""
     if not path.exists():
@@ -77,6 +95,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=Path("eval/results/grpo_model_comparison.json"),
     )
     parser.add_argument(
+        "--grpo-evidence-json",
+        type=Path,
+        default=Path("eval/results/grpo_release_evidence.json"),
+    )
+    parser.add_argument(
         "--agent-json",
         type=Path,
         default=Path("eval/results/agent_comparison_agents.json"),
@@ -114,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             output_json=args.agent_json,
             really_run_big_bench=args.really_run_big_bench,
         )
+    load_grpo_release_evidence(args.grpo_evidence_json)
     trained_output = load_trained_model_output(args.trained_model_json)
     merged = merge_benchmark_outputs(agent_output=agent_output, trained_output=trained_output)
     write_run_output(merged, args.merged_json)

@@ -9,8 +9,7 @@ Docker build needs files from the monorepo root.
 
 - A Hugging Face account with write access to
   `https://huggingface.co/spaces/<hf-user>/dataforge-playground`
-- Git installed locally
-- Optional: `hf` if you want to create the Space from the CLI
+- A cached Hugging Face token available to `huggingface_hub`
 
 ## Step 1: Ensure the Space exists
 
@@ -20,21 +19,22 @@ The production target is:
 https://huggingface.co/spaces/<hf-user>/dataforge-playground
 ```
 
-If you ever need to recreate it from scratch:
+The Python deploy script creates it if needed.
 
-```bash
-hf repos create <hf-user>/dataforge-playground --type space --space-sdk docker --exist-ok
-```
-
-## Step 2: Stage the exact Space contents
+## Step 2: Deploy the staged Space contents
 
 From the monorepo root:
 
 ```bash
 python scripts/playground/stage_space.py --output-dir .hf-space-stage
+python scripts/playground/deploy_space.py \
+  --repo-id Praneshrajan15/dataforge-playground \
+  --origins https://dataforge.dev
 ```
 
-This produces a clean Hugging Face Space repo root containing:
+`stage_space.py` is the authoritative layout builder. The deploy script uses
+the same staging flow, then uploads a clean Hugging Face Space repo root
+containing:
 
 - `README.md`
 - `Dockerfile`
@@ -43,67 +43,35 @@ This produces a clean Hugging Face Space repo root containing:
 - `dataforge/`
 - `constitutions/`
 
-## Step 3: Clone the target Space repo
-
-```bash
-git clone https://huggingface.co/spaces/<hf-user>/dataforge-playground .hf-space-repo
-```
-
-If your Git credential helper is not already configured, authenticate with your
-Hugging Face username and token when prompted.
-
-## Step 4: Replace the Space contents with the staged tree
-
-PowerShell:
-
-```powershell
-Get-ChildItem .hf-space-repo -Force | Where-Object { $_.Name -ne '.git' } | Remove-Item -Recurse -Force
-Copy-Item .hf-space-stage\* .hf-space-repo -Recurse -Force
-```
-
-Bash:
-
-```bash
-rsync -a --delete --exclude '.git/' .hf-space-stage/ .hf-space-repo/
-```
-
-## Step 5: Commit and push
-
-```bash
-cd .hf-space-repo
-git add .
-git commit -m "deploy: sync staged DataForge Space"
-git push origin main
-```
-
 The backend remains API-only. The browser UI is deployed separately to
 Cloudflare Workers Static Assets.
 
-## Step 6: Configure Space variables and secrets
+## Step 3: Configure Space variables and secrets
 
-In the Space settings:
+The deploy script sets:
 
 - `DATAFORGE_PLAYGROUND_ORIGINS`
   Required in production. Set this to the exact Cloudflare frontend origin.
-  Example: `https://dataforge.<your-workers-subdomain>.workers.dev`
+  Example: `https://dataforge.dev`
 - `GROQ_API_KEY` or `GEMINI_API_KEY`
-  Optional. Enables advanced mode in the hosted playground.
+  Optional. If present in the local environment, the deploy script syncs it as
+  a Space secret and advanced mode becomes available.
 - `DATAFORGE_LLM_PROVIDER`
   Optional. Set this explicitly if you want to force a provider selection.
 
 If you attach a custom frontend domain, add that exact origin to
 `DATAFORGE_PLAYGROUND_ORIGINS` as a comma-separated value.
 
-## Step 7: Verify
+## Step 4: Verify
 
 ```bash
-curl -s https://<hf-user>-dataforge-playground.hf.space/api/health
+curl -s https://Praneshrajan15-dataforge-playground.hf.space/api/health
 curl -s -X POST \
   -F "file=@playground/api/samples/hospital_10rows.csv" \
-  https://<hf-user>-dataforge-playground.hf.space/api/profile
+  https://Praneshrajan15-dataforge-playground.hf.space/api/profile
 python scripts/playground/verify_frontend_deploy.py \
-  --frontend-url https://dataforge.<your-workers-subdomain>.workers.dev \
-  --backend-url https://<hf-user>-dataforge-playground.hf.space
+  --frontend-url https://dataforge.dev/playground \
+  --backend-url https://Praneshrajan15-dataforge-playground.hf.space
 ```
 
 Expected health response:

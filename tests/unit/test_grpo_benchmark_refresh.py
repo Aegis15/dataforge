@@ -8,6 +8,7 @@ import pytest
 
 from dataforge.bench.core import BenchmarkRunOutput
 from scripts.bench.refresh_benchmark_table import (
+    load_grpo_release_evidence,
     load_trained_model_output,
     merge_benchmark_outputs,
 )
@@ -99,3 +100,14 @@ def test_load_trained_model_output_accepts_benchmark_run_json(tmp_path: Path) ->
 
     assert loaded.aggregates[0].method == "DataForge-0.5B-GRPO"
     assert loaded.aggregates[0].gpu_hours_mean == 5.75
+
+
+def test_load_grpo_release_evidence_requires_acceptance_gate(tmp_path: Path) -> None:
+    path = tmp_path / "evidence.json"
+    path.write_text('{"metrics":{"acceptance_gate_passed":false}}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match="acceptance_gate_passed"):
+        load_grpo_release_evidence(path)
+
+    path.write_text('{"metrics":{"acceptance_gate_passed":true}}', encoding="utf-8")
+    assert load_grpo_release_evidence(path)["metrics"] == {"acceptance_gate_passed": True}

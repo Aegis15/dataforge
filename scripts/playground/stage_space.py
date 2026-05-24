@@ -44,7 +44,9 @@ def stage_space(output_dir: Path) -> None:
     )
     _copy_tree(PROJECT_ROOT / "playground" / "api" / "samples", api_output_dir / "samples")
     _copy_tree(PROJECT_ROOT / "dataforge", output_dir / "dataforge")
-    _copy_tree(PROJECT_ROOT / "constitutions", output_dir / "constitutions")
+    constitution_dir = PROJECT_ROOT / "dataforge" / "safety" / "constitutions"
+    if constitution_dir.exists():
+        _copy_tree(constitution_dir, output_dir / "constitutions")
 
 
 def _build_parser() -> argparse.ArgumentParser:

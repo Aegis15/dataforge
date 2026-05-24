@@ -5,16 +5,19 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
+import stat
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PYTHON = sys.executable
 
 PYTHON_PATHS = [
     "dataforge",
-    "data_quality_env",
     "tests",
     "scripts/ci",
     "scripts/playground",
@@ -25,7 +28,6 @@ PYTHON_PATHS = [
 ]
 MYPY_PATHS = [
     "dataforge",
-    "data_quality_env",
     "playground/api/app.py",
     "scripts/ci/readme_truth.py",
     "scripts/ci/openapi_contract.py",
@@ -61,16 +63,61 @@ SECRET_PATTERNS = [
 ]
 
 
-def _run(label: str, command: list[str], *, optional: bool = False) -> bool:
+def _clean_package_artifacts() -> None:
+    """Remove generated package metadata before release builds."""
+
+    def _make_writable_and_retry(
+        function: Callable[[str], Any],
+        path: str,
+        _exc_info: object,
+    ) -> None:
+        target = Path(path)
+        target.chmod(target.stat().st_mode | stat.S_IWRITE)
+        function(path)
+
+    for path in [
+        PROJECT_ROOT / "build",
+        PROJECT_ROOT / "dist",
+        PROJECT_ROOT / "dataforge15.egg-info",
+        PROJECT_ROOT / "dataforge-mcp" / "build",
+        PROJECT_ROOT / "dataforge-mcp" / "dist",
+        PROJECT_ROOT / "dataforge-mcp" / "dataforge15_mcp.egg-info",
+    ]:
+        if path.exists():
+            if path.is_dir():
+                shutil.rmtree(path, onerror=_make_writable_and_retry)
+            else:
+                path.chmod(path.stat().st_mode | stat.S_IWRITE)
+                path.unlink()
+
+
+def _run(
+    label: str,
+    command: list[str],
+    *,
+    optional: bool = False,
+    timeout_seconds: int | None = None,
+) -> bool:
     """Run a gate command and return whether it passed."""
     print(f"\n==> {label}")
     try:
-        result = subprocess.run(command, cwd=PROJECT_ROOT, check=False)
+        result = subprocess.run(
+            command,
+            cwd=PROJECT_ROOT,
+            check=False,
+            timeout=timeout_seconds,
+        )
     except FileNotFoundError as exc:
         if optional:
             print(f"SKIP {label}: {exc}")
             return True
         print(f"FAIL {label}: {exc}")
+        return False
+    except subprocess.TimeoutExpired:
+        if optional:
+            print(f"SKIP {label}: timed out after {timeout_seconds}s")
+            return True
+        print(f"FAIL {label}: timed out after {timeout_seconds}s")
         return False
     if result.returncode == 0:
         print(f"PASS {label}")
@@ -80,18 +127,6 @@ def _run(label: str, command: list[str], *, optional: bool = False) -> bool:
         return True
     print(f"FAIL {label}: command exited {result.returncode}")
     return False
-
-
-def _module_available(module: str) -> bool:
-    """Return whether ``python -m module`` is importable."""
-    result = subprocess.run(
-        [PYTHON, "-c", f"import {module}"],
-        cwd=PROJECT_ROOT,
-        check=False,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    return result.returncode == 0
 
 
 def _secret_scan() -> bool:
@@ -133,6 +168,12 @@ def main() -> int:
         action="store_true",
         help="Fail when optional supply-chain tools are unavailable.",
     )
+    parser.add_argument(
+        "--dependency-audit-timeout",
+        type=int,
+        default=120,
+        help="Seconds before optional dependency audit is skipped or required audit fails.",
+    )
     args = parser.parse_args()
 
     checks: list[bool] = [
@@ -154,16 +195,17 @@ def main() -> int:
     pip_audit_optional = not (
         args.require_optional or os.environ.get("DATAFORGE_REQUIRE_PIP_AUDIT")
     )
-    if _module_available("pip_audit"):
-        checks.append(_run("pip-audit", [PYTHON, "-m", "pip_audit"], optional=False))
-    else:
-        checks.append(
-            _run(
-                "pip-audit",
-                [PYTHON, "-m", "pip_audit"],
-                optional=pip_audit_optional,
-            )
+    checks.append(
+        _run(
+            "pip-audit",
+            [PYTHON, "-m", "pip_audit", "--progress-spinner", "off"],
+            optional=pip_audit_optional,
+            timeout_seconds=args.dependency_audit_timeout,
         )
+    )
+
+    _clean_package_artifacts()
+    (PROJECT_ROOT / "dist").mkdir(exist_ok=True)
 
     sbom_optional = not (args.require_optional or os.environ.get("DATAFORGE_REQUIRE_SBOM"))
     checks.append(

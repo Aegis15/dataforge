@@ -7,7 +7,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-import pandas as pd
 from pydantic import BaseModel, Field
 from z3 import (  # type: ignore[import-untyped]
     And,
@@ -29,6 +28,14 @@ from z3 import (  # type: ignore[import-untyped]
 )
 
 from dataforge.repairers.base import ProposedFix
+from dataforge.table import (
+    TableLike,
+    cell_value,
+    column_names,
+    copy_table,
+    row_count,
+    set_cell_value,
+)
 from dataforge.verifier.explain import explain_unsat_core
 from dataforge.verifier.schema import DomainBound, FunctionalDependency, Schema
 
@@ -67,7 +74,7 @@ class _ColumnEncoding:
 class SchemaToSMT:
     """Compile candidate-local constraints from a schema and working dataframe."""
 
-    def __init__(self, schema: Schema, df: pd.DataFrame, *, timeout_ms: int = 200) -> None:
+    def __init__(self, schema: Schema, df: TableLike, *, timeout_ms: int = 200) -> None:
         self._schema = schema
         self._df = df
         self._timeout_ms = timeout_ms
@@ -82,12 +89,12 @@ class SchemaToSMT:
 
         row = proposed_fix.fix.row
         column = proposed_fix.fix.column
-        if row < 0 or row >= len(self._df.index):
+        if row < 0 or row >= row_count(self._df):
             return VerificationResult(
                 verdict=VerificationVerdict.REJECT,
                 reason=f"Row {row} is out of bounds for the input file.",
             )
-        if column not in self._df.columns:
+        if column not in column_names(self._df):
             return VerificationResult(
                 verdict=VerificationVerdict.REJECT,
                 reason=f"Column '{column}' does not exist in the input file.",
@@ -186,8 +193,8 @@ class SchemaToSMT:
         proposed_fix: ProposedFix,
     ) -> None:
         for column, encoding in encodings.items():
-            for index in range(len(self._df.index)):
-                raw_value = str(self._df.at[index, column])
+            for index in range(row_count(self._df)):
+                raw_value = cell_value(self._df, index, column)
                 if index == proposed_fix.fix.row and column == proposed_fix.fix.column:
                     raw_value = proposed_fix.fix.new_value
                 try:
@@ -235,7 +242,7 @@ class SchemaToSMT:
     ) -> None:
         # Use a universally-quantified implication over all valid other rows.
         other_row = Int("other_row")
-        bounds_guard = And(other_row >= 0, other_row < len(self._df.index))
+        bounds_guard = And(other_row >= 0, other_row < row_count(self._df))
         candidate_row = IntVal(proposed_fix.fix.row)
         determinant_equal = And(
             *[
@@ -259,20 +266,20 @@ class SMTVerifier:
 
     def verify(
         self,
-        df: pd.DataFrame,
+        df: TableLike,
         fixes: list[ProposedFix],
         schema: Schema | None = None,
     ) -> VerificationResult:
         """Verify one or more candidate fixes against the working dataframe."""
         if schema is None:
-            row_count = len(df.index)
+            total_rows = row_count(df)
             for proposed in fixes:
-                if proposed.fix.row < 0 or proposed.fix.row >= row_count:
+                if proposed.fix.row < 0 or proposed.fix.row >= total_rows:
                     return VerificationResult(
                         verdict=VerificationVerdict.REJECT,
                         reason=f"Row {proposed.fix.row} is out of bounds for the input file.",
                     )
-                if proposed.fix.column not in df.columns:
+                if proposed.fix.column not in column_names(df):
                     return VerificationResult(
                         verdict=VerificationVerdict.REJECT,
                         reason=f"Column '{proposed.fix.column}' does not exist in the input file.",
@@ -282,13 +289,15 @@ class SMTVerifier:
                 reason="All proposed fixes passed structural verification.",
             )
 
-        working_df = df.copy(deep=True)
+        working_df = copy_table(df)
         verifier = SchemaToSMT(schema, working_df)
         for proposed in fixes:
             result = verifier.verify_fix(proposed)
             if result.verdict != VerificationVerdict.ACCEPT:
                 return result
-            working_df.at[proposed.fix.row, proposed.fix.column] = proposed.fix.new_value
+            set_cell_value(
+                working_df, proposed.fix.row, proposed.fix.column, proposed.fix.new_value
+            )
             verifier = SchemaToSMT(schema, working_df)
         return VerificationResult(
             verdict=VerificationVerdict.ACCEPT,

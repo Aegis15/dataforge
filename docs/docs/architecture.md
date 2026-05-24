@@ -19,7 +19,8 @@ flowchart LR
 ## Runtime Layers
 
 - **CLI and terminal UI**: Typer commands in `dataforge/cli/` with Rich output.
-  Public commands are `profile`, `repair`, `revert`, and `bench`.
+  Public commands are `profile`, `repair`, `revert`, `watch`, `audit`, and
+  `bench`.
 - **Detectors**: pandas-based scanners for `type_mismatch`, `decimal_shift`,
   and `fd_violation`. Detectors emit typed issues and never mutate data.
 - **Repairers**: deterministic proposal generators for shipped detector
@@ -29,8 +30,9 @@ flowchart LR
   row deletion, conflicting batch writes, and unconfirmed sensitive changes.
 - **Verification**: Z3-backed SMT checks that reject fixes which violate schema
   constraints or cannot be proven safe.
-- **Transactions**: append-only JSONL journals, immutable source snapshots,
-  post-state hash guards, and byte-for-byte revert.
+- **Transactions**: append-only hash-chained JSONL journals, immutable source
+  snapshots, post-state hash guards, local audit verification, and
+  byte-for-byte revert.
 - **Benchmarks**: Hospital, Flights, and Beers loaders, method runners, quota
   accounting, and generated markdown reports.
 - **OpenEnv environment**: HTTP and in-process environment with typed actions:
@@ -102,36 +104,36 @@ the pipeline, but they should not create parallel write semantics.
 
 Core runtime dependencies in `pyproject.toml`:
 
-- `pandas` and `pyarrow` for tabular data handling.
+- `pandas` for tabular data handling.
 - `pydantic` for typed issues, fixes, schemas, environment observations, and
   release evidence.
 - `typer` and `rich` for CLI UX.
 - `pyyaml` for schema and constitution loading.
 - `z3-solver` for SMT verification.
-- `networkx`, `causal-learn`, `hyppo`, and `scipy` for causal discovery and
-  statistical tests.
-- `httpx`, `tenacity`, and `python-dotenv` for optional provider clients.
-- `sqlglot` and `duckdb` for read-only SQL parsing and execution.
 
 Optional extras and scoped dependencies:
 
+- `bench`: provider clients plus `pyarrow` for benchmark/data-loading paths.
+- `causal`: `networkx`, `causal-learn`, `hyppo`, and `scipy`.
 - `dev`: pytest, ruff, mypy, Hypothesis, benchmark, and Hub tooling.
 - `train`: pinned Kaggle SFT/GRPO stack.
 - `eval`: plotting libraries for evaluation summaries.
 - `playground`: FastAPI, Uvicorn, multipart upload, and rate limiting.
-- `openenv`: OpenEnv protocol dependency.
-- `dataforge-mcp/`: source directory for the separate `dataforge15-mcp` PyPI
-  package with MCP dependencies.
+- `providers`: `httpx`, `tenacity`, and `python-dotenv` for optional LLM calls.
+- `openenv`: OpenEnv protocol dependency plus `duckdb`, `sqlglot`, and
+  statistical/causal dependencies.
+- `dataforge-mcp/`: source directory for the separate planned
+  `dataforge15-mcp` PyPI package with MCP dependencies.
 - `playground-model/`: Gradio and model-demo dependencies only.
 
 ## Release Boundaries
 
-- `dataforge15` is the core CLI/library distribution and is released from `v*`
-  tags only after local gates and PyPI trusted-publisher ownership are verified.
-  It intentionally keeps the `dataforge` Python import namespace for the 0.1
-  line.
-- `dataforge15-mcp` is a nested standalone distribution released from
-  `dataforge15-mcp-v*` tags.
+- `dataforge15` is the planned core CLI/library distribution. It is not
+  published yet; release tags should be created only after local gates and PyPI
+  trusted-publisher ownership are verified. It intentionally keeps the
+  `dataforge` Python import namespace for the 0.1 line.
+- `dataforge15-mcp` is the planned nested standalone distribution for
+  `dataforge15-mcp-v*` release tags after PyPI ownership is verified.
 - SFT datasets and checkpoints are Hugging Face artifacts verified by
   `scripts/model/verify_sft_release.py`.
 - GRPO checkpoints are Hugging Face artifacts verified by

@@ -2,23 +2,34 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Callable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from dataforge.bench.runner import run_agent_comparison
-
 _console = Console(stderr=True)
+run_agent_comparison: Callable[..., Any] | None = None
 
 
 def _parse_csv_list(raw_value: str) -> list[str]:
     """Parse a comma-separated CLI option into a list of strings."""
     values = [item.strip() for item in raw_value.split(",")]
     return [value for value in values if value]
+
+
+def _runner() -> Callable[..., Any]:
+    """Load the benchmark runner lazily so core CLI imports stay lightweight."""
+    global run_agent_comparison
+    if run_agent_comparison is None:
+        from dataforge.bench.runner import run_agent_comparison as loaded_runner
+
+        run_agent_comparison = loaded_runner
+    return run_agent_comparison
 
 
 def bench(
@@ -54,10 +65,14 @@ def bench(
             help="Where to write eval/results/agent_comparison.json.",
         ),
     ] = Path("eval/results/agent_comparison.json"),
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print benchmark results as JSON."),
+    ] = False,
 ) -> None:
     """Run real-world benchmark methods across cached benchmark datasets."""
     try:
-        output = run_agent_comparison(
+        output = _runner()(
             methods=_parse_csv_list(methods),
             datasets=_parse_csv_list(datasets),
             seeds=seeds,
@@ -73,6 +88,10 @@ def bench(
             )
         )
         raise typer.Exit(code=2) from exc
+
+    if json_output:
+        typer.echo(json.dumps(output.model_dump(mode="json"), indent=2, sort_keys=True))
+        return
 
     table = Table(title="DataForge Benchmark Summary")
     table.add_column("Method")

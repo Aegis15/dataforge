@@ -6,7 +6,6 @@ import re
 from pathlib import Path
 
 import pytest
-
 from dataforge_mcp.server import create_server
 from dataforge_mcp.tools import (
     configure_mcp_security,
@@ -65,6 +64,14 @@ class TestDataForgeMcpTools:
             "dataforge_apply_repairs",
             "dataforge_revert",
         }
+
+    def test_registered_tools_have_output_schemas(self) -> None:
+        server = create_server()
+
+        for tool in server._tool_manager.list_tools():
+            schema = tool.output_schema
+            assert schema["type"] == "object"
+            assert "properties" in schema
 
     def test_profile_and_detect_errors_return_decimal_shift_issue(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "amounts.csv"

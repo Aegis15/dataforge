@@ -1,7 +1,7 @@
 spec_version: 1
 name: dataforge-env
 type: environment
-app: dataforge.env.server:app
+app: dataforge.env.openenv_core:app
 port: 7860
 description: >
   DataForge RL Environment — agents learn to detect, diagnose, and repair

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
+from importlib import resources
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -157,7 +158,7 @@ class Constitution:
 
 def default_constitution_path() -> Path:
     """Return the shipped default constitution path."""
-    return Path(__file__).resolve().parents[2] / "constitutions" / "default.yaml"
+    return Path(str(resources.files("dataforge.safety").joinpath("constitutions/default.yaml")))
 
 
 def _expect_mapping(payload: object, *, message: str) -> dict[str, object]:

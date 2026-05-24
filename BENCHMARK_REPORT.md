@@ -2,13 +2,13 @@
 
 ## Reproduction
 
-`dataforge15 bench --methods llm_zeroshot --datasets hospital --seeds 1`
+`python scripts\bench\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\results\agent_comparison.json`
 
 ## Configuration
 
-- Methods: llm_zeroshot
-- Datasets: hospital
-- Seeds: 1
+- Methods: random, heuristic
+- Datasets: hospital, flights, beers
+- Seeds: 3
 - Free-tier quota units: `max(llm_calls / 1000, (prompt_tokens + completion_tokens) / 100000)`
 - GRPO compute cost is reported as free-tier GPU-hours, not dollars.
 
@@ -16,7 +16,8 @@
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
-| llm_zeroshot | 0.2500 | 0.3333 | 0.2857 | 2.00 | 0.0053 | 0.0000 |
+| heuristic | 0.1667 | 0.1111 | 0.1333 | 122.00 | 0.0000 | 0.0000 |
+| random | 0.0017 | 0.0001 | 0.0001 | 141.67 | 0.0000 | 0.0000 |
 
 ## Per-Dataset Local Results
 
@@ -24,7 +25,22 @@
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
-| llm_zeroshot | 0.2500 +/- 0.0000 | 0.3333 +/- 0.0000 | 0.2857 +/- 0.0000 | 2.0000 +/- 0.0000 | 0.0053 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| random | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 25.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| heuristic | 0.5000 +/- 0.0000 | 0.3333 +/- 0.0000 | 0.4000 +/- 0.0000 | 3.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+
+### Flights
+
+| Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
+| --- | --- | --- | --- | --- | --- | --- |
+| random | 0.0050 +/- 0.0087 | 0.0002 +/- 0.0003 | 0.0004 +/- 0.0007 | 200.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| heuristic | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 93.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+
+### Beers
+
+| Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
+| --- | --- | --- | --- | --- | --- | --- |
+| random | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 200.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| heuristic | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 270.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
 
 ## Citation-Only SOTA Reference
 

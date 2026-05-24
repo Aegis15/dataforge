@@ -1,13 +1,13 @@
 ---
 title: DataForge Playground
-emoji: chart_with_upwards_trend
+emoji: 📊
 colorFrom: blue
 colorTo: green
 sdk: docker
 app_port: 7860
 pinned: false
 license: apache-2.0
-short_description: Upload a CSV, profile it, and dry-run repairs in your browser.
+short_description: Profile CSVs and dry-run safe repairs.
 ---
 
 # DataForge Playground API

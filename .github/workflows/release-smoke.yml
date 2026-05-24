@@ -1,0 +1,105 @@
+name: Release smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheel-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Build wheel
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+          python -m build dataforge-mcp --wheel --outdir dist
+
+      - name: Fresh wheel install and CLI acceptance
+        run: |
+          python -m venv .release-smoke
+          timeout 30 .release-smoke/bin/python -m pip install --find-links dist dataforge15
+          mkdir -p /tmp/dataforge-release-smoke
+          cp fixtures/hospital_10rows.csv /tmp/dataforge-release-smoke/hospital.csv
+          cp fixtures/hospital_schema.yaml /tmp/dataforge-release-smoke/hospital_schema.yaml
+          timeout 5 .release-smoke/bin/dataforge profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --json
+          .release-smoke/bin/python - <<'PY'
+          import importlib.util
+
+          assert importlib.util.find_spec("dataforge") is not None
+          assert importlib.util.find_spec("data_quality_env") is None
+          PY
+          cd /tmp/dataforge-release-smoke
+
+          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" profile hospital.csv --schema hospital_schema.yaml --fail-on unsafe >/dev/null && exit 1 || test $? -eq 1
+          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" repair hospital.csv --schema hospital_schema.yaml --dry-run --json
+          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" watch hospital.csv --schema hospital_schema.yaml --once --json
+
+          before="$(sha256sum hospital.csv | cut -d' ' -f1)"
+          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" repair hospital.csv --schema hospital_schema.yaml --apply > apply.out
+          txn="$(grep -o 'txn-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-[0-9a-f]\{6\}' apply.out | head -n1)"
+          test -n "$txn"
+          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" audit "$txn" --json
+          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" revert "$txn"
+          after="$(sha256sum hospital.csv | cut -d' ' -f1)"
+          test "$before" = "$after"
+
+      - name: Installed MCP stdio smoke
+        run: |
+          timeout 60 .release-smoke/bin/python -m pip install --find-links dist dataforge15-mcp
+          .release-smoke/bin/python - <<'PY'
+          import asyncio
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          from mcp import ClientSession, StdioServerParameters
+          from mcp.client.stdio import stdio_client
+
+          workspace = Path("/tmp/dataforge-mcp-smoke")
+          workspace.mkdir(parents=True, exist_ok=True)
+          csv_path = workspace / "amounts.csv"
+          csv_path.write_text(
+              "id,amount\n1,100\n2,105\n3,98\n4,1020\n5,103\n",
+              encoding="utf-8",
+          )
+          env = os.environ.copy()
+          env["DATAFORGE_MCP_ALLOWED_ROOTS"] = str(workspace)
+          command = str(Path(sys.executable).with_name("dataforge15-mcp"))
+
+          async def main() -> None:
+              params = StdioServerParameters(command=command, args=["serve"], env=env)
+              async with (
+                  stdio_client(params) as (read_stream, write_stream),
+                  ClientSession(read_stream, write_stream) as session,
+              ):
+                  await session.initialize()
+                  tools = await session.list_tools()
+                  assert tools.tools
+                  assert all(tool.outputSchema for tool in tools.tools)
+                  result = await session.call_tool("dataforge_profile", {"path": str(csv_path)})
+                  assert result.isError is False
+                  payload = result.structuredContent
+                  if "result" in payload:
+                      payload = payload["result"]
+                  assert json.dumps(payload)
+                  assert payload["rows"] == 5
+                  assert payload["total_issues"] >= 1
+
+          asyncio.run(main())
+          PY

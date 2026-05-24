@@ -18,10 +18,11 @@ in the separate Hugging Face Docker Space and is wired through
 Set the backend URL in the shell that builds the frontend:
 
 If deploying from Cloudflare's dashboard build settings, set the user build
-command to edit `playground/web/config.js` before running the build:
+command to render `playground/web/config.js` before running the build:
 
 ```powershell
-sed -i "s|BACKEND_URL: \"[^\"]*\"|BACKEND_URL: \"$BACKEND_URL\"|g" playground/web/config.js
+$env:BACKEND_URL = "https://Praneshrajan15-dataforge-playground.hf.space"
+python scripts/playground/render_web_config.py --output-path playground/web/config.js
 npm --prefix playground/web ci
 npm --prefix playground/web run build
 ```

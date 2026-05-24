@@ -1,0 +1,4 @@
+prune data_quality_env
+prune build
+prune dist
+global-exclude __pycache__ *.py[cod]

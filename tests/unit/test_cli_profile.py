@@ -8,6 +8,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from dataforge.cli import app
@@ -27,13 +28,49 @@ class TestProfileCommand:
         result = runner.invoke(
             app, ["profile", str(_HOSPITAL_CSV), "--schema", str(_HOSPITAL_SCHEMA)]
         )
-        # Exit code 1 because UNSAFE issues exist.
-        assert result.exit_code == 1
+        # Diagnostics do not fail by default; CI callers opt into --fail-on.
+        assert result.exit_code == 0
         output = result.output
         assert "fd_violation" in output
         assert "type_mismatch" in output
         assert "decimal_shift" in output
         assert "4 issues found" in output or "4" in output
+
+    def test_profile_fail_on_unsafe(self) -> None:
+        """Profile can act as a CI gate when explicitly requested."""
+        result = runner.invoke(
+            app,
+            [
+                "profile",
+                str(_HOSPITAL_CSV),
+                "--schema",
+                str(_HOSPITAL_SCHEMA),
+                "--fail-on",
+                "unsafe",
+            ],
+        )
+        assert result.exit_code == 1
+
+    def test_profile_json_and_packaged_fixture_alias(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The documented smoke command works even outside a source checkout."""
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(
+            app,
+            [
+                "profile",
+                "fixtures/hospital_10rows.csv",
+                "--schema",
+                "fixtures/hospital_schema.yaml",
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+
+        assert result.exit_code == 0
+        assert '"issues_count": 4' in result.output
+        assert "fd_violation" in result.output
 
     def test_profile_without_schema(self) -> None:
         """Profile without schema — FD violations not detected, but others are."""
@@ -58,8 +95,7 @@ class TestProfileCommand:
         )
         elapsed = time.monotonic() - start
         assert elapsed < 2.0, f"Profile took {elapsed:.2f}s, exceeds 2s budget"
-        # Should complete (exit code 0 or 1, not 2).
-        assert result.exit_code in (0, 1)
+        assert result.exit_code == 0
 
     def test_profile_output_contains_table_structure(self) -> None:
         """Output contains expected table columns."""

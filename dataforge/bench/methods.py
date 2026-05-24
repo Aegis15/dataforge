@@ -13,6 +13,7 @@ from dataforge.bench.groq_client import GroqBenchClient
 from dataforge.datasets.real_world import RealWorldDataset
 from dataforge.detectors import run_all_detectors
 from dataforge.repairers import propose_fixes
+from dataforge.schema_inference import infer_schema
 
 
 def _reproduction_command(method: str, dataset: str, seeds: int) -> str:
@@ -22,11 +23,14 @@ def _reproduction_command(method: str, dataset: str, seeds: int) -> str:
 
 def _repairs_from_proposed_fixes(dataset: RealWorldDataset) -> list[BenchmarkRepair]:
     """Run the shipped deterministic detector/repair stack on one dataset."""
-    issues = run_all_detectors(dataset.dirty_df.copy(deep=True), schema=None)
+    inferred_schema = infer_schema(dataset.dirty_df.copy(deep=True)).to_schema(
+        include_inferred_constraints=True
+    )
+    issues = run_all_detectors(dataset.dirty_df.copy(deep=True), schema=inferred_schema)
     proposals = propose_fixes(
         issues,
         dataset.dirty_df.copy(deep=True),
-        None,
+        inferred_schema,
         cache_dir=None,
         allow_llm=False,
     )
