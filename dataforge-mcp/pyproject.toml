@@ -18,7 +18,7 @@ keywords = ["data-quality", "dataforge15", "dataforge", "mcp", "model-context-pr
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.2",
+    "pytest>=9.0.3",
 ]
 
 [project.scripts]
