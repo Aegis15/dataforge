@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import asdict, dataclass
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any
 
@@ -255,6 +256,31 @@ def _project_root() -> Path:
 def _check_package_boundary() -> DoctorCheck:
     """Verify the core wheel only includes the public DataForge namespace."""
     pyproject_path = _project_root() / "pyproject.toml"
+    if not pyproject_path.exists():
+        try:
+            distribution = importlib_metadata.distribution("dataforge15")
+            top_level = distribution.read_text("top_level.txt") or ""
+        except importlib_metadata.PackageNotFoundError as exc:
+            return DoctorCheck(
+                "core_package_boundary",
+                False,
+                f"Could not read installed package metadata: {exc}",
+                {"distribution": "dataforge15"},
+            )
+        top_level_packages = sorted(line.strip() for line in top_level.splitlines() if line.strip())
+        expected_top_level = ["dataforge"]
+        return DoctorCheck(
+            "core_package_boundary",
+            top_level_packages == expected_top_level,
+            "Installed wheel exposes only the dataforge top-level package."
+            if top_level_packages == expected_top_level
+            else (
+                "Installed wheel exposes top-level packages "
+                f"{top_level_packages!r}, expected {expected_top_level!r}."
+            ),
+            {"top_level": top_level_packages, "expected": expected_top_level},
+        )
+
     try:
         pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
         include = pyproject["tool"]["setuptools"]["packages"]["find"]["include"]

@@ -1,6 +1,8 @@
 """Transaction exports for DataForge."""
 
 from dataforge.transactions.log import (
+    LEGACY_SCHEMA_NAME,
+    SCHEMA_NAME,
     TransactionAuditReport,
     TransactionAuditVerdict,
     append_applied_event,
@@ -15,6 +17,8 @@ from dataforge.transactions.txn import CellFix, RepairTransaction, generate_txn_
 
 __all__ = [
     "CellFix",
+    "LEGACY_SCHEMA_NAME",
+    "SCHEMA_NAME",
     "TransactionAuditReport",
     "TransactionAuditVerdict",
     "RepairTransaction",

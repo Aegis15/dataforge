@@ -23,43 +23,22 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Build wheel
+      - name: Install release gate dependencies
         run: |
-          python -m pip install --upgrade pip build
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Canonical dataforge15 release gate
+        run: python -m dataforge.release.gate --json
+
+      - name: Build MCP smoke wheels
+        run: |
           python -m build --wheel --outdir dist
           python -m build dataforge-mcp --wheel --outdir dist
 
-      - name: Fresh wheel install and CLI acceptance
-        run: |
-          python -m venv .release-smoke
-          timeout 30 .release-smoke/bin/python -m pip install --find-links dist dataforge15
-          mkdir -p /tmp/dataforge-release-smoke
-          cp fixtures/hospital_10rows.csv /tmp/dataforge-release-smoke/hospital.csv
-          cp fixtures/hospital_schema.yaml /tmp/dataforge-release-smoke/hospital_schema.yaml
-          timeout 5 .release-smoke/bin/dataforge profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --json
-          .release-smoke/bin/python - <<'PY'
-          import importlib.util
-
-          assert importlib.util.find_spec("dataforge") is not None
-          assert importlib.util.find_spec("data_quality_env") is None
-          PY
-          cd /tmp/dataforge-release-smoke
-
-          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" profile hospital.csv --schema hospital_schema.yaml --fail-on unsafe >/dev/null && exit 1 || test $? -eq 1
-          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" repair hospital.csv --schema hospital_schema.yaml --dry-run --json
-          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" watch hospital.csv --schema hospital_schema.yaml --once --json
-
-          before="$(sha256sum hospital.csv | cut -d' ' -f1)"
-          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" repair hospital.csv --schema hospital_schema.yaml --apply > apply.out
-          txn="$(grep -o 'txn-[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}-[0-9a-f]\{6\}' apply.out | head -n1)"
-          test -n "$txn"
-          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" audit "$txn" --json
-          "$GITHUB_WORKSPACE/.release-smoke/bin/dataforge" revert "$txn"
-          after="$(sha256sum hospital.csv | cut -d' ' -f1)"
-          test "$before" = "$after"
-
       - name: Installed MCP stdio smoke
         run: |
+          python -m venv .release-smoke
           timeout 60 .release-smoke/bin/python -m pip install --find-links dist dataforge15-mcp
           .release-smoke/bin/python - <<'PY'
           import asyncio

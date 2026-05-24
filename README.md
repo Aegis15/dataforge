@@ -88,6 +88,7 @@ source snapshot before mutating the CSV, so they can be reverted:
 dataforge15 repair path/to/file.csv --schema path/to/schema.yaml --apply
 dataforge15 audit <txn-id>
 dataforge15 revert <txn-id>
+dataforge15 revert <txn-id> --search-root path/to --json
 ```
 
 New transaction logs are local tamper-evident hash chains. `dataforge15 audit`
@@ -208,6 +209,7 @@ make lint
 make type
 make test
 make backend-gate
+make release-gate
 ```
 
 Verification works on Linux, macOS, and Windows with Git Bash available for GNU
@@ -226,10 +228,15 @@ Release doctor scopes:
 ```bash
 dataforge15 release doctor --core --json
 dataforge15 release doctor --maintainer-deploy --json
+dataforge15 release gate --json
 ```
 
 `--core` is the default OSS release check. `--maintainer-deploy` additionally
 checks maintainer-specific Hugging Face, Kaggle, Cloudflare, and domain state.
+`release gate` is the authoritative fresh-user proof: it builds the
+distribution, audits wheel contents, creates a dependency wheelhouse, installs
+with `pip --no-index --find-links`, then runs profile, repair dry-run, apply,
+audit, revert, and post-revert audit from outside the source checkout.
 
 Windows setup:
 

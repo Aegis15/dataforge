@@ -231,6 +231,13 @@ def main() -> int:
             optional=build_optional,
         )
     )
+    checks.append(
+        _run(
+            "dataforge15 release gate",
+            [PYTHON, "-m", "dataforge.release.gate"],
+            timeout_seconds=360,
+        )
+    )
 
     if all(checks):
         print("\nBackend gate passed.")

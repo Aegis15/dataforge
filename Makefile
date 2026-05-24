@@ -11,7 +11,7 @@ ifndef PYTHON
 PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python)
 endif
 
-.PHONY: help setup setup-all lint format type test test-mapped frontend-install frontend-build frontend-test frontend-gate backend-gate sft-preflight coverage bench bench-free mutation clean lock uv-lock
+.PHONY: help setup setup-all lint format type test test-mapped frontend-install frontend-build frontend-test frontend-gate backend-gate release-gate sft-preflight coverage bench bench-free mutation clean lock uv-lock
 
 help:
 	@echo "DataForge15 dev targets"
@@ -24,6 +24,7 @@ help:
 	@echo "  test-mapped   Run tests for a changed source file (FILE=path)"
 	@echo "  frontend-gate Run Vite typecheck, unit tests, build budget, and Playwright"
 	@echo "  backend-gate  Run the canonical backend release-quality gate"
+	@echo "  release-gate  Build, audit, offline-install, and smoke-test the wheel"
 	@echo "  sft-preflight Validate SFT JSONL/config before launching Kaggle"
 	@echo "  coverage      Run tests with coverage (fails at <90%)"
 	@echo "  bench         Run pytest-benchmark suites"
@@ -70,6 +71,9 @@ frontend-gate: frontend-install frontend-build frontend-test
 
 backend-gate:
 	$(PYTHON) scripts/ci/backend_gate.py
+
+release-gate:
+	$(PYTHON) -m dataforge.release.gate
 
 sft-preflight:
 	$(PYTHON) scripts/data/validate_sft_readiness.py

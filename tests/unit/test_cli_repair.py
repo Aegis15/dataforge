@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -221,6 +222,44 @@ class TestRepairCommand:
         assert revert_result.exit_code == 0
         assert csv_path.read_bytes() == original_bytes
         assert "restored" in revert_result.output.lower()
+
+    def test_revert_search_root_json_works_outside_transaction_tree(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        data_dir = tmp_path / "data"
+        outside_dir = tmp_path / "outside"
+        data_dir.mkdir()
+        outside_dir.mkdir()
+        csv_path = data_dir / "data.csv"
+        _write_repairable_csv(csv_path)
+        original_bytes = csv_path.read_bytes()
+
+        apply_result = runner.invoke(app, ["repair", str(csv_path), "--apply"])
+        txn_match = re.search(r"txn-\d{4}-\d{2}-\d{2}-[0-9a-f]{6}", apply_result.output)
+        assert apply_result.exit_code == 0
+        assert txn_match is not None
+
+        monkeypatch.chdir(outside_dir)
+        revert_result = runner.invoke(
+            app,
+            [
+                "revert",
+                txn_match.group(0),
+                "--search-root",
+                str(data_dir),
+                "--json",
+            ],
+        )
+
+        assert revert_result.exit_code == 0
+        payload = json.loads(revert_result.output)
+        assert payload["schema_version"] == "repair_revert_receipt_v1"
+        assert payload["ok"] is True
+        assert payload["txn_id"] == txn_match.group(0)
+        assert payload["audit_verdict"] == "verified"
+        assert payload["restored_source_sha256"] == hashlib.sha256(original_bytes).hexdigest()
+        assert payload["revert_event_sha256"]
+        assert csv_path.read_bytes() == original_bytes
 
     def test_transaction_log_write_failure_leaves_source_untouched(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "data.csv"

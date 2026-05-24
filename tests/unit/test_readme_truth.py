@@ -13,6 +13,17 @@ def test_design_partner_gate_is_explicitly_not_met() -> None:
     assert readme_truth.check_design_partner_claims(readme_truth.DESIGN_PARTNER_TRUTH_DOCS) == []
 
 
+def test_release_subcommand_claims_are_checked() -> None:
+    """Nested release commands in README prose must map to registered commands."""
+    text = "Run dataforge15 release gate --json and dataforge release doctor --core."
+
+    claimed = readme_truth.extract_release_subcommands_from_readme(text)
+    registered = readme_truth.get_registered_release_commands()
+
+    assert claimed == {"gate", "doctor"}
+    assert claimed <= registered
+
+
 def test_unqualified_design_partner_claim_fails_when_gate_not_met(tmp_path: Path) -> None:
     """Customer validation prose must be qualified while the evidence gate is unmet."""
     claim_path = tmp_path / "claim.md"

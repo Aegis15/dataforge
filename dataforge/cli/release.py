@@ -9,6 +9,7 @@ from typing import Annotated
 import typer
 
 from dataforge.release.doctor import DEFAULT_KAGGLE_CREDENTIALS, run_doctor
+from dataforge.release.gate import run_release_gate
 
 release_app = typer.Typer(help="Release verification utilities.", no_args_is_help=True)
 
@@ -52,3 +53,28 @@ def doctor(
             status = "ok" if check.ok else "fail"
             typer.echo(f"{status:4} {check.name}: {check.detail}")
     raise typer.Exit(code=0 if report.ok else 2)
+
+
+@release_app.command(name="gate")
+def gate(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print machine-readable JSON."),
+    ] = False,
+    keep_artifacts: Annotated[
+        bool,
+        typer.Option(
+            "--keep-artifacts",
+            help="Copy the temporary gate workspace to dist/release-gate-latest.",
+        ),
+    ] = False,
+) -> None:
+    """Build, audit, offline-install, and smoke-test the release wheel."""
+    report = run_release_gate(keep_artifacts=keep_artifacts)
+    if json_output:
+        typer.echo(json.dumps(report.to_dict(), indent=2, sort_keys=True))
+    else:
+        for step in report.steps:
+            status = "ok" if step.ok else "fail"
+            typer.echo(f"{status:4} {step.name}: {step.detail}")
+    raise typer.Exit(code=0 if report.ok else 1)

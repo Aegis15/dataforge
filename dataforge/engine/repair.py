@@ -142,6 +142,7 @@ class RepairFailure(BaseModel):
 class RepairReceipt(BaseModel):
     """Stable receipt for a dry-run or applied repair pipeline run."""
 
+    schema_version: Literal["repair_receipt_v1"] = "repair_receipt_v1"
     contract_version: str = CONTRACT_VERSION
     mode: RepairMode
     applied: bool

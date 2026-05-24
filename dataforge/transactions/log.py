@@ -16,6 +16,8 @@ from dataforge.transactions.txn import RepairTransaction
 
 LEGACY_SCHEMA_VERSION = 1
 SCHEMA_VERSION = 2
+LEGACY_SCHEMA_NAME = "transaction_journal_v1"
+SCHEMA_NAME = "transaction_journal_v2"
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -41,6 +43,7 @@ class TransactionAuditReport(BaseModel):
     log_path: str | None = None
     txn_id: str | None = None
     schema_version: int | None = None
+    schema_name: str | None = None
     event_count: int = Field(ge=0)
     head_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     errors: tuple[str, ...] = Field(default_factory=tuple)
@@ -194,6 +197,7 @@ def _v2_created_record(transaction: RepairTransaction) -> dict[str, Any]:
     return _sign_event(
         {
             "schema_version": SCHEMA_VERSION,
+            "schema_name": SCHEMA_NAME,
             "event_index": 0,
             "event_type": "created",
             "occurred_at": transaction.created_at.isoformat(),
@@ -225,6 +229,7 @@ def _v2_applied_record(
     return _sign_event(
         {
             "schema_version": SCHEMA_VERSION,
+            "schema_name": SCHEMA_NAME,
             "event_index": event_index,
             "event_type": "applied",
             "occurred_at": applied_at.isoformat(),
@@ -251,6 +256,7 @@ def _v2_reverted_record(log_path: Path, txn_id: str, reverted_at: datetime) -> d
     return _sign_event(
         {
             "schema_version": SCHEMA_VERSION,
+            "schema_name": SCHEMA_NAME,
             "event_index": event_index,
             "event_type": "reverted",
             "occurred_at": reverted_at.isoformat(),
@@ -467,6 +473,7 @@ def verify_transaction_log(
                 verdict=TransactionAuditVerdict.MALFORMED,
                 log_path=str(resolved_log_path),
                 schema_version=LEGACY_SCHEMA_VERSION,
+                schema_name=LEGACY_SCHEMA_NAME,
                 event_count=len(records),
                 errors=(str(exc),),
             )
@@ -476,6 +483,7 @@ def verify_transaction_log(
                 log_path=str(resolved_log_path),
                 txn_id=transaction.txn_id,
                 schema_version=LEGACY_SCHEMA_VERSION,
+                schema_name=LEGACY_SCHEMA_NAME,
                 event_count=len(records),
                 errors=(f"Expected txn_id '{txn_id}', found '{transaction.txn_id}'.",),
             )
@@ -484,6 +492,7 @@ def verify_transaction_log(
             log_path=str(resolved_log_path),
             txn_id=transaction.txn_id,
             schema_version=LEGACY_SCHEMA_VERSION,
+            schema_name=LEGACY_SCHEMA_NAME,
             event_count=len(records),
             errors=("Legacy v1 logs do not contain event hashes.",),
         )
@@ -553,6 +562,7 @@ def verify_transaction_log(
             log_path=str(resolved_log_path),
             txn_id=resolved_txn_id or txn_id,
             schema_version=SCHEMA_VERSION,
+            schema_name=SCHEMA_NAME,
             event_count=len(records),
             head_sha256=head_sha256,
             errors=tuple(errors),
@@ -577,6 +587,7 @@ def verify_transaction_log(
                 log_path=str(resolved_log_path),
                 txn_id=resolved_txn_id,
                 schema_version=SCHEMA_VERSION,
+                schema_name=SCHEMA_NAME,
                 event_count=len(records),
                 head_sha256=head_sha256,
                 errors=tuple(revert_errors),
@@ -587,6 +598,7 @@ def verify_transaction_log(
         log_path=str(resolved_log_path),
         txn_id=resolved_txn_id,
         schema_version=SCHEMA_VERSION,
+        schema_name=SCHEMA_NAME,
         event_count=len(records),
         head_sha256=head_sha256,
     )

@@ -77,6 +77,12 @@ def extract_subcommands_from_readme(text: str) -> set[str]:
     return {m.group(1) for m in pattern.finditer(text)}
 
 
+def extract_release_subcommands_from_readme(text: str) -> set[str]:
+    """Find all nested ``dataforge15 release <command>`` references."""
+    pattern = re.compile(r"\bdataforge(?:15)?\s+release\s+([a-z][a-z0-9_-]*)")
+    return {m.group(1) for m in pattern.finditer(text)}
+
+
 def get_registered_typer_commands() -> set[str]:
     """Import the Typer app and list registered command names."""
     try:
@@ -99,6 +105,22 @@ def get_registered_typer_commands() -> set[str]:
     if hasattr(typer_app, "info") and hasattr(typer_app.info, "name") and typer_app.info.name:
         registered.add(typer_app.info.name)
 
+    return registered
+
+
+def get_registered_release_commands() -> set[str]:
+    """Import the release Typer app and list registered release commands."""
+    try:
+        from dataforge.cli.release import release_app
+    except ImportError as exc:
+        print(f"WARNING: could not import dataforge.cli.release: {exc}", file=sys.stderr)
+        return set()
+
+    registered: set[str] = set()
+    if hasattr(release_app, "registered_commands"):
+        for cmd in release_app.registered_commands:
+            if hasattr(cmd, "name") and cmd.name:
+                registered.add(cmd.name)
     return registered
 
 
@@ -194,6 +216,8 @@ def main() -> None:
     # Check subcommands
     claimed = extract_subcommands_from_readme(readme_text)
     registered = get_registered_typer_commands()
+    claimed_release = extract_release_subcommands_from_readme(readme_text)
+    registered_release = get_registered_release_commands()
 
     # Exclude known non-command references (e.g. version flags)
     non_commands = {"version", "help"}
@@ -207,6 +231,19 @@ def main() -> None:
             )
     else:
         print("WARNING: could not resolve registered commands, skipping subcommand check.")
+
+    if registered_release:
+        missing_release = claimed_release - registered_release
+        if missing_release:
+            errors.append(
+                "README claims these release subcommands but they are not registered: "
+                f"{sorted(missing_release)}"
+            )
+    elif claimed_release:
+        print(
+            "WARNING: could not resolve release commands, skipping release subcommand check.",
+            file=sys.stderr,
+        )
 
     # Check playground URLs
     playground_urls = extract_playground_urls(readme_text)
@@ -224,6 +261,7 @@ def main() -> None:
     print(
         f"README truth check passed. "
         f"Claimed commands: {sorted(claimed_commands)}. "
+        f"Claimed release commands: {sorted(claimed_release)}. "
         f"Playground URLs checked: {len(playground_urls)}."
     )
 
