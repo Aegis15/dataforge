@@ -25,7 +25,9 @@ flowchart LR
   and `release`.
 - **Schema inference**: `dataforge.schema_inference` emits reviewable
   `SchemaInferenceResult` artifacts for profile and benchmark use. Inferred
-  constraints must be explicitly converted into a `Schema` before verifier use.
+  constraints must be written as `constraint_review_v1` artifacts and marked
+  accepted before repair or verifier use. Pending and rejected candidates never
+  affect repair behavior.
 - **Detectors**: pandas-based scanners for `type_mismatch`, `decimal_shift`,
   and `fd_violation`. Detectors emit typed issues and never mutate data.
 - **Repairers**: deterministic proposal generators for shipped detector
@@ -137,7 +139,9 @@ Optional extras and scoped dependencies:
   trusted-publisher ownership are verified. It intentionally keeps the
   `dataforge` Python import namespace for the 0.1 line. The legacy
   `data_quality_env` namespace is source-tree compatibility/regression material
-  and is excluded from the core wheel.
+  and is excluded from the core wheel and source distribution. Release gates
+  verify that clean installs cannot import `data_quality_env` or leak from the
+  source checkout.
 - `dataforge15-mcp` is the planned nested standalone distribution for
   `dataforge15-mcp-v*` release tags after PyPI ownership is verified.
 - SFT datasets and checkpoints are Hugging Face artifacts verified by

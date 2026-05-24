@@ -12,6 +12,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from dataclasses import asdict, dataclass, field
@@ -45,12 +46,85 @@ REJECTED_WHEEL_PREFIXES = (
     "dist/",
     "node_modules/",
 )
+REQUIRED_SDIST_MEMBERS = frozenset(
+    {
+        "PKG-INFO",
+        "README.md",
+        "LICENSE",
+        "MANIFEST.in",
+        "pyproject.toml",
+        "dataforge/__init__.py",
+        "dataforge/py.typed",
+        "dataforge/cli/profile.py",
+        "dataforge/cli/repair.py",
+        "dataforge/fixtures/hospital_10rows.csv",
+        "dataforge/fixtures/hospital_schema.yaml",
+    }
+)
+ALLOWED_SDIST_TOP_LEVEL = {
+    "PKG-INFO",
+    "README.md",
+    "LICENSE",
+    "MANIFEST.in",
+    "pyproject.toml",
+    "setup.cfg",
+    "dataforge",
+    "dataforge15.egg-info",
+}
+ALLOWED_SDIST_EGG_INFO = {
+    "PKG-INFO",
+    "SOURCES.txt",
+    "dependency_links.txt",
+    "entry_points.txt",
+    "requires.txt",
+    "top_level.txt",
+}
+REJECTED_SDIST_PREFIXES = (
+    "tests/",
+    "data_quality_env/",
+    ".github/",
+    ".hf-space",
+    "build/",
+    "dist/",
+    "node_modules/",
+    "logs/",
+    "eval/",
+    "training/",
+    "playground/",
+    "playground-model/",
+    "dataforge-mcp/",
+    "benchmark_results/",
+    "datasets/",
+    "scripts/",
+    "docs/",
+)
+REJECTED_ROOT_LEGACY_FILES = {
+    "analyze_trajectory.py",
+    "benchmark.py",
+    "client.py",
+    "compat.py",
+    "generate_datasets.py",
+    "heuristic_baseline.py",
+    "inference.py",
+    "models.py",
+    "random_baseline.py",
+    "run_baseline.py",
+    "test_env.py",
+    "verify_all_fields.py",
+    "verify_nuclear.py",
+    "verify_score_range.py",
+}
 REJECTED_WHEEL_PARTS = {
     "__pycache__",
     ".pytest_cache",
     ".mypy_cache",
     ".ruff_cache",
     ".hypothesis",
+}
+REJECTED_SDIST_PARTS = REJECTED_WHEEL_PARTS | {
+    ".benchmarks",
+    ".claude",
+    ".idea",
 }
 
 
@@ -246,6 +320,58 @@ def _audit_wheel_contents(wheel_path: Path) -> ReleaseGateStep:
     )
 
 
+def _strip_sdist_root(member: str) -> str:
+    """Return an sdist member path without the archive root directory."""
+    parts = member.split("/", 1)
+    if len(parts) == 2 and parts[0].startswith(f"{PACKAGE_NAME}-"):
+        return parts[1]
+    return member
+
+
+def _audit_sdist_contents(sdist_path: Path) -> ReleaseGateStep:
+    """Verify the source distribution contains only release-owned core assets."""
+    errors: list[str] = []
+    with tarfile.open(sdist_path, "r:gz") as archive:
+        members = sorted(
+            _strip_sdist_root(info.name) for info in archive.getmembers() if info.isfile()
+        )
+
+    for member in members:
+        parts = set(Path(member).parts)
+        top_level = member.split("/", 1)[0]
+        if any(member.startswith(prefix) for prefix in REJECTED_SDIST_PREFIXES):
+            errors.append(f"Rejected path prefix: {member}")
+        if parts & REJECTED_SDIST_PARTS:
+            errors.append(f"Rejected generated/cache path: {member}")
+        if member in REJECTED_ROOT_LEGACY_FILES:
+            errors.append(f"Rejected legacy root wrapper: {member}")
+        if member.endswith((".pyc", ".pyo", ".ipynb")):
+            errors.append(f"Rejected generated or notebook file: {member}")
+        if top_level not in ALLOWED_SDIST_TOP_LEVEL:
+            errors.append(f"Unexpected top-level sdist member: {member}")
+        if member.startswith("dataforge15.egg-info/"):
+            egg_info_name = member.split("/", 1)[1]
+            if egg_info_name not in ALLOWED_SDIST_EGG_INFO:
+                errors.append(f"Unexpected egg-info member: {member}")
+
+    missing = sorted(REQUIRED_SDIST_MEMBERS - set(members))
+    errors.extend(f"Missing required sdist member: {member}" for member in missing)
+    metadata = {
+        "sdist": str(sdist_path),
+        "member_count": len(members),
+        "required_count": len(REQUIRED_SDIST_MEMBERS),
+        "missing": missing,
+    }
+    return ReleaseGateStep(
+        name="sdist_contents_audit",
+        ok=not errors,
+        detail="sdist contains only the allowed DataForge15 core source surface"
+        if not errors
+        else "sdist contents audit failed",
+        metadata={**metadata, "errors": errors},
+    )
+
+
 def _json_step(
     name: str,
     result: subprocess.CompletedProcess[str],
@@ -367,6 +493,8 @@ def run_release_gate(*, keep_artifacts: bool = False) -> ReleaseGateReport:
         artifact_hashes[sdist_path.name] = _file_sha256(sdist_path)
         if not _append_step(steps, _audit_wheel_contents(wheel_path)):
             return ReleaseGateReport(ok=False, steps=steps, artifact_sha256=artifact_hashes)
+        if not _append_step(steps, _audit_sdist_contents(sdist_path)):
+            return ReleaseGateReport(ok=False, steps=steps, artifact_sha256=artifact_hashes)
 
         shutil.copy2(wheel_path, wheelhouse_dir / wheel_path.name)
         step, _result = _run_command(
@@ -410,6 +538,12 @@ def run_release_gate(*, keep_artifacts: bool = False) -> ReleaseGateReport:
 
         import_script = (
             "import importlib.util\n"
+            "from pathlib import Path\n"
+            f"project_root = Path({str(project_root)!r}).resolve()\n"
+            "dataforge_spec = importlib.util.find_spec('dataforge')\n"
+            "assert dataforge_spec is not None\n"
+            "origin = Path(str(dataforge_spec.origin)).resolve()\n"
+            "assert project_root not in (origin, *origin.parents), origin\n"
             "assert importlib.util.find_spec('dataforge') is not None\n"
             "assert importlib.util.find_spec('data_quality_env') is None\n"
         )

@@ -14,6 +14,7 @@ from dataforge.cli.common import load_schema, resolve_cli_path
 from dataforge.detectors.base import Issue, Schema
 from dataforge.repairers.base import ProposedFix, RepairAttempt
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult
+from dataforge.schema_inference import ConstraintReviewArtifact, load_constraint_review_artifact
 from dataforge.transactions.txn import CellFix
 from dataforge.ui.repair_diff import render_repair_diff
 
@@ -51,6 +52,18 @@ def _resolve_schema(schema_path: Path | None) -> Schema | None:
     if not resolved_schema.exists():
         raise typer.BadParameter(f"Schema file '{schema_path}' does not exist.")
     return load_schema(resolved_schema)
+
+
+def _resolve_constraints(
+    constraints_path: Path | None,
+) -> tuple[ConstraintReviewArtifact | None, str | None]:
+    """Resolve an optional reviewed constraints artifact."""
+    if constraints_path is None:
+        return None, None
+    resolved_constraints = resolve_cli_path(constraints_path)
+    if not resolved_constraints.exists():
+        raise typer.BadParameter(f"Constraints file '{constraints_path}' does not exist.")
+    return load_constraint_review_artifact(resolved_constraints)
 
 
 def _print_error(message: str, *, hint: str | None = None) -> None:
@@ -203,6 +216,13 @@ def repair(
             help="Path to a YAML schema file with column types and FDs.",
         ),
     ] = None,
+    constraints: Annotated[
+        Path | None,
+        typer.Option(
+            "--constraints",
+            help="Path to a reviewed constraints artifact from profile --constraints-out.",
+        ),
+    ] = None,
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", help="Show proposed fixes without changing the file."),
@@ -261,6 +281,7 @@ def repair(
         if not resolved_path.exists():
             raise typer.BadParameter(f"CSV file '{path}' does not exist.")
         parsed_schema = _resolve_schema(schema)
+        constraints_artifact, constraints_sha256 = _resolve_constraints(constraints)
     except Exception as exc:
         _print_error(str(exc))
         raise typer.Exit(code=2) from exc
@@ -273,6 +294,8 @@ def repair(
                 source_path=resolved_path,
                 mode="apply" if apply else "dry_run",
                 schema=parsed_schema,
+                constraints=constraints_artifact,
+                constraints_artifact_sha256=constraints_sha256,
                 allow_llm=allow_llm,
                 model=llm_model,
                 allow_pii=allow_pii,

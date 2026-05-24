@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -9,7 +10,7 @@ import pandas as pd
 import pytest
 from pydantic import ValidationError
 
-from dataforge.detectors.base import Issue, Severity
+from dataforge.detectors.base import Issue, Schema, Severity
 from dataforge.engine.repair import (
     CandidateFix,
     RepairPipelineRequest,
@@ -23,6 +24,13 @@ from dataforge.engine.repair import (
 )
 from dataforge.repairers.base import ProposedFix
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
+from dataforge.schema_inference import (
+    ConstraintReviewArtifact,
+    ConstraintReviewError,
+    build_constraint_review_artifact,
+    infer_schema,
+)
+from dataforge.table import read_csv
 from dataforge.transactions.revert import revert_transaction
 from dataforge.transactions.txn import CellFix
 from dataforge.verifier import VerificationResult, VerificationVerdict
@@ -64,6 +72,62 @@ def _issue() -> Issue:
         actual="1020",
         reason="decimal shift",
     )
+
+
+def _write_fd_repairable_csv(path: Path) -> None:
+    """Write an FD violation with a strict majority repair."""
+    path.write_text(
+        "code,name\n"
+        "A,Alpha\n"
+        "A,Alpha\n"
+        "A,Alfa\n"
+        "B,Beta\n"
+        "B,Beta\n"
+        "C,Gamma\n"
+        "C,Gamma\n"
+        "D,Delta\n"
+        "D,Delta\n"
+        "E,Echo\n",
+        encoding="utf-8",
+    )
+
+
+def _constraint_artifact_for(
+    csv_path: Path,
+    *,
+    accept_fd: bool = False,
+    accept_column: str | None = None,
+) -> ConstraintReviewArtifact:
+    """Build a reviewed constraint artifact for repair tests."""
+    source_sha256 = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    artifact = build_constraint_review_artifact(
+        infer_schema(read_csv(csv_path)),
+        source_path=csv_path,
+        source_sha256=source_sha256,
+    )
+    reviewed = []
+    for candidate in artifact.candidates:
+        should_accept_fd = (
+            accept_fd
+            and candidate.candidate.kind == "functional_dependency"
+            and candidate.candidate.columns == ("code",)
+            and candidate.candidate.dependent == "name"
+        )
+        should_accept_column = (
+            accept_column is not None
+            and candidate.candidate.kind == "column_type"
+            and candidate.candidate.columns == (accept_column,)
+        )
+        reviewed.append(
+            candidate.model_copy(
+                update={
+                    "decision": "accepted"
+                    if should_accept_fd or should_accept_column
+                    else candidate.decision
+                }
+            )
+        )
+    return artifact.model_copy(update={"candidates": reviewed})
 
 
 class _NoneRepairer:
@@ -117,6 +181,60 @@ def test_run_repair_pipeline_dry_run_returns_ephemeral_receipt(tmp_path: Path) -
     assert re.fullmatch(r"txn-\d{4}-\d{2}-\d{2}-[0-9a-f]{6}", result.transaction.txn_id)
     assert result.fixes
     assert csv_path.read_bytes() == original
+
+
+def test_repair_pipeline_uses_only_accepted_constraints(tmp_path: Path) -> None:
+    csv_path = tmp_path / "fd.csv"
+    _write_fd_repairable_csv(csv_path)
+    source_sha256 = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    artifact = _constraint_artifact_for(csv_path, accept_fd=True)
+
+    result = run_repair_pipeline(
+        RepairPipelineRequest(
+            source_path=csv_path,
+            mode="dry_run",
+            constraints=artifact,
+            constraints_artifact_sha256="a" * 64,
+        )
+    )
+
+    assert result.receipt.source_sha256 == source_sha256
+    assert result.receipt.accepted_constraint_ids
+    assert result.receipt.constraints_artifact_sha256 == "a" * 64
+    assert [fix.detector_id for fix in result.fixes] == ["fd_violation"]
+    assert result.fixes[0].old_value == "Alfa"
+    assert result.fixes[0].new_value == "Alpha"
+
+
+def test_repair_pipeline_ignores_pending_constraints(tmp_path: Path) -> None:
+    csv_path = tmp_path / "fd.csv"
+    _write_fd_repairable_csv(csv_path)
+    artifact = _constraint_artifact_for(csv_path, accept_fd=False)
+
+    result = run_repair_pipeline(
+        RepairPipelineRequest(source_path=csv_path, mode="dry_run", constraints=artifact)
+    )
+
+    assert result.receipt.accepted_constraint_ids == []
+    assert result.issues == []
+    assert result.fixes == []
+
+
+def test_repair_pipeline_rejects_conflicting_accepted_constraints(tmp_path: Path) -> None:
+    csv_path = tmp_path / "amounts.csv"
+    _write_repairable_csv(csv_path)
+    artifact = _constraint_artifact_for(csv_path, accept_column="amount")
+    accepted_id = artifact.accepted_candidate_ids()[0]
+
+    with pytest.raises(ConstraintReviewError, match=accepted_id):
+        run_repair_pipeline(
+            RepairPipelineRequest(
+                source_path=csv_path,
+                mode="dry_run",
+                schema=Schema(columns={"amount": "float"}),
+                constraints=artifact,
+            )
+        )
 
 
 def test_apply_transaction_reverts_byte_for_byte(

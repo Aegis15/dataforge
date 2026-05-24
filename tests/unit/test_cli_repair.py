@@ -24,6 +24,12 @@ from dataforge.cli.repair import (
 from dataforge.detectors.base import Issue, Schema, Severity
 from dataforge.repairers.base import ProposedFix, RepairAttempt
 from dataforge.safety import SafetyContext, SafetyResult, SafetyVerdict
+from dataforge.schema_inference import (
+    build_constraint_review_artifact,
+    dump_constraint_review_artifact,
+    infer_schema,
+)
+from dataforge.table import read_csv
 from dataforge.transactions.log import append_created_transaction
 from dataforge.transactions.txn import CellFix, RepairTransaction
 from dataforge.verifier import VerificationResult, VerificationVerdict
@@ -35,6 +41,23 @@ def _write_repairable_csv(path: Path) -> None:
     """Write a small CSV with a deterministic decimal-shift issue."""
     path.write_text(
         "id,amount\n1,100\n2,105\n3,98\n4,1020\n5,103\n",
+        encoding="utf-8",
+    )
+
+
+def _write_fd_repairable_csv(path: Path) -> None:
+    path.write_text(
+        "code,name\n"
+        "A,Alpha\n"
+        "A,Alpha\n"
+        "A,Alfa\n"
+        "B,Beta\n"
+        "B,Beta\n"
+        "C,Gamma\n"
+        "C,Gamma\n"
+        "D,Delta\n"
+        "D,Delta\n"
+        "E,Echo\n",
         encoding="utf-8",
     )
 
@@ -167,6 +190,53 @@ class TestRepairCommand:
         assert result.exit_code == 0
         assert '"mode": "dry_run"' in result.output
         assert '"fixes_count": 1' in result.output
+
+    def test_dry_run_json_uses_accepted_constraints_artifact(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / "fd.csv"
+        constraints_path = tmp_path / "constraints.json"
+        _write_fd_repairable_csv(csv_path)
+        artifact = build_constraint_review_artifact(
+            infer_schema(read_csv(csv_path)),
+            source_path=csv_path,
+            source_sha256=hashlib.sha256(csv_path.read_bytes()).hexdigest(),
+        )
+        reviewed = [
+            candidate.model_copy(
+                update={
+                    "decision": "accepted"
+                    if (
+                        candidate.candidate.kind == "functional_dependency"
+                        and candidate.candidate.columns == ("code",)
+                        and candidate.candidate.dependent == "name"
+                    )
+                    else candidate.decision
+                }
+            )
+            for candidate in artifact.candidates
+        ]
+        artifact = artifact.model_copy(update={"candidates": reviewed})
+        constraints_path.write_text(dump_constraint_review_artifact(artifact), encoding="utf-8")
+
+        result = runner.invoke(
+            app,
+            [
+                "repair",
+                str(csv_path),
+                "--constraints",
+                str(constraints_path),
+                "--dry-run",
+                "--json",
+            ],
+        )
+
+        assert result.exit_code == 0
+        payload = json.loads(result.output)
+        assert payload["receipt"]["accepted_constraint_ids"] == artifact.accepted_candidate_ids()
+        assert (
+            payload["receipt"]["constraints_artifact_sha256"]
+            == hashlib.sha256(constraints_path.read_bytes()).hexdigest()
+        )
+        assert payload["fixes"][0]["detector_id"] == "fd_violation"
 
     def test_dry_run_returns_one_when_no_fixes_exist(self, tmp_path: Path) -> None:
         csv_path = tmp_path / "clean.csv"

@@ -11,6 +11,8 @@ EXPECTED_PUBLIC_EXPORTS = {
     "CandidateFix",
     "CellFix",
     "ConstraintCandidate",
+    "ConstraintReviewArtifact",
+    "ConstraintReviewError",
     "Issue",
     "ProposedFix",
     "RepairFailure",
@@ -18,6 +20,7 @@ EXPECTED_PUBLIC_EXPORTS = {
     "RepairPipelineResult",
     "RepairReceipt",
     "RepairTransaction",
+    "ReviewedConstraintCandidate",
     "SMTVerifier",
     "SafetyContext",
     "SafetyFilter",
@@ -33,7 +36,10 @@ EXPECTED_PUBLIC_EXPORTS = {
     "VerificationResult",
     "VerificationVerdict",
     "VerifiedFix",
+    "build_constraint_review_artifact",
+    "dump_constraint_review_artifact",
     "load_schema",
+    "load_constraint_review_artifact",
     "read_csv",
     "revert_transaction",
     "run_all_detectors",
@@ -68,8 +74,7 @@ BANNED_INTEGRATION_IMPORTS = (
 
 def test_root_facade_exports_integration_surface() -> None:
     """The root package exposes the supported integration API."""
-    assert set(dataforge.__all__) >= EXPECTED_PUBLIC_EXPORTS
-    assert "__version__" in dataforge.__all__
+    assert set(dataforge.__all__) == EXPECTED_PUBLIC_EXPORTS | {"__version__"}
 
     namespace: dict[str, object] = {}
     exec(

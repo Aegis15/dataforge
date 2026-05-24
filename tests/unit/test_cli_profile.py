@@ -5,6 +5,8 @@ Tests the end-to-end flow: CSV loading, detector execution, rich output.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from pathlib import Path
 
@@ -71,6 +73,49 @@ class TestProfileCommand:
         assert result.exit_code == 0
         assert '"issues_count": 4' in result.output
         assert "fd_violation" in result.output
+
+    def test_profile_constraints_out_writes_pending_review_artifact(self, tmp_path: Path) -> None:
+        """Profile writes deterministic candidate-review JSON without accepting anything."""
+        first_artifact = tmp_path / "constraints-a.json"
+        second_artifact = tmp_path / "constraints-b.json"
+
+        first = runner.invoke(
+            app,
+            [
+                "profile",
+                str(_HOSPITAL_CSV),
+                "--schema",
+                str(_HOSPITAL_SCHEMA),
+                "--constraints-out",
+                str(first_artifact),
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+        second = runner.invoke(
+            app,
+            [
+                "profile",
+                str(_HOSPITAL_CSV),
+                "--schema",
+                str(_HOSPITAL_SCHEMA),
+                "--constraints-out",
+                str(second_artifact),
+                "--json",
+            ],
+            catch_exceptions=False,
+        )
+
+        assert first.exit_code == 0
+        assert second.exit_code == 0
+        assert first_artifact.read_bytes() == second_artifact.read_bytes()
+        payload = json.loads(first_artifact.read_text(encoding="utf-8"))
+        assert payload["schema_version"] == "constraint_review_v1"
+        assert payload["source_sha256"] == hashlib.sha256(_HOSPITAL_CSV.read_bytes()).hexdigest()
+        assert {candidate["decision"] for candidate in payload["candidates"]} == {"pending"}
+        assert all(
+            candidate["candidate_id"].startswith("cnd-") for candidate in payload["candidates"]
+        )
 
     def test_profile_without_schema(self) -> None:
         """Profile without schema — FD violations not detected, but others are."""

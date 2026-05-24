@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from hashlib import sha256
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -18,7 +19,11 @@ from rich.console import Console
 from dataforge.cli.common import load_schema, read_csv, resolve_cli_path
 from dataforge.detectors import run_all_detectors
 from dataforge.detectors.base import Issue, Schema, Severity
-from dataforge.schema_inference import infer_schema
+from dataforge.schema_inference import (
+    build_constraint_review_artifact,
+    dump_constraint_review_artifact,
+    infer_schema,
+)
 from dataforge.ui.profile_view import render_profile_table
 
 _console = Console(stderr=True)
@@ -56,6 +61,13 @@ def profile(
         bool,
         typer.Option("--json", help="Print profile results as JSON."),
     ] = False,
+    constraints_out: Annotated[
+        Path | None,
+        typer.Option(
+            "--constraints-out",
+            help="Write inferred constraints as a pending review artifact.",
+        ),
+    ] = None,
     fail_on: Annotated[
         FailOn,
         typer.Option(
@@ -95,6 +107,22 @@ def profile(
     # Run all detectors.
     issues = run_all_detectors(df, parsed_schema)
     schema_inference = infer_schema(df)
+    source_sha256 = sha256(resolved_path.read_bytes()).hexdigest()
+    if constraints_out is not None:
+        try:
+            artifact = build_constraint_review_artifact(
+                schema_inference,
+                source_path=resolved_path,
+                source_sha256=source_sha256,
+            )
+            constraints_out.parent.mkdir(parents=True, exist_ok=True)
+            constraints_out.write_text(
+                dump_constraint_review_artifact(artifact),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            _console.print(f"[bold red]Error writing constraints artifact:[/bold red] {exc}")
+            raise typer.Exit(code=2) from exc
 
     # Render the results.
     if json_output:

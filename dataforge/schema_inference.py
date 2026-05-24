@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import re
 from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataforge.table import TableLike, column_names, column_values, row_count
+from dataforge.transactions.log import sha256_bytes
 from dataforge.verifier.schema import DomainBound, FunctionalDependency, Schema
 
 ConstraintKind = Literal[
@@ -19,6 +23,11 @@ ConstraintKind = Literal[
     "unique",
     "functional_dependency",
 ]
+ConstraintDecision = Literal["pending", "accepted", "rejected"]
+CONSTRAINT_REVIEW_SCHEMA_VERSION: Literal["constraint_review_v1"] = "constraint_review_v1"
+REPAIR_SUPPORTED_CONSTRAINT_KINDS = frozenset(
+    {"column_type", "domain_bound", "functional_dependency"}
+)
 
 _INT_RE = re.compile(r"^[+-]?\d+$")
 _FLOAT_RE = re.compile(r"^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$")
@@ -85,6 +94,249 @@ class SchemaInferenceResult(BaseModel):
             functional_dependencies=tuple(fds),
             domain_bounds=tuple(bounds),
         )
+
+
+class ReviewedConstraintCandidate(BaseModel):
+    """A profile-inferred candidate plus its explicit review decision."""
+
+    candidate_id: str = Field(pattern=r"^cnd-[0-9a-f]{16}$")
+    decision: ConstraintDecision = "pending"
+    candidate: ConstraintCandidate
+    review_note: str | None = None
+
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
+
+class ConstraintReviewArtifact(BaseModel):
+    """Strict JSON artifact that records review decisions for inferred constraints."""
+
+    schema_version: Literal["constraint_review_v1"] = CONSTRAINT_REVIEW_SCHEMA_VERSION
+    source_path: str = Field(min_length=1)
+    source_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    row_count: int = Field(ge=0)
+    candidates: list[ReviewedConstraintCandidate] = Field(default_factory=list)
+
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
+
+    def accepted_candidates(self) -> list[ReviewedConstraintCandidate]:
+        """Return candidates explicitly accepted by review."""
+        return [candidate for candidate in self.candidates if candidate.decision == "accepted"]
+
+    def to_schema(self) -> Schema:
+        """Convert accepted repair-supported candidates into a verifier Schema."""
+        columns: dict[str, str] = {}
+        fds: list[FunctionalDependency] = []
+        bounds: list[DomainBound] = []
+
+        for reviewed in self.accepted_candidates():
+            candidate = reviewed.candidate
+            if candidate.kind == "column_type" and candidate.inferred_type is not None:
+                columns[candidate.columns[0]] = candidate.inferred_type
+            elif candidate.kind == "domain_bound":
+                bounds.append(
+                    DomainBound(
+                        column=candidate.columns[0],
+                        min_value=candidate.min_value,
+                        max_value=candidate.max_value,
+                    )
+                )
+            elif candidate.kind == "functional_dependency" and candidate.dependent is not None:
+                fds.append(
+                    FunctionalDependency(
+                        determinant=candidate.columns,
+                        dependent=candidate.dependent,
+                    )
+                )
+
+        return Schema(
+            columns=columns,
+            functional_dependencies=tuple(fds),
+            domain_bounds=tuple(bounds),
+        )
+
+    def accepted_candidate_ids(self) -> list[str]:
+        """Return accepted candidate ids that affect repair in v1."""
+        return [
+            reviewed.candidate_id
+            for reviewed in self.accepted_candidates()
+            if reviewed.candidate.kind in REPAIR_SUPPORTED_CONSTRAINT_KINDS
+        ]
+
+
+class ConstraintReviewError(ValueError):
+    """Raised when a reviewed constraint artifact cannot be used safely."""
+
+
+def _canonical_candidate_payload(candidate: ConstraintCandidate) -> str:
+    """Return stable JSON used for candidate ids and deterministic artifacts."""
+    return json.dumps(
+        candidate.model_dump(mode="json"),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def constraint_candidate_id(candidate: ConstraintCandidate) -> str:
+    """Return the stable id for one inferred constraint candidate."""
+    digest = hashlib.sha256(_canonical_candidate_payload(candidate).encode("utf-8")).hexdigest()
+    return f"cnd-{digest[:16]}"
+
+
+def build_constraint_review_artifact(
+    inference: SchemaInferenceResult,
+    *,
+    source_path: Path,
+    source_sha256: str,
+) -> ConstraintReviewArtifact:
+    """Create a pending review artifact from a schema inference result."""
+    reviewed: list[ReviewedConstraintCandidate] = []
+    seen_ids: set[str] = set()
+    for candidate in inference.candidates:
+        candidate_id = constraint_candidate_id(candidate)
+        if candidate_id in seen_ids:
+            raise ConstraintReviewError(f"Duplicate inferred constraint id: {candidate_id}.")
+        seen_ids.add(candidate_id)
+        reviewed.append(
+            ReviewedConstraintCandidate(
+                candidate_id=candidate_id,
+                candidate=candidate,
+            )
+        )
+    return ConstraintReviewArtifact(
+        source_path=str(source_path),
+        source_sha256=source_sha256,
+        row_count=inference.row_count,
+        candidates=reviewed,
+    )
+
+
+def load_constraint_review_artifact(path: Path) -> tuple[ConstraintReviewArtifact, str]:
+    """Load a strict constraint review artifact and return it with its SHA-256."""
+    try:
+        payload = path.read_bytes()
+    except OSError as exc:
+        raise ConstraintReviewError(f"Could not read constraints file '{path}': {exc}") from exc
+    try:
+        artifact = ConstraintReviewArtifact.model_validate_json(payload)
+    except ValueError as exc:
+        raise ConstraintReviewError(f"Invalid constraints file '{path}': {exc}") from exc
+    return artifact, sha256_bytes(payload)
+
+
+def dump_constraint_review_artifact(artifact: ConstraintReviewArtifact) -> str:
+    """Return deterministic, human-reviewable JSON for a constraint artifact."""
+    return json.dumps(artifact.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+
+
+def merge_schema_with_reviewed_constraints(
+    base_schema: Schema | None,
+    artifact: ConstraintReviewArtifact | None,
+    *,
+    source_sha256: str,
+) -> tuple[Schema | None, list[str]]:
+    """Merge a declared schema with accepted reviewed constraints.
+
+    Pending and rejected candidates are ignored. Accepted regex and uniqueness
+    candidates stay recorded in the artifact but do not affect repair in v1.
+    """
+    if artifact is None:
+        return base_schema, []
+    if artifact.source_sha256 != source_sha256:
+        raise ConstraintReviewError(
+            "Constraint review artifact source_sha256 does not match the CSV being repaired."
+        )
+
+    accepted_schema = artifact.to_schema()
+    accepted_ids = artifact.accepted_candidate_ids()
+    if not accepted_ids:
+        return base_schema, []
+    if base_schema is None:
+        return accepted_schema, accepted_ids
+
+    conflicts: list[str] = []
+    merged_columns = dict(base_schema.columns)
+    accepted_by_id = {
+        reviewed.candidate_id: reviewed
+        for reviewed in artifact.accepted_candidates()
+        if reviewed.candidate.kind in REPAIR_SUPPORTED_CONSTRAINT_KINDS
+    }
+
+    for candidate_id, reviewed in accepted_by_id.items():
+        candidate = reviewed.candidate
+        if candidate.kind != "column_type" or candidate.inferred_type is None:
+            continue
+        column = candidate.columns[0]
+        declared_type = merged_columns.get(column)
+        if declared_type is not None and declared_type != candidate.inferred_type:
+            conflicts.append(
+                f"{candidate_id}: column '{column}' declared as {declared_type!r} "
+                f"but accepted candidate infers {candidate.inferred_type!r}"
+            )
+            continue
+        merged_columns[column] = candidate.inferred_type
+
+    merged_fds = list(base_schema.functional_dependencies)
+    fd_keys = {(fd.determinant, fd.dependent) for fd in merged_fds}
+    for fd in accepted_schema.functional_dependencies:
+        fd_key = (fd.determinant, fd.dependent)
+        if fd_key not in fd_keys:
+            merged_fds.append(fd)
+            fd_keys.add(fd_key)
+
+    merged_bounds = list(base_schema.domain_bounds)
+    bound_keys = {
+        (
+            bound.column,
+            bound.min_value,
+            bound.max_value,
+            bound.inclusive_min,
+            bound.inclusive_max,
+        )
+        for bound in merged_bounds
+    }
+    bounds_by_column = {bound.column: bound for bound in base_schema.domain_bounds}
+    for candidate_id, reviewed in accepted_by_id.items():
+        candidate = reviewed.candidate
+        if candidate.kind != "domain_bound":
+            continue
+        accepted_bound = DomainBound(
+            column=candidate.columns[0],
+            min_value=candidate.min_value,
+            max_value=candidate.max_value,
+        )
+        declared_bound = bounds_by_column.get(accepted_bound.column)
+        if declared_bound is not None and declared_bound != accepted_bound:
+            conflicts.append(
+                f"{candidate_id}: domain bound for '{accepted_bound.column}' conflicts "
+                "with declared schema"
+            )
+            continue
+        bound_key = (
+            accepted_bound.column,
+            accepted_bound.min_value,
+            accepted_bound.max_value,
+            accepted_bound.inclusive_min,
+            accepted_bound.inclusive_max,
+        )
+        if bound_key not in bound_keys:
+            merged_bounds.append(accepted_bound)
+            bound_keys.add(bound_key)
+
+    if conflicts:
+        raise ConstraintReviewError(
+            "Accepted constraints conflict with the declared schema: " + "; ".join(conflicts)
+        )
+
+    return (
+        Schema(
+            columns=merged_columns,
+            functional_dependencies=tuple(merged_fds),
+            pii_columns=base_schema.pii_columns,
+            domain_bounds=tuple(merged_bounds),
+            aggregate_dependencies=base_schema.aggregate_dependencies,
+        ),
+        accepted_ids,
+    )
 
 
 def _non_empty(values: list[object]) -> list[str]:

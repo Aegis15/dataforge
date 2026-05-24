@@ -25,6 +25,10 @@ from dataforge.repair_contract import CONTRACT_VERSION
 from dataforge.repairers import build_repairers
 from dataforge.repairers.base import ProposedFix, RepairAttempt, RetryContext
 from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
+from dataforge.schema_inference import (
+    ConstraintReviewArtifact,
+    merge_schema_with_reviewed_constraints,
+)
 from dataforge.table import (
     Table,
     TableLike,
@@ -156,6 +160,8 @@ class RepairReceipt(BaseModel):
     safety_verdict: str = Field(default="allow", min_length=1)
     verifier_verdict: str = Field(default="not_run", min_length=1)
     candidate_provenance: list[str] = Field(default_factory=list)
+    accepted_constraint_ids: list[str] = Field(default_factory=list)
+    constraints_artifact_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     abstentions: list[str] = Field(default_factory=list)
     failure_reasons: list[str] = Field(default_factory=list)
     issues_count: int = Field(ge=0)
@@ -178,6 +184,8 @@ class RepairPipelineRequest(BaseModel):
     confirm_escalations: bool = False
     interactive: bool = False
     create_dry_run_transaction: bool = False
+    constraints: ConstraintReviewArtifact | None = None
+    constraints_artifact_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
     model_config = ConfigDict(
         strict=True,
@@ -585,15 +593,21 @@ def run_repair_pipeline(request: RepairPipelineRequest) -> RepairPipelineResult:
     """Run the public repair pipeline from detection through optional apply."""
     source_path = request.source_path.resolve()
     source_bytes = source_path.read_bytes()
+    source_sha256 = sha256_bytes(source_bytes)
+    effective_schema, accepted_constraint_ids = merge_schema_with_reviewed_constraints(
+        request.repair_schema,
+        request.constraints,
+        source_sha256=source_sha256,
+    )
     df = read_csv(source_path)
     with repair_stage_span("dataforge.repair.detect", row_count=row_count(df)):
-        issues = run_all_detectors(df, request.repair_schema)
+        issues = run_all_detectors(df, effective_schema)
     with repair_stage_span("dataforge.repair.propose", issue_count=len(issues)):
         accepted_fixes, attempt_groups = propose_repairs(
             issues,
             source_path,
             copy_table(df),
-            request.repair_schema,
+            effective_schema,
             allow_llm=request.allow_llm,
             model=request.model,
             allow_pii=request.allow_pii,
@@ -642,7 +656,7 @@ def run_repair_pipeline(request: RepairPipelineRequest) -> RepairPipelineResult:
         applied=applied,
         reversible=True,
         source_path=str(source_path),
-        source_sha256=sha256_bytes(source_bytes),
+        source_sha256=source_sha256,
         post_sha256=post_sha256,
         txn_id=txn_id,
         allowed_columns=column_names(df),
@@ -650,6 +664,8 @@ def run_repair_pipeline(request: RepairPipelineRequest) -> RepairPipelineResult:
         safety_verdict=batch_safety.verdict.value,
         verifier_verdict=_receipt_verifier_verdict(accepted_fixes, failures),
         candidate_provenance=sorted({fix.provenance for fix in accepted_fixes}),
+        accepted_constraint_ids=accepted_constraint_ids,
+        constraints_artifact_sha256=request.constraints_artifact_sha256,
         abstentions=[failure.reason for failure in failures],
         failure_reasons=[failure.reason for failure in failures],
         issues_count=len(issues),

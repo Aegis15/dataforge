@@ -25,7 +25,17 @@ if TYPE_CHECKING:
     from dataforge.repair_contract import CONTRACT_VERSION
     from dataforge.repairers import ProposedFix
     from dataforge.safety import SafetyContext, SafetyFilter, SafetyResult, SafetyVerdict
-    from dataforge.schema_inference import ConstraintCandidate, SchemaInferenceResult, infer_schema
+    from dataforge.schema_inference import (
+        ConstraintCandidate,
+        ConstraintReviewArtifact,
+        ConstraintReviewError,
+        ReviewedConstraintCandidate,
+        SchemaInferenceResult,
+        build_constraint_review_artifact,
+        dump_constraint_review_artifact,
+        infer_schema,
+        load_constraint_review_artifact,
+    )
     from dataforge.transactions.log import (
         TransactionAuditReport,
         TransactionAuditVerdict,
@@ -41,6 +51,8 @@ __all__ = [
     "CandidateFix",
     "CellFix",
     "ConstraintCandidate",
+    "ConstraintReviewArtifact",
+    "ConstraintReviewError",
     "Issue",
     "ProposedFix",
     "RepairFailure",
@@ -48,6 +60,7 @@ __all__ = [
     "RepairPipelineResult",
     "RepairReceipt",
     "RepairTransaction",
+    "ReviewedConstraintCandidate",
     "SMTVerifier",
     "SafetyContext",
     "SafetyFilter",
@@ -65,6 +78,9 @@ __all__ = [
     "VerifiedFix",
     "__version__",
     "load_schema",
+    "build_constraint_review_artifact",
+    "dump_constraint_review_artifact",
+    "load_constraint_review_artifact",
     "read_csv",
     "revert_transaction",
     "run_all_detectors",
@@ -81,6 +97,8 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "CandidateFix": ("dataforge.engine.repair", "CandidateFix"),
     "CellFix": ("dataforge.transactions.txn", "CellFix"),
     "ConstraintCandidate": ("dataforge.schema_inference", "ConstraintCandidate"),
+    "ConstraintReviewArtifact": ("dataforge.schema_inference", "ConstraintReviewArtifact"),
+    "ConstraintReviewError": ("dataforge.schema_inference", "ConstraintReviewError"),
     "Issue": ("dataforge.detectors", "Issue"),
     "ProposedFix": ("dataforge.repairers", "ProposedFix"),
     "RepairFailure": ("dataforge.engine.repair", "RepairFailure"),
@@ -88,6 +106,7 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "RepairPipelineResult": ("dataforge.engine.repair", "RepairPipelineResult"),
     "RepairReceipt": ("dataforge.engine.repair", "RepairReceipt"),
     "RepairTransaction": ("dataforge.transactions.txn", "RepairTransaction"),
+    "ReviewedConstraintCandidate": ("dataforge.schema_inference", "ReviewedConstraintCandidate"),
     "SMTVerifier": ("dataforge.verifier", "SMTVerifier"),
     "SafetyContext": ("dataforge.safety", "SafetyContext"),
     "SafetyFilter": ("dataforge.safety", "SafetyFilter"),
@@ -104,6 +123,18 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "VerificationVerdict": ("dataforge.verifier", "VerificationVerdict"),
     "VerifiedFix": ("dataforge.engine.repair", "VerifiedFix"),
     "load_schema": ("dataforge.cli.common", "load_schema"),
+    "build_constraint_review_artifact": (
+        "dataforge.schema_inference",
+        "build_constraint_review_artifact",
+    ),
+    "dump_constraint_review_artifact": (
+        "dataforge.schema_inference",
+        "dump_constraint_review_artifact",
+    ),
+    "load_constraint_review_artifact": (
+        "dataforge.schema_inference",
+        "load_constraint_review_artifact",
+    ),
     "read_csv": ("dataforge.cli.common", "read_csv"),
     "revert_transaction": ("dataforge.transactions.revert", "revert_transaction"),
     "run_all_detectors": ("dataforge.detectors", "run_all_detectors"),

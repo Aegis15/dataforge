@@ -20,6 +20,10 @@
     "direct_tests": ["tests/unit/test_base.py", "tests/unit/test_cli_profile.py"],
     "regression_tests": ["tests/regression/test_env.py"]
   },
+  "dataforge/schema_inference.py": {
+    "direct_tests": ["tests/unit/test_schema_inference.py", "tests/unit/test_cli_profile.py", "tests/unit/test_engine_repair.py"],
+    "regression_tests": ["tests/regression/test_env.py"]
+  },
   "dataforge/cli/__init__.py": {
     "direct_tests": ["tests/unit/test_cli_profile.py", "tests/unit/test_cli_repair.py"],
     "regression_tests": ["tests/regression/test_env.py"]

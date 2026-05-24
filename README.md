@@ -47,6 +47,8 @@ Shipped in the current worktree:
 - Three detector families: `type_mismatch`, `decimal_shift`, `fd_violation`
 - Reviewable schema inference in `profile --json`, including inferred column
   types, domains, regex candidates, uniqueness, and FD candidates
+- Pending constraint review artifacts via `profile --constraints-out`, which
+  can feed repair only after individual candidates are marked accepted
 - Matching deterministic repairers wired through SafetyFilter -> SMTVerifier
 - Reversible hash-chained transaction journals with immutable source snapshots
 - Public backend repair engine at `dataforge.engine.repair`
@@ -73,7 +75,9 @@ Not shipped yet:
 ```bash
 python -m pip install -e ".[dev]"
 dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
+dataforge15 profile fixtures/hospital_10rows.csv --constraints-out constraints.json
 dataforge15 repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
+dataforge15 repair fixtures/hospital_10rows.csv --constraints constraints.json --dry-run
 dataforge15 watch fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --once --json
 dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3
 ```
@@ -215,13 +219,19 @@ make release-gate
 Verification works on Linux, macOS, and Windows with Git Bash available for GNU
 Make recipes. Python support is `>=3.11,<3.13`.
 
+`profile --constraints-out` writes a strict `constraint_review_v1` JSON artifact.
+Every inferred candidate starts as `pending`; repair ignores pending and
+rejected candidates. In v1, only accepted `column_type`, `domain_bound`, and
+`functional_dependency` candidates affect repair. Accepted regex and uniqueness
+candidates remain review evidence until verifier support is added.
+
 `make backend-gate` is the release-quality backend check: lint, format, strict
 mypy, root tests, MCP tests, README truth, OpenAPI snapshot drift, secret scan,
 dependency audit availability, SBOM generation availability, and package build
 availability for both `dataforge15` and `dataforge15-mcp`. The gate covers the
 core `dataforge` distribution and release surfaces; the historical
 `data_quality_env` namespace remains source-tree regression coverage, not part
-of the `dataforge15` wheel.
+of the `dataforge15` wheel or source distribution.
 
 Release doctor scopes:
 

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from dataforge.schema_inference import infer_schema
+from dataforge.schema_inference import (
+    build_constraint_review_artifact,
+    dump_constraint_review_artifact,
+    infer_schema,
+)
 from dataforge.table import Table
 
 
@@ -51,3 +55,36 @@ def test_infer_schema_default_schema_excludes_constraints_until_reviewed() -> No
 
     assert schema.columns == {"city": "str", "state": "str"}
     assert schema.functional_dependencies == ()
+
+
+def test_constraint_review_artifact_is_pending_stable_and_strict() -> None:
+    """Profile inference can be serialized into a deterministic review artifact."""
+    table = Table(
+        ["code", "name"],
+        [
+            {"code": "A", "name": "Alpha"},
+            {"code": "A", "name": "Alpha"},
+            {"code": "B", "name": "Beta"},
+            {"code": "B", "name": "Beta"},
+            {"code": "C", "name": "Gamma"},
+        ],
+    )
+    inference = infer_schema(table)
+
+    artifact = build_constraint_review_artifact(
+        inference,
+        source_path=__file__,
+        source_sha256="0" * 64,
+    )
+    repeated = build_constraint_review_artifact(
+        inference,
+        source_path=__file__,
+        source_sha256="0" * 64,
+    )
+
+    assert artifact.schema_version == "constraint_review_v1"
+    assert {candidate.decision for candidate in artifact.candidates} == {"pending"}
+    assert len({candidate.candidate_id for candidate in artifact.candidates}) == len(
+        artifact.candidates
+    )
+    assert dump_constraint_review_artifact(artifact) == dump_constraint_review_artifact(repeated)
