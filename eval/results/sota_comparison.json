@@ -1,9 +1,14 @@
 {
+  "schema_version": "dataforge_sota_citation_v1",
   "source": {
     "title": "BClean: A Bayesian Data Cleaning System",
     "table": "Table 4",
-    "url": "https://szudseg.cn/assets/papers/vldb2024-qin.pdf",
-    "note": "HoloClean 2017 is cited in report narrative only."
+    "page": "Section 7.2.1, Table 4",
+    "url": "https://arxiv.org/abs/2311.06517",
+    "pdf_url": "https://arxiv.org/pdf/2311.06517",
+    "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+    "retrieved_at_utc": "2026-05-25T00:00:00Z",
+    "note": "HoloClean and Raha+Baran rows are transcribed from BClean Table 4."
   },
   "rows": [
     {
@@ -12,7 +17,14 @@
       "precision": 1.0,
       "recall": 0.456,
       "f1": 0.626,
-      "note": "Citation-only literature result."
+      "evidence_kind": "citation_only",
+      "source_title": "BClean: A Bayesian Data Cleaning System",
+      "source_url": "https://arxiv.org/abs/2311.06517",
+      "source_table": "Table 4",
+      "source_page": "Section 7.2.1, Table 4",
+      "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+      "retrieved_at_utc": "2026-05-25T00:00:00Z",
+      "note": "Citation-only literature result; not rerun by this repository."
     },
     {
       "method": "HoloClean",
@@ -20,7 +32,14 @@
       "precision": 0.742,
       "recall": 0.352,
       "f1": 0.477,
-      "note": "Citation-only literature result."
+      "evidence_kind": "citation_only",
+      "source_title": "BClean: A Bayesian Data Cleaning System",
+      "source_url": "https://arxiv.org/abs/2311.06517",
+      "source_table": "Table 4",
+      "source_page": "Section 7.2.1, Table 4",
+      "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+      "retrieved_at_utc": "2026-05-25T00:00:00Z",
+      "note": "Citation-only literature result; not rerun by this repository."
     },
     {
       "method": "HoloClean",
@@ -28,7 +47,14 @@
       "precision": 1.0,
       "recall": 0.024,
       "f1": 0.047,
-      "note": "Citation-only literature result."
+      "evidence_kind": "citation_only",
+      "source_title": "BClean: A Bayesian Data Cleaning System",
+      "source_url": "https://arxiv.org/abs/2311.06517",
+      "source_table": "Table 4",
+      "source_page": "Section 7.2.1, Table 4",
+      "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+      "retrieved_at_utc": "2026-05-25T00:00:00Z",
+      "note": "Citation-only literature result; not rerun by this repository."
     },
     {
       "method": "Raha+Baran",
@@ -36,7 +62,14 @@
       "precision": 0.971,
       "recall": 0.585,
       "f1": 0.73,
-      "note": "Citation-only literature result."
+      "evidence_kind": "citation_only",
+      "source_title": "BClean: A Bayesian Data Cleaning System",
+      "source_url": "https://arxiv.org/abs/2311.06517",
+      "source_table": "Table 4",
+      "source_page": "Section 7.2.1, Table 4",
+      "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+      "retrieved_at_utc": "2026-05-25T00:00:00Z",
+      "note": "Citation-only literature result; not rerun by this repository."
     },
     {
       "method": "Raha+Baran",
@@ -44,7 +77,14 @@
       "precision": 0.829,
       "recall": 0.65,
       "f1": 0.729,
-      "note": "Citation-only literature result."
+      "evidence_kind": "citation_only",
+      "source_title": "BClean: A Bayesian Data Cleaning System",
+      "source_url": "https://arxiv.org/abs/2311.06517",
+      "source_table": "Table 4",
+      "source_page": "Section 7.2.1, Table 4",
+      "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+      "retrieved_at_utc": "2026-05-25T00:00:00Z",
+      "note": "Citation-only literature result; not rerun by this repository."
     },
     {
       "method": "Raha+Baran",
@@ -52,7 +92,14 @@
       "precision": 0.873,
       "recall": 0.872,
       "f1": 0.873,
-      "note": "Citation-only literature result."
+      "evidence_kind": "citation_only",
+      "source_title": "BClean: A Bayesian Data Cleaning System",
+      "source_url": "https://arxiv.org/abs/2311.06517",
+      "source_table": "Table 4",
+      "source_page": "Section 7.2.1, Table 4",
+      "source_sha256": "40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715",
+      "retrieved_at_utc": "2026-05-25T00:00:00Z",
+      "note": "Citation-only literature result; not rerun by this repository."
     }
   ]
 }

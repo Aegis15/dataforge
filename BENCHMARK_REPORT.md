@@ -2,22 +2,26 @@
 
 ## Reproduction
 
-`python scripts\bench\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\results\agent_comparison.json`
+`dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2`
 
 ## Configuration
 
 - Methods: random, heuristic
 - Datasets: hospital, flights, beers
 - Seeds: 3
+- Exact seed list: 0, 1, 2
+- Evidence schema: `dataforge_benchmark_run_v2`
+- Git commit: `dbd1bed0a03c56b826e9c8315cc50d1908e2e8b2`; dirty worktree: `true`
 - Free-tier quota units: `max(llm_calls / 1000, (prompt_tokens + completion_tokens) / 100000)`
 - GRPO compute cost is reported as free-tier GPU-hours, not dollars.
+- Dataset bytes are pinned to BigDaMa/raha revision `7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c` for hospital, flights, beers; dirty/clean SHA-256s are recorded in the JSON metadata.
 
 ## Cross-Dataset Local Results
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
-| heuristic | 0.1667 | 0.1111 | 0.1333 | 122.00 | 0.0000 | 0.0000 |
-| random | 0.0017 | 0.0001 | 0.0001 | 141.67 | 0.0000 | 0.0000 |
+| heuristic | 0.3167 | 0.3025 | 0.2772 | 374.33 | 0.0000 | 0.0000 |
+| random | 0.0038 | 0.0003 | 0.0005 | 150.33 | 0.0000 | 0.0000 |
 
 ## Per-Dataset Local Results
 
@@ -25,8 +29,8 @@
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
-| random | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 25.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| heuristic | 0.5000 +/- 0.0000 | 0.3333 +/- 0.0000 | 0.4000 +/- 0.0000 | 3.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| random | 0.0065 +/- 0.0113 | 0.0007 +/- 0.0012 | 0.0012 +/- 0.0021 | 51.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| heuristic | 0.7170 +/- 0.0000 | 0.8861 +/- 0.0000 | 0.7926 +/- 0.0000 | 630.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
 
 ### Flights
 
@@ -40,22 +44,22 @@
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
 | random | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 200.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
-| heuristic | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 270.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
+| heuristic | 0.2331 +/- 0.0000 | 0.0213 +/- 0.0000 | 0.0391 +/- 0.0000 | 400.0000 +/- 0.0000 | 0.0000 +/- 0.0000 | 0.0000 +/- 0.0000 |
 
 ## Citation-Only SOTA Reference
 
-Source: [BClean: A Bayesian Data Cleaning System](https://szudseg.cn/assets/papers/vldb2024-qin.pdf)
+Source: [BClean: A Bayesian Data Cleaning System](https://arxiv.org/abs/2311.06517); Table 4; source SHA-256 `40f85c91e20383131488b758be46fa2aae54e591cd5973824688f301d93c2715`; retrieved `2026-05-25T00:00:00Z`.
 
 HoloClean rows are transcribed from BClean Table 4; see [HoloClean 2017](https://www.vldb.org/pvldb/vol10/p1190-rekatsinas.pdf) for the original system description.
 
 | Method | Dataset | Precision | Recall | F1 | Note |
 | --- | --- | --- | --- | --- | --- |
-| HoloClean | hospital | 1.000 | 0.456 | 0.626 | Citation-only literature result. |
-| HoloClean | flights | 0.742 | 0.352 | 0.477 | Citation-only literature result. |
-| HoloClean | beers | 1.000 | 0.024 | 0.047 | Citation-only literature result. |
-| Raha+Baran | hospital | 0.971 | 0.585 | 0.730 | Citation-only literature result. |
-| Raha+Baran | flights | 0.829 | 0.650 | 0.729 | Citation-only literature result. |
-| Raha+Baran | beers | 0.873 | 0.872 | 0.873 | Citation-only literature result. |
+| HoloClean | hospital | 1.000 | 0.456 | 0.626 | Citation-only literature result; not rerun by this repository. |
+| HoloClean | flights | 0.742 | 0.352 | 0.477 | Citation-only literature result; not rerun by this repository. |
+| HoloClean | beers | 1.000 | 0.024 | 0.047 | Citation-only literature result; not rerun by this repository. |
+| Raha+Baran | hospital | 0.971 | 0.585 | 0.730 | Citation-only literature result; not rerun by this repository. |
+| Raha+Baran | flights | 0.829 | 0.650 | 0.729 | Citation-only literature result; not rerun by this repository. |
+| Raha+Baran | beers | 0.873 | 0.872 | 0.873 | Citation-only literature result; not rerun by this repository. |
 
 ## Methodology
 

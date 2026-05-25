@@ -28,6 +28,18 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
 
+      - name: Refuse prerelease versions on PyPI
+        run: |
+          python - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+          prerelease_markers = ("a", "b", "rc", ".dev")
+          if any(marker in version for marker in prerelease_markers):
+              raise SystemExit(f"Refusing to publish prerelease version {version!r} to PyPI.")
+          PY
+
       - name: Canonical release gate
         run: python -m dataforge.release.gate --json
 

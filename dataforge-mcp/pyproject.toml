@@ -6,7 +6,7 @@ readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11,<3.13"
 dependencies = [
-    "dataforge15>=0.1.0",
+    "dataforge15>=0.1.0rc1,<0.2",
     "mcp>=1.27",
 ]
 classifiers = [

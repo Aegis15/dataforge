@@ -28,7 +28,7 @@ def _write_sdist(path: Path, members: set[str]) -> None:
     with tarfile.open(path, "w:gz") as archive:
         for member in sorted(members):
             payload = b""
-            info = tarfile.TarInfo(f"dataforge15-0.1.0/{member}")
+            info = tarfile.TarInfo(f"dataforge15-0.1.0rc1/{member}")
             info.size = len(payload)
             archive.addfile(info, io.BytesIO(payload))
 
@@ -44,12 +44,12 @@ def test_release_gate_report_schema_is_versioned() -> None:
 
 
 def test_wheel_contents_audit_accepts_allowed_surface(tmp_path: Path) -> None:
-    wheel_path = tmp_path / "dataforge15-0.1.0-py3-none-any.whl"
+    wheel_path = tmp_path / "dataforge15-0.1.0rc1-py3-none-any.whl"
     members = set(REQUIRED_WHEEL_MEMBERS) | {
         "dataforge/__init__.py",
-        "dataforge15-0.1.0.dist-info/METADATA",
-        "dataforge15-0.1.0.dist-info/WHEEL",
-        "dataforge15-0.1.0.dist-info/RECORD",
+        "dataforge15-0.1.0rc1.dist-info/METADATA",
+        "dataforge15-0.1.0rc1.dist-info/WHEEL",
+        "dataforge15-0.1.0rc1.dist-info/RECORD",
     }
     _write_wheel(wheel_path, members)
 
@@ -59,10 +59,10 @@ def test_wheel_contents_audit_accepts_allowed_surface(tmp_path: Path) -> None:
 
 
 def test_wheel_contents_audit_rejects_non_package_files(tmp_path: Path) -> None:
-    wheel_path = tmp_path / "dataforge15-0.1.0-py3-none-any.whl"
+    wheel_path = tmp_path / "dataforge15-0.1.0rc1-py3-none-any.whl"
     members = set(REQUIRED_WHEEL_MEMBERS) | {
         "dataforge/__init__.py",
-        "dataforge15-0.1.0.dist-info/METADATA",
+        "dataforge15-0.1.0rc1.dist-info/METADATA",
         "tests/test_leaked.py",
         "data_quality_env/legacy.py",
         "root_script.py",
@@ -76,7 +76,7 @@ def test_wheel_contents_audit_rejects_non_package_files(tmp_path: Path) -> None:
 
 
 def test_sdist_contents_audit_accepts_allowed_surface(tmp_path: Path) -> None:
-    sdist_path = tmp_path / "dataforge15-0.1.0.tar.gz"
+    sdist_path = tmp_path / "dataforge15-0.1.0rc1.tar.gz"
     members = {
         "PKG-INFO",
         "README.md",
@@ -85,6 +85,7 @@ def test_sdist_contents_audit_accepts_allowed_surface(tmp_path: Path) -> None:
         "pyproject.toml",
         "dataforge/__init__.py",
         "dataforge/py.typed",
+        "dataforge/cli/constraints.py",
         "dataforge/cli/profile.py",
         "dataforge/cli/repair.py",
         "dataforge/fixtures/hospital_10rows.csv",
@@ -104,7 +105,7 @@ def test_sdist_contents_audit_accepts_allowed_surface(tmp_path: Path) -> None:
 
 
 def test_sdist_contents_audit_rejects_legacy_and_generated_files(tmp_path: Path) -> None:
-    sdist_path = tmp_path / "dataforge15-0.1.0.tar.gz"
+    sdist_path = tmp_path / "dataforge15-0.1.0rc1.tar.gz"
     members = {
         "PKG-INFO",
         "README.md",
@@ -113,6 +114,7 @@ def test_sdist_contents_audit_rejects_legacy_and_generated_files(tmp_path: Path)
         "pyproject.toml",
         "dataforge/__init__.py",
         "dataforge/py.typed",
+        "dataforge/cli/constraints.py",
         "dataforge/cli/profile.py",
         "dataforge/cli/repair.py",
         "dataforge/fixtures/hospital_10rows.csv",

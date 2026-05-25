@@ -21,6 +21,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import TypeAdapter
 
+from dataforge import __version__
 from dataforge.agent.tool_actions import Action
 from dataforge.env.environment import DataForgeEnv, EnvState
 from dataforge.env.observation import DataForgeObservation
@@ -46,7 +47,7 @@ def _build_cors_origin_regex() -> str | None:
 app = FastAPI(
     title="DataForge Environment",
     description="OpenEnv-compatible RL environment for data-quality repair.",
-    version="0.1.0",
+    version=__version__,
 )
 
 app.add_middleware(
@@ -146,7 +147,7 @@ async def metadata() -> dict[str, Any]:
     """Environment metadata for OpenEnv discovery."""
     return {
         "name": "dataforge-env",
-        "version": "0.1.0",
+        "version": __version__,
         "description": (
             "DataForge RL Environment — agents learn to detect, diagnose, "
             "and repair data-quality issues in tabular datasets."

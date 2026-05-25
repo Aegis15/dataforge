@@ -18,9 +18,9 @@ flowchart LR
 
 ## Runtime Layers
 
-- **CLI and terminal UI**: Typer commands in `dataforge/cli/` with Rich output.
-  Public commands are `profile`, `repair`, `revert`, `watch`, `audit`, and
-  `bench`.
+- **CLI and terminal UI**: Typer commands in `dataforge/cli/` with Rich output
+  and a Textual constraint-review TUI. Public commands are `profile`, `repair`,
+  `revert`, `watch`, `audit`, `bench`, and `constraints review`.
 - **Detectors**: pandas-based scanners for `type_mismatch`, `decimal_shift`,
   and `fd_violation`. Detectors emit typed issues and never mutate data.
 - **Repairers**: deterministic proposal generators for shipped detector
@@ -107,7 +107,7 @@ Core runtime dependencies in `pyproject.toml`:
 - `pandas` for tabular data handling.
 - `pydantic` for typed issues, fixes, schemas, environment observations, and
   release evidence.
-- `typer` and `rich` for CLI UX.
+- `typer`, `rich`, and `textual` for CLI and constraint-review UX.
 - `pyyaml` for schema and constitution loading.
 - `z3-solver` for SMT verification.
 
@@ -129,9 +129,10 @@ Optional extras and scoped dependencies:
 ## Release Boundaries
 
 - `dataforge15` is the planned core CLI/library distribution. It is not
-  published yet; release tags should be created only after local gates and PyPI
-  trusted-publisher ownership are verified. It intentionally keeps the
-  `dataforge` Python import namespace for the 0.1 line.
+  published yet; `v0.1.0-rc1` is TestPyPI-only and real PyPI release tags should
+  be created only after local gates, RC evidence, and PyPI trusted-publisher
+  ownership are verified. It intentionally keeps the `dataforge` Python import
+  namespace for the 0.1 line.
 - `dataforge15-mcp` is the planned nested standalone distribution for
   `dataforge15-mcp-v*` release tags after PyPI ownership is verified.
 - SFT datasets and checkpoints are Hugging Face artifacts verified by

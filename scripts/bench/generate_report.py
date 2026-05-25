@@ -1,4 +1,4 @@
-"""Generate BENCHMARK_REPORT.md and update the README benchmark block."""
+"""Generate BENCHMARK_REPORT.md and update public benchmark blocks."""
 
 from __future__ import annotations
 
@@ -31,6 +31,11 @@ def main() -> int:
         type=Path,
         default=Path("README.md"),
     )
+    parser.add_argument(
+        "--homepage-path",
+        type=Path,
+        default=None,
+    )
     args = parser.parse_args()
 
     write_benchmark_outputs(
@@ -38,6 +43,7 @@ def main() -> int:
         sota_json_path=args.sota_json,
         report_path=args.report_path,
         readme_path=args.readme_path,
+        homepage_path=args.homepage_path,
     )
     return 0
 

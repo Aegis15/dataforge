@@ -50,7 +50,11 @@ class TestBenchWorkflow:
         monkeypatch.setattr(
             bench_module,
             "run_agent_comparison",
-            functools.partial(run_agent_comparison, cache_root=cache_root),
+            functools.partial(
+                run_agent_comparison,
+                cache_root=cache_root,
+                verify_dataset_hashes=False,
+            ),
         )
 
         start = time.monotonic()

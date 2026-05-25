@@ -9,6 +9,7 @@ import typer
 
 from dataforge.cli.audit import audit
 from dataforge.cli.bench import bench
+from dataforge.cli.constraints import constraints_app
 from dataforge.cli.profile import profile
 from dataforge.cli.release import release_app
 from dataforge.cli.repair import repair
@@ -45,4 +46,5 @@ app.command(name="revert")(revert)
 app.command(name="audit")(audit)
 app.command(name="bench")(bench)
 app.command(name="watch")(watch)
+app.add_typer(constraints_app, name="constraints")
 app.add_typer(release_app, name="release")

@@ -23,13 +23,17 @@ class DatasetMetadata(BaseModel):
     n_columns: int = Field(ge=1)
     error_types: tuple[str, ...] = Field(default_factory=tuple)
     source_urls: tuple[str, str]
+    source_revision: str = Field(min_length=7)
+    dirty_sha256: str = Field(min_length=64, max_length=64)
+    clean_sha256: str = Field(min_length=64, max_length=64)
     citation: str = Field(min_length=1)
     header_mismatches: tuple[HeaderMismatch, ...] = Field(default_factory=tuple)
 
     model_config = {"frozen": True}
 
 
-_BASE_URL = "https://raw.githubusercontent.com/BigDaMa/raha/refs/heads/master/datasets"
+RAHA_GIT_REVISION = "7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c"
+_BASE_URL = f"https://raw.githubusercontent.com/BigDaMa/raha/{RAHA_GIT_REVISION}/datasets"
 
 DATASET_REGISTRY: dict[str, DatasetMetadata] = {
     "hospital": DatasetMetadata(
@@ -42,6 +46,9 @@ DATASET_REGISTRY: dict[str, DatasetMetadata] = {
             f"{_BASE_URL}/hospital/dirty.csv",
             f"{_BASE_URL}/hospital/clean.csv",
         ),
+        source_revision=RAHA_GIT_REVISION,
+        dirty_sha256="dbc5575b915fe8b5e0ac6dc6172f38ba91e611fdb76d09a8f4a81cb7ea9925ac",
+        clean_sha256="ea3ee44998455c0b491750c348509de176c758a3bbf58e4530c0a136bb248b4b",
         citation=(
             "Mahdavi et al. Raha benchmark dataset (Hospital) via the BigDaMa/raha repository."
         ),
@@ -56,6 +63,9 @@ DATASET_REGISTRY: dict[str, DatasetMetadata] = {
             f"{_BASE_URL}/flights/dirty.csv",
             f"{_BASE_URL}/flights/clean.csv",
         ),
+        source_revision=RAHA_GIT_REVISION,
+        dirty_sha256="1b5c1afa10aa0e7c20fd7e14d05c56772715b2771aa0f5fa67ed1709e1eecd46",
+        clean_sha256="0acfcfd8985b06fdd363965c9e8d9522c43e7589a93d79ae7dc311e1c37fdf3b",
         citation=(
             "Mahdavi et al. Raha benchmark dataset (Flights) via the BigDaMa/raha repository."
         ),
@@ -70,6 +80,9 @@ DATASET_REGISTRY: dict[str, DatasetMetadata] = {
             f"{_BASE_URL}/beers/dirty.csv",
             f"{_BASE_URL}/beers/clean.csv",
         ),
+        source_revision=RAHA_GIT_REVISION,
+        dirty_sha256="7110bf4931a9445a1675e544d6c996817c739136239f8a2b02e088c7ec0a1f68",
+        clean_sha256="373227df59ad197e154dd5149125789e415019535c7223355e9486ee1b3b93de",
         citation=("Mahdavi et al. Raha benchmark dataset (Beers) via the BigDaMa/raha repository."),
     ),
 }

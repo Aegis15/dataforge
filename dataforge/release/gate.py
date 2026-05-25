@@ -27,6 +27,7 @@ REQUIRED_WHEEL_MEMBERS = frozenset(
     {
         "dataforge/py.typed",
         "dataforge/cli/__init__.py",
+        "dataforge/cli/constraints.py",
         "dataforge/cli/repair.py",
         "dataforge/cli/revert.py",
         "dataforge/cli/audit.py",
@@ -56,6 +57,7 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "dataforge/__init__.py",
         "dataforge/py.typed",
         "dataforge/cli/profile.py",
+        "dataforge/cli/constraints.py",
         "dataforge/cli/repair.py",
         "dataforge/fixtures/hospital_10rows.csv",
         "dataforge/fixtures/hospital_schema.yaml",
@@ -596,11 +598,27 @@ def run_release_gate(*, keep_artifacts: bool = False) -> ReleaseGateReport:
 
         source_path = smoke_dir / "hospital_10rows.csv"
         schema_path = smoke_dir / "hospital_schema.yaml"
+        constraints_path = smoke_dir / "constraints.json"
         original_sha256 = _file_sha256(source_path)
         lifecycle_commands: list[tuple[str, list[str | os.PathLike[str]]]] = [
             (
                 "smoke_profile",
                 [dataforge15, "profile", source_path, "--schema", schema_path, "--json"],
+            ),
+            (
+                "smoke_profile_constraints_artifact",
+                [
+                    dataforge15,
+                    "profile",
+                    source_path,
+                    "--constraints-out",
+                    constraints_path,
+                    "--json",
+                ],
+            ),
+            (
+                "smoke_constraints_review_no_tui",
+                [dataforge15, "constraints", "review", constraints_path, "--no-tui", "--json"],
             ),
             (
                 "smoke_repair_dry_run",

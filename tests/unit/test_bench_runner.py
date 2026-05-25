@@ -60,6 +60,7 @@ class TestRunAgentComparison:
             output_json=output_json,
             really_run_big_bench=False,
             cache_root=cache_root,
+            verify_dataset_hashes=False,
         )
 
         assert output_json.exists()
@@ -85,6 +86,7 @@ class TestRunAgentComparison:
             output_json=output_json,
             really_run_big_bench=False,
             cache_root=cache_root,
+            verify_dataset_hashes=False,
         )
 
         aggregate = result.aggregates[0]
@@ -188,6 +190,7 @@ class TestRunAgentComparison:
                 output_json=output_json,
                 really_run_big_bench=True,
                 cache_root=cache_root,
+                verify_dataset_hashes=False,
             )
 
         client.assert_called_once()
@@ -201,4 +204,40 @@ class TestRunAgentComparison:
             record.reproduction_command
             == "dataforge bench --methods llm_zeroshot,llm_react --datasets hospital --seeds 1"
             for record in output.records
+        )
+
+    def test_runner_records_explicit_seed_list_and_dataset_evidence(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Benchmark metadata should be concrete enough to reproduce and audit."""
+        cache_root = tmp_path / "cache"
+        output_json = tmp_path / "agent_comparison.json"
+        _populate_cache(cache_root)
+
+        output = run_agent_comparison(
+            methods=["random"],
+            datasets=["hospital"],
+            seeds=99,
+            seed_list=[2, 4],
+            output_json=output_json,
+            really_run_big_bench=False,
+            cache_root=cache_root,
+            verify_dataset_hashes=False,
+        )
+
+        payload = json.loads(output_json.read_text(encoding="utf-8"))
+        metadata = payload["metadata"]
+        assert metadata["schema_version"] == "dataforge_benchmark_run_v2"
+        assert metadata["seeds"] == 2
+        assert metadata["seed_list"] == [2, 4]
+        assert {record.seed for record in output.records} == {2, 4}
+        assert "--seed-list 2,4" in metadata["reproduction_command"]
+        evidence = metadata["dataset_evidence"][0]
+        assert evidence["name"] == "hospital"
+        assert evidence["source_revision"]
+        assert len(evidence["dirty_sha256"]) == 64
+        assert len(evidence["clean_sha256"]) == 64
+        assert (
+            metadata["artifact_sha256s"]["dataset:hospital:dirty.csv"] == evidence["dirty_sha256"]
         )

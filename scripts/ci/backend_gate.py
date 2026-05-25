@@ -30,6 +30,7 @@ MYPY_PATHS = [
     "dataforge",
     "playground/api/app.py",
     "scripts/ci/readme_truth.py",
+    "scripts/ci/benchmark_truth.py",
     "scripts/ci/openapi_contract.py",
     "scripts/ci/backend_gate.py",
     "scripts/playground/build_samples.py",
@@ -187,6 +188,7 @@ def main() -> int:
         [
             _run("MCP pytest", [PYTHON, "-m", "pytest", "dataforge-mcp/tests", "-v"]),
             _run("README truth", [PYTHON, "scripts/ci/readme_truth.py"]),
+            _run("benchmark truth", [PYTHON, "scripts/ci/benchmark_truth.py", "--check"]),
             _run("OpenAPI drift", [PYTHON, "scripts/ci/openapi_contract.py", "--check"]),
             _secret_scan(),
         ]

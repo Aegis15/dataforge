@@ -13,6 +13,9 @@ from dataforge.bench.core import (
     BenchmarkRunOutput,
     SeedBenchmarkResult,
     aggregate_seed_results,
+    build_benchmark_metadata,
+    build_seed_list,
+    dataset_evidence_from_loaded,
     estimate_llm_calls,
     validate_estimated_calls,
     write_run_output,
@@ -30,7 +33,7 @@ from dataforge.datasets.registry import DATASET_REGISTRY
 _SUPPORTED_METHODS = frozenset({"random", "heuristic", "llm_zeroshot", "llm_react"})
 
 
-def _validate_inputs(methods: list[str], datasets: list[str], seeds: int) -> None:
+def _validate_inputs(methods: list[str], datasets: list[str]) -> None:
     """Validate user-selected methods and datasets."""
     unknown_methods = sorted(set(methods) - _SUPPORTED_METHODS)
     unknown_datasets = sorted(set(datasets) - set(DATASET_REGISTRY))
@@ -38,18 +41,25 @@ def _validate_inputs(methods: list[str], datasets: list[str], seeds: int) -> Non
         raise ValueError(f"Unknown benchmark methods: {unknown_methods}")
     if unknown_datasets:
         raise ValueError(f"Unknown benchmark datasets: {unknown_datasets}")
-    if seeds <= 0:
-        raise ValueError("Benchmark seeds must be >= 1.")
 
 
-def _reproduction_command(methods: list[str], datasets: list[str], seeds: int) -> str:
+def _reproduction_command(
+    methods: list[str],
+    datasets: list[str],
+    *,
+    seed_count: int,
+    seed_list: list[int] | None,
+) -> str:
     """Build the canonical command for reproducing a benchmark run."""
-    return (
+    command = (
         "dataforge bench "
         f"--methods {','.join(methods)} "
         f"--datasets {','.join(datasets)} "
-        f"--seeds {seeds}"
+        f"--seeds {seed_count}"
     )
+    if seed_list is not None:
+        command += f" --seed-list {','.join(str(seed) for seed in seed_list)}"
+    return command
 
 
 def _llm_skip_reason() -> str | None:
@@ -98,12 +108,19 @@ def run_agent_comparison(
     really_run_big_bench: bool,
     cache_root: Path | None = None,
     reproduction_command: str | None = None,
+    seed_list: list[int] | None = None,
+    verify_dataset_hashes: bool = True,
 ) -> BenchmarkRunOutput:
     """Run the selected benchmark methods across real-world datasets."""
     load_dotenv()
-    _validate_inputs(methods, datasets, seeds)
+    _validate_inputs(methods, datasets)
+    resolved_seed_list = build_seed_list(seeds=seeds, seed_list=seed_list)
 
-    estimated_calls = estimate_llm_calls(methods=methods, datasets=datasets, seeds=seeds)
+    estimated_calls = estimate_llm_calls(
+        methods=methods,
+        datasets=datasets,
+        seeds=len(resolved_seed_list),
+    )
     # Validate call budget before any client instantiation or dataset loads that could
     # trigger network access in tests with environment variables set.
     validate_estimated_calls(
@@ -111,10 +128,19 @@ def run_agent_comparison(
         really_run_big_bench=really_run_big_bench,
     )
 
-    reproduction_command = reproduction_command or _reproduction_command(methods, datasets, seeds)
+    reproduction_command = reproduction_command or _reproduction_command(
+        methods,
+        datasets,
+        seed_count=len(resolved_seed_list),
+        seed_list=seed_list,
+    )
     records: list[SeedBenchmarkResult] = []
     loaded_datasets = {
-        dataset_name: load_real_world_dataset(dataset_name, cache_root=cache_root)
+        dataset_name: load_real_world_dataset(
+            dataset_name,
+            cache_root=cache_root,
+            verify_hashes=verify_dataset_hashes,
+        )
         for dataset_name in datasets
     }
 
@@ -152,7 +178,7 @@ def run_agent_comparison(
     for dataset_name in datasets:
         dataset = loaded_datasets[dataset_name]
         for method in methods:
-            for seed in range(seeds):
+            for seed in resolved_seed_list:
                 if os.environ.get("DATAFORGE_BENCH_VERBOSE"):
                     print(
                         f"[dataforge bench] start method={method} dataset={dataset_name} seed={seed}",
@@ -200,15 +226,20 @@ def run_agent_comparison(
                     )
 
     aggregates: list[AggregateBenchmarkResult] = aggregate_seed_results(
-        records, seeds_requested=seeds
+        records, seeds_requested=len(resolved_seed_list)
+    )
+    dataset_evidence = [
+        dataset_evidence_from_loaded(loaded_datasets[dataset_name]) for dataset_name in datasets
+    ]
+    metadata = build_benchmark_metadata(
+        methods=methods,
+        datasets=datasets,
+        seed_list=resolved_seed_list,
+        reproduction_command=reproduction_command,
+        dataset_evidence=dataset_evidence,
     )
     output = BenchmarkRunOutput(
-        metadata={
-            "methods": methods,
-            "datasets": datasets,
-            "seeds": seeds,
-            "reproduction_command": reproduction_command,
-        },
+        metadata=metadata.model_dump(mode="json"),
         records=records,
         aggregates=aggregates,
     )

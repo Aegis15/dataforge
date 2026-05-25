@@ -14,6 +14,7 @@ from dataforge.bench.report import (
     replace_benchmark_block,
     write_benchmark_outputs,
 )
+from scripts.bench.run_sota_comparison import build_sota_payload
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "bench"
 
@@ -41,6 +42,7 @@ class TestReportHelpers:
         sota_json = tmp_path / "sota.json"
         report_path = tmp_path / "BENCHMARK_REPORT.md"
         readme_path = tmp_path / "README.md"
+        homepage_path = tmp_path / "docs" / "docs" / "index.md"
         agent_json.write_text(
             (_FIXTURES / "agent_comparison.json").read_text(encoding="utf-8"),
             encoding="utf-8",
@@ -53,19 +55,42 @@ class TestReportHelpers:
             "# DataForge\n\n<!-- BENCH:START -->old<!-- BENCH:END -->\n",
             encoding="utf-8",
         )
+        homepage_path.parent.mkdir(parents=True, exist_ok=True)
+        homepage_path.write_text(
+            "# Home\n\n<!-- BENCH:START -->old<!-- BENCH:END -->\n",
+            encoding="utf-8",
+        )
 
         write_benchmark_outputs(
             agent_json_path=agent_json,
             sota_json_path=sota_json,
             report_path=report_path,
             readme_path=readme_path,
+            homepage_path=homepage_path,
         )
         first_readme = readme_path.read_text(encoding="utf-8")
+        first_homepage = homepage_path.read_text(encoding="utf-8")
         write_benchmark_outputs(
             agent_json_path=agent_json,
             sota_json_path=sota_json,
             report_path=report_path,
             readme_path=readme_path,
+            homepage_path=homepage_path,
         )
 
         assert readme_path.read_text(encoding="utf-8") == first_readme
+        assert homepage_path.read_text(encoding="utf-8") == first_homepage
+        assert "Generated from `eval/results/agent_comparison.json`" in first_homepage
+
+    def test_sota_payload_is_citation_evidence_not_reproduced_rows(self) -> None:
+        payload = build_sota_payload()
+
+        assert payload["schema_version"] == "dataforge_sota_citation_v1"
+        source = payload["source"]
+        assert isinstance(source, dict)
+        assert source["title"] == "BClean: A Bayesian Data Cleaning System"
+        assert source["url"] == "https://arxiv.org/abs/2311.06517"
+        assert len(source["source_sha256"]) == 64
+        for row in payload["rows"]:
+            assert row["evidence_kind"] == "citation_only"
+            assert row["source_title"] == source["title"]

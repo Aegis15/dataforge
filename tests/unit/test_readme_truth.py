@@ -44,3 +44,25 @@ def test_explicitly_unmet_design_partner_claim_is_allowed(tmp_path: Path) -> Non
     )
 
     assert readme_truth.check_design_partner_claims([claim_path]) == []
+
+
+def test_unqualified_benchmark_claim_outside_generated_block_fails(tmp_path: Path) -> None:
+    """Public metric claims must live in generated benchmark evidence blocks."""
+    claim_path = tmp_path / "claim.md"
+    claim_path.write_text("DataForge15 reaches F1 0.99 on Hospital.\n", encoding="utf-8")
+
+    errors = readme_truth.check_public_claim_boundaries([claim_path])
+
+    assert errors
+    assert "outside a generated evidence block" in errors[0]
+
+
+def test_generated_benchmark_claim_block_is_allowed(tmp_path: Path) -> None:
+    """Metric values inside BENCH markers are governed by benchmark_truth."""
+    claim_path = tmp_path / "claim.md"
+    claim_path.write_text(
+        "<!-- BENCH:START -->\nF1 0.99 is generated evidence.\n<!-- BENCH:END -->\n",
+        encoding="utf-8",
+    )
+
+    assert readme_truth.check_public_claim_boundaries([claim_path]) == []

@@ -132,6 +132,61 @@ def _check_kaggle_oauth(credentials_path: Path = DEFAULT_KAGGLE_CREDENTIALS) -> 
     )
 
 
+def _check_kaggle_cli_clean_config(
+    credentials_path: Path = DEFAULT_KAGGLE_CREDENTIALS,
+) -> DoctorCheck:
+    """Verify Kaggle CLI auth through OAuth under a clean config directory."""
+    script = _project_root() / "scripts" / "preflight" / "check_kaggle_auth.py"
+    if not script.exists():
+        return DoctorCheck(
+            "kaggle_cli_clean_config",
+            False,
+            f"Kaggle auth preflight script not found: {script}",
+            {"credential_path": str(credentials_path), "tokens_printed": False},
+        )
+    command = [
+        sys.executable,
+        str(script),
+        "--kaggle-json",
+        str(credentials_path),
+        "--check-cli",
+    ]
+    try:
+        result = subprocess.run(
+            command,
+            cwd=_project_root(),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=90,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return DoctorCheck(
+            "kaggle_cli_clean_config",
+            False,
+            "Kaggle CLI clean-config OAuth preflight timed out.",
+            {"credential_path": str(credentials_path), "tokens_printed": False},
+        )
+    ok = result.returncode == 0
+    detail = (
+        "Kaggle CLI read-only command succeeded with clean KAGGLE_CONFIG_DIR."
+        if ok
+        else "Kaggle CLI clean-config OAuth preflight failed."
+    )
+    return DoctorCheck(
+        "kaggle_cli_clean_config",
+        ok,
+        detail,
+        {
+            "credential_path": str(credentials_path),
+            "command": " ".join(command),
+            "tokens_printed": False,
+        },
+    )
+
+
 def _check_cloudflare() -> DoctorCheck:
     npx = shutil.which("npx") or shutil.which("npx.cmd")
     if npx is None:
@@ -332,6 +387,7 @@ def _maintainer_deploy_checks(kaggle_credentials: Path) -> list[DoctorCheck]:
     return [
         _check_hugging_face(),
         _check_kaggle_oauth(kaggle_credentials),
+        _check_kaggle_cli_clean_config(kaggle_credentials),
         _check_cloudflare(),
         _check_cloudflare_zone_visible(),
         _check_domain(),

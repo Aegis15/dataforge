@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from dataclasses import dataclass
@@ -41,6 +42,8 @@ class RealWorldDataset:
     clean_df: pd.DataFrame
     canonical_columns: tuple[str, ...]
     ground_truth: tuple[GroundTruthCell, ...]
+    dirty_sha256: str
+    clean_sha256: str
 
 
 def _resolve_cache_root(cache_root: Path | None) -> Path:
@@ -58,6 +61,15 @@ def _dataset_cache_dir(dataset_name: str, *, cache_root: Path | None) -> Path:
 def _read_cached_csv(path: Path) -> pd.DataFrame:
     """Read a cached CSV using string-preserving defaults."""
     return pd.read_csv(path, dtype=str, keep_default_na=False, na_filter=False)
+
+
+def _sha256_file(path: Path) -> str:
+    """Return the SHA-256 digest for a cached artifact."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _download_bytes(url: str) -> bytes:
@@ -82,13 +94,46 @@ def _download_to_cache(metadata: DatasetMetadata, dataset_dir: Path) -> None:
     _LOGGER.info("dataset_download_complete name=%s dir=%s", metadata.name, dataset_dir)
 
 
-def _load_embedded_dataset(name: str) -> tuple[pd.DataFrame, pd.DataFrame] | None:
+def _validate_cached_hashes(
+    *,
+    metadata: DatasetMetadata,
+    dirty_path: Path,
+    clean_path: Path,
+) -> tuple[str, str]:
+    """Verify cached bytes match the pinned upstream source metadata."""
+    dirty_sha256 = _sha256_file(dirty_path)
+    clean_sha256 = _sha256_file(clean_path)
+    mismatches: list[str] = []
+    if dirty_sha256 != metadata.dirty_sha256:
+        mismatches.append(
+            f"dirty.csv sha256 mismatch: expected {metadata.dirty_sha256}, got {dirty_sha256}"
+        )
+    if clean_sha256 != metadata.clean_sha256:
+        mismatches.append(
+            f"clean.csv sha256 mismatch: expected {metadata.clean_sha256}, got {clean_sha256}"
+        )
+    if mismatches:
+        raise DatasetDownloadError(
+            f"Cached dataset '{metadata.name}' does not match pinned Raha source "
+            f"{metadata.source_revision}: "
+            + "; ".join(mismatches)
+            + f". Remove '{dirty_path.parent}' or rerun with a clean --cache-root."
+        )
+    return dirty_sha256, clean_sha256
+
+
+def _load_embedded_dataset(name: str) -> tuple[pd.DataFrame, pd.DataFrame, str, str] | None:
     root = Path(__file__).parent / "embedded" / name
     dirty_path = root / "dirty.csv"
     clean_path = root / "clean.csv"
     if not dirty_path.exists() or not clean_path.exists():
         return None
-    return _read_cached_csv(dirty_path), _read_cached_csv(clean_path)
+    return (
+        _read_cached_csv(dirty_path),
+        _read_cached_csv(clean_path),
+        _sha256_file(dirty_path),
+        _sha256_file(clean_path),
+    )
 
 
 def _manual_download_message(metadata: DatasetMetadata, dataset_dir: Path, cause: Exception) -> str:
@@ -154,12 +199,17 @@ def load_real_world_dataset(
     name: str,
     *,
     cache_root: Path | None = None,
+    verify_hashes: bool = True,
+    allow_embedded_fallback: bool = False,
 ) -> RealWorldDataset:
     """Load a real-world benchmark dataset from cache or upstream.
 
     Args:
         name: Canonical dataset name.
         cache_root: Optional cache root override, mainly for tests.
+        verify_hashes: Verify cached/downloaded bytes against pinned upstream hashes.
+        allow_embedded_fallback: Allow tiny bundled fixture data when the canonical
+            upstream dataset cannot be downloaded. This is intended for local tests only.
 
     Returns:
         The aligned dirty/clean dataset bundle.
@@ -175,24 +225,37 @@ def load_real_world_dataset(
 
     dirty_df: pd.DataFrame | None = None
     clean_df: pd.DataFrame | None = None
+    dirty_sha256: str | None = None
+    clean_sha256: str | None = None
 
     if not dirty_path.exists() or not clean_path.exists():
         _LOGGER.info("dataset_cache_miss name=%s dir=%s", name, dataset_dir)
         try:
             _download_to_cache(metadata, dataset_dir)
         except Exception as exc:  # pragma: no cover - exercised through tests via monkeypatch
-            fallback = _load_embedded_dataset(name)
+            fallback = _load_embedded_dataset(name) if allow_embedded_fallback else None
             if fallback is None:
                 raise DatasetDownloadError(
                     _manual_download_message(metadata, dataset_dir, exc)
                 ) from exc
-            dirty_df, clean_df = fallback
+            dirty_df, clean_df, dirty_sha256, clean_sha256 = fallback
     else:
         _LOGGER.info("dataset_cache_hit name=%s dir=%s", name, dataset_dir)
 
     if dirty_df is None or clean_df is None:
+        if verify_hashes:
+            dirty_sha256, clean_sha256 = _validate_cached_hashes(
+                metadata=metadata,
+                dirty_path=dirty_path,
+                clean_path=clean_path,
+            )
+        else:
+            dirty_sha256 = _sha256_file(dirty_path)
+            clean_sha256 = _sha256_file(clean_path)
         dirty_df = _read_cached_csv(dirty_path)
         clean_df = _read_cached_csv(clean_path)
+    elif dirty_sha256 is None or clean_sha256 is None:
+        raise DatasetDownloadError(f"Dataset '{name}' loaded without artifact hashes.")
 
     if len(dirty_df.index) != len(clean_df.index):
         raise ValueError(f"Dataset '{name}' dirty/clean row counts do not match.")
@@ -214,10 +277,14 @@ def load_real_world_dataset(
             "header_mismatches": mismatches,
         }
     )
+    if dirty_sha256 is None or clean_sha256 is None:
+        raise DatasetDownloadError(f"Dataset '{name}' loaded without artifact hashes.")
     return RealWorldDataset(
         metadata=loaded_metadata,
         dirty_df=dirty_df,
         clean_df=clean_df,
         canonical_columns=tuple(clean_columns),
         ground_truth=_compute_ground_truth(dirty_df, clean_df),
+        dirty_sha256=dirty_sha256,
+        clean_sha256=clean_sha256,
     )

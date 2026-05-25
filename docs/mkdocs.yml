@@ -63,6 +63,7 @@ nav:
   - Safety: safety.md
   - Architecture: architecture.md
   - Reference: reference.md
+  - Release: release.md
   - RFCs:
       - Overview: rfcs/index.md
       - RFC-001 Streaming Support: rfcs/RFC-001-streaming-support.md

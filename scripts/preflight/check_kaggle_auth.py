@@ -5,12 +5,25 @@ from __future__ import annotations
 import argparse
 import importlib.metadata as metadata
 import json
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_KAGGLE_CREDENTIALS = Path.home() / ".kaggle" / "credentials.json"
 STALE_KAGGLE_JSON = Path.home() / ".kaggle" / "kaggle.json"
+LEGACY_KAGGLE_ENV_VARS = (
+    "KAGGLE_USERNAME",
+    "KAGGLE_KEY",
+    "KAGGLE_API_TOKEN",
+    "KAGGLE_API_V1_TOKEN",
+)
+Runner = Callable[..., subprocess.CompletedProcess[str]]
 
 
 def _load_credentials(path: Path) -> dict[str, Any]:
@@ -51,10 +64,11 @@ def check_kaggle_auth(
     *,
     kaggle_json: Path = DEFAULT_KAGGLE_CREDENTIALS,
     kaggle_cli: Path | None = None,
+    run_cli: bool = False,
+    runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     """Return masked Kaggle auth and CLI status without printing the API key."""
     report = _load_credentials(kaggle_json)
-    del kaggle_cli
     try:
         kaggle_version = metadata.version("kaggle")
     except metadata.PackageNotFoundError as exc:
@@ -65,20 +79,100 @@ def check_kaggle_auth(
             "client_version": kaggle_version,
         }
     )
+    if run_cli:
+        report.update(
+            _run_cli_with_clean_config(
+                kaggle_json=kaggle_json,
+                kaggle_cli=kaggle_cli,
+                runner=runner,
+            )
+        )
+    else:
+        report["cli_checked"] = False
     return report
+
+
+def _resolve_kaggle_cli(kaggle_cli: Path | None) -> Path:
+    if kaggle_cli is not None:
+        return kaggle_cli
+    local_cli = PROJECT_ROOT / ".venv" / "Scripts" / "kaggle.exe"
+    if local_cli.exists():
+        return local_cli
+    discovered = shutil.which("kaggle") or shutil.which("kaggle.exe")
+    if discovered is None:
+        raise RuntimeError("Kaggle CLI executable not found.")
+    return Path(discovered)
+
+
+def _run_cli_with_clean_config(
+    *,
+    kaggle_json: Path,
+    kaggle_cli: Path | None,
+    runner: Runner,
+) -> dict[str, Any]:
+    """Run a read-only Kaggle CLI command with legacy config and env isolated."""
+    resolved_cli = _resolve_kaggle_cli(kaggle_cli)
+    command = [
+        str(resolved_cli),
+        "datasets",
+        "list",
+        "--mine",
+        "--page",
+        "1",
+        "--csv",
+    ]
+    with tempfile.TemporaryDirectory(prefix="dataforge-kaggle-config-") as clean_config:
+        env = os.environ.copy()
+        for key in LEGACY_KAGGLE_ENV_VARS:
+            env.pop(key, None)
+        env["KAGGLE_CONFIG_DIR"] = clean_config
+        env["KAGGLE_CREDENTIALS_FILE"] = str(kaggle_json)
+        result = runner(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=60,
+            check=False,
+            env=env,
+        )
+        if result.returncode != 0:
+            stderr = (result.stderr or "").strip()
+            raise RuntimeError(
+                "Kaggle CLI clean-config OAuth preflight failed "
+                f"with exit code {result.returncode}: {stderr[:500]}"
+            )
+        return {
+            "cli_checked": True,
+            "cli_command": " ".join(command),
+            "clean_config_dir_used": True,
+            "legacy_env_cleared": True,
+            "oauth_credentials_file": str(kaggle_json),
+            "tokens_printed": False,
+        }
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--kaggle-json", type=Path, default=DEFAULT_KAGGLE_CREDENTIALS)
     parser.add_argument("--kaggle-cli", type=Path, default=None)
+    parser.add_argument(
+        "--check-cli",
+        action="store_true",
+        help="Run the Kaggle CLI with a clean KAGGLE_CONFIG_DIR and OAuth credentials.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     try:
-        report = check_kaggle_auth(kaggle_json=args.kaggle_json, kaggle_cli=args.kaggle_cli)
+        report = check_kaggle_auth(
+            kaggle_json=args.kaggle_json,
+            kaggle_cli=args.kaggle_cli,
+            run_cli=args.check_cli,
+        )
     except Exception as exc:
         print(f"Kaggle auth preflight failed: {exc}", file=sys.stderr)
         return 2

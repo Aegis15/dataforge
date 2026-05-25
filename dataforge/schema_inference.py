@@ -5,8 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import tempfile
 from collections import Counter, defaultdict
+from contextlib import suppress
 from pathlib import Path
 from typing import Literal
 
@@ -210,6 +213,29 @@ def build_constraint_review_artifact(
     )
 
 
+def validate_constraint_review_artifact(artifact: ConstraintReviewArtifact) -> None:
+    """Validate review-artifact integrity beyond the strict JSON schema."""
+    seen_ids: set[str] = set()
+    duplicate_ids: list[str] = []
+    mismatched_ids: list[str] = []
+    for reviewed in artifact.candidates:
+        if reviewed.candidate_id in seen_ids:
+            duplicate_ids.append(reviewed.candidate_id)
+        seen_ids.add(reviewed.candidate_id)
+
+        expected_id = constraint_candidate_id(reviewed.candidate)
+        if reviewed.candidate_id != expected_id:
+            mismatched_ids.append(f"{reviewed.candidate_id} should be {expected_id}")
+
+    errors: list[str] = []
+    if duplicate_ids:
+        errors.append("duplicate candidate ids: " + ", ".join(sorted(set(duplicate_ids))))
+    if mismatched_ids:
+        errors.append("candidate id payload mismatch: " + "; ".join(mismatched_ids))
+    if errors:
+        raise ConstraintReviewError("Invalid constraints artifact: " + "; ".join(errors))
+
+
 def load_constraint_review_artifact(path: Path) -> tuple[ConstraintReviewArtifact, str]:
     """Load a strict constraint review artifact and return it with its SHA-256."""
     try:
@@ -220,12 +246,87 @@ def load_constraint_review_artifact(path: Path) -> tuple[ConstraintReviewArtifac
         artifact = ConstraintReviewArtifact.model_validate_json(payload)
     except ValueError as exc:
         raise ConstraintReviewError(f"Invalid constraints file '{path}': {exc}") from exc
+    validate_constraint_review_artifact(artifact)
     return artifact, sha256_bytes(payload)
 
 
 def dump_constraint_review_artifact(artifact: ConstraintReviewArtifact) -> str:
     """Return deterministic, human-reviewable JSON for a constraint artifact."""
+    validate_constraint_review_artifact(artifact)
     return json.dumps(artifact.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+
+
+def update_constraint_review_artifact(
+    artifact: ConstraintReviewArtifact,
+    *,
+    accept_ids: list[str] | tuple[str, ...] = (),
+    reject_ids: list[str] | tuple[str, ...] = (),
+    pending_ids: list[str] | tuple[str, ...] = (),
+    notes: dict[str, str | None] | None = None,
+) -> ConstraintReviewArtifact:
+    """Return a reviewed artifact with explicit decision and note edits applied."""
+    validate_constraint_review_artifact(artifact)
+    notes = notes or {}
+    decisions: dict[str, ConstraintDecision] = {}
+    conflicts: set[str] = set()
+    for candidate_id in accept_ids:
+        if candidate_id in decisions:
+            conflicts.add(candidate_id)
+        decisions[candidate_id] = "accepted"
+    for candidate_id in reject_ids:
+        if candidate_id in decisions:
+            conflicts.add(candidate_id)
+        decisions[candidate_id] = "rejected"
+    for candidate_id in pending_ids:
+        if candidate_id in decisions:
+            conflicts.add(candidate_id)
+        decisions[candidate_id] = "pending"
+    if conflicts:
+        raise ConstraintReviewError(
+            "Candidate ids received conflicting review decisions: " + ", ".join(sorted(conflicts))
+        )
+
+    known_ids = {reviewed.candidate_id for reviewed in artifact.candidates}
+    unknown_ids = sorted((set(decisions) | set(notes)) - known_ids)
+    if unknown_ids:
+        raise ConstraintReviewError("Unknown candidate ids: " + ", ".join(unknown_ids))
+
+    updated_candidates: list[ReviewedConstraintCandidate] = []
+    for reviewed in artifact.candidates:
+        update: dict[str, object] = {}
+        if reviewed.candidate_id in decisions:
+            update["decision"] = decisions[reviewed.candidate_id]
+        if reviewed.candidate_id in notes:
+            note = notes[reviewed.candidate_id]
+            update["review_note"] = note if note else None
+        updated_candidates.append(reviewed.model_copy(update=update))
+
+    updated = artifact.model_copy(update={"candidates": updated_candidates})
+    validate_constraint_review_artifact(updated)
+    return updated
+
+
+def write_constraint_review_artifact_atomic(path: Path, artifact: ConstraintReviewArtifact) -> str:
+    """Atomically rewrite a constraints artifact and return the written SHA-256."""
+    payload = dump_constraint_review_artifact(artifact).encode("utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    temp_path = Path(temp_name)
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_path, path)
+    except Exception:
+        with suppress(OSError):
+            temp_path.unlink()
+        raise
+    return sha256_bytes(payload)
 
 
 def merge_schema_with_reviewed_constraints(

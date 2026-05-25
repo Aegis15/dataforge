@@ -1,5 +1,6 @@
 {
   "metadata": {
+    "schema_version": "dataforge_benchmark_run_v2",
     "methods": [
       "random",
       "heuristic"
@@ -10,7 +11,72 @@
       "beers"
     ],
     "seeds": 3,
-    "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+    "seed_list": [
+      0,
+      1,
+      2
+    ],
+    "git_commit": "dbd1bed0a03c56b826e9c8315cc50d1908e2e8b2",
+    "git_dirty": true,
+    "generated_at_utc": "2026-05-25T04:16:06+00:00",
+    "python_version": "3.12.10",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "dependency_versions": {
+      "dataforge15": "0.1.0",
+      "httpx": "0.28.1",
+      "pandas": "2.3.3",
+      "pydantic": "2.13.2",
+      "python-dotenv": "1.2.2",
+      "typer": "0.24.1"
+    },
+    "generator_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2",
+    "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2",
+    "dataset_evidence": [
+      {
+        "name": "hospital",
+        "source_urls": [
+          "https://raw.githubusercontent.com/BigDaMa/raha/7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c/datasets/hospital/dirty.csv",
+          "https://raw.githubusercontent.com/BigDaMa/raha/7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c/datasets/hospital/clean.csv"
+        ],
+        "source_revision": "7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c",
+        "dirty_sha256": "dbc5575b915fe8b5e0ac6dc6172f38ba91e611fdb76d09a8f4a81cb7ea9925ac",
+        "clean_sha256": "ea3ee44998455c0b491750c348509de176c758a3bbf58e4530c0a136bb248b4b",
+        "n_rows": 1000,
+        "n_columns": 20
+      },
+      {
+        "name": "flights",
+        "source_urls": [
+          "https://raw.githubusercontent.com/BigDaMa/raha/7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c/datasets/flights/dirty.csv",
+          "https://raw.githubusercontent.com/BigDaMa/raha/7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c/datasets/flights/clean.csv"
+        ],
+        "source_revision": "7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c",
+        "dirty_sha256": "1b5c1afa10aa0e7c20fd7e14d05c56772715b2771aa0f5fa67ed1709e1eecd46",
+        "clean_sha256": "0acfcfd8985b06fdd363965c9e8d9522c43e7589a93d79ae7dc311e1c37fdf3b",
+        "n_rows": 2376,
+        "n_columns": 7
+      },
+      {
+        "name": "beers",
+        "source_urls": [
+          "https://raw.githubusercontent.com/BigDaMa/raha/7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c/datasets/beers/dirty.csv",
+          "https://raw.githubusercontent.com/BigDaMa/raha/7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c/datasets/beers/clean.csv"
+        ],
+        "source_revision": "7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c",
+        "dirty_sha256": "7110bf4931a9445a1675e544d6c996817c739136239f8a2b02e088c7ec0a1f68",
+        "clean_sha256": "373227df59ad197e154dd5149125789e415019535c7223355e9486ee1b3b93de",
+        "n_rows": 2410,
+        "n_columns": 11
+      }
+    ],
+    "artifact_sha256s": {
+      "dataset:hospital:dirty.csv": "dbc5575b915fe8b5e0ac6dc6172f38ba91e611fdb76d09a8f4a81cb7ea9925ac",
+      "dataset:hospital:clean.csv": "ea3ee44998455c0b491750c348509de176c758a3bbf58e4530c0a136bb248b4b",
+      "dataset:flights:dirty.csv": "1b5c1afa10aa0e7c20fd7e14d05c56772715b2771aa0f5fa67ed1709e1eecd46",
+      "dataset:flights:clean.csv": "0acfcfd8985b06fdd363965c9e8d9522c43e7589a93d79ae7dc311e1c37fdf3b",
+      "dataset:beers:dirty.csv": "7110bf4931a9445a1675e544d6c996817c739136239f8a2b02e088c7ec0a1f68",
+      "dataset:beers:clean.csv": "373227df59ad197e154dd5149125789e415019535c7223355e9486ee1b3b93de"
+    }
   },
   "records": [
     {
@@ -23,19 +89,19 @@
       "recall": 0.0,
       "f1": 0.0,
       "tp": 0,
-      "fp": 17,
-      "fn": 3,
-      "avg_steps": 25.0,
+      "fp": 51,
+      "fn": 509,
+      "avg_steps": 51.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0004,
+      "runtime_s": 0.002,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -47,57 +113,9 @@
       "recall": 0.0,
       "f1": 0.0,
       "tp": 0,
-      "fp": 18,
-      "fn": 3,
-      "avg_steps": 25.0,
-      "llm_calls": 0,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "quota_units": 0.0,
-      "gpu_hours": 0.0,
-      "runtime_s": 0.0001,
-      "provider": "local",
-      "model": "random",
-      "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
-    },
-    {
-      "method": "random",
-      "dataset": "hospital",
-      "seed": 2,
-      "status": "ok",
-      "skip_reason": null,
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0,
-      "tp": 0,
-      "fp": 13,
-      "fn": 3,
-      "avg_steps": 25.0,
-      "llm_calls": 0,
-      "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "quota_units": 0.0,
-      "gpu_hours": 0.0,
-      "runtime_s": 0.0001,
-      "provider": "local",
-      "model": "random",
-      "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
-    },
-    {
-      "method": "heuristic",
-      "dataset": "hospital",
-      "seed": 0,
-      "status": "ok",
-      "skip_reason": null,
-      "precision": 0.5,
-      "recall": 0.3333,
-      "f1": 0.4,
-      "tp": 1,
-      "fp": 1,
-      "fn": 2,
-      "avg_steps": 3.0,
+      "fp": 51,
+      "fn": 509,
+      "avg_steps": 51.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
@@ -105,9 +123,57 @@
       "gpu_hours": 0.0,
       "runtime_s": 0.0008,
       "provider": "local",
+      "model": "random",
+      "warnings": [],
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
+    },
+    {
+      "method": "random",
+      "dataset": "hospital",
+      "seed": 2,
+      "status": "ok",
+      "skip_reason": null,
+      "precision": 0.0196,
+      "recall": 0.002,
+      "f1": 0.0036,
+      "tp": 1,
+      "fp": 50,
+      "fn": 508,
+      "avg_steps": 51.0,
+      "llm_calls": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "quota_units": 0.0,
+      "gpu_hours": 0.0,
+      "runtime_s": 0.0008,
+      "provider": "local",
+      "model": "random",
+      "warnings": [],
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
+    },
+    {
+      "method": "heuristic",
+      "dataset": "hospital",
+      "seed": 0,
+      "status": "ok",
+      "skip_reason": null,
+      "precision": 0.717,
+      "recall": 0.8861,
+      "f1": 0.7926,
+      "tp": 451,
+      "fp": 178,
+      "fn": 58,
+      "avg_steps": 630.0,
+      "llm_calls": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "quota_units": 0.0,
+      "gpu_hours": 0.0,
+      "runtime_s": 54.0811,
+      "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -115,23 +181,23 @@
       "seed": 1,
       "status": "ok",
       "skip_reason": null,
-      "precision": 0.5,
-      "recall": 0.3333,
-      "f1": 0.4,
-      "tp": 1,
-      "fp": 1,
-      "fn": 2,
-      "avg_steps": 3.0,
+      "precision": 0.717,
+      "recall": 0.8861,
+      "f1": 0.7926,
+      "tp": 451,
+      "fp": 178,
+      "fn": 58,
+      "avg_steps": 630.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0004,
+      "runtime_s": 52.9477,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -139,23 +205,23 @@
       "seed": 2,
       "status": "ok",
       "skip_reason": null,
-      "precision": 0.5,
-      "recall": 0.3333,
-      "f1": 0.4,
-      "tp": 1,
-      "fp": 1,
-      "fn": 2,
-      "avg_steps": 3.0,
+      "precision": 0.717,
+      "recall": 0.8861,
+      "f1": 0.7926,
+      "tp": 451,
+      "fp": 178,
+      "fn": 58,
+      "avg_steps": 630.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0004,
+      "runtime_s": 52.2193,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -175,11 +241,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0043,
+      "runtime_s": 0.0019,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -199,11 +265,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.002,
+      "runtime_s": 0.0029,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -223,11 +289,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0327,
+      "runtime_s": 0.0016,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -247,11 +313,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0291,
+      "runtime_s": 0.0872,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -271,11 +337,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0404,
+      "runtime_s": 0.0389,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -295,11 +361,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0436,
+      "runtime_s": 0.0412,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -319,11 +385,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0055,
+      "runtime_s": 0.002,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -343,11 +409,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0026,
+      "runtime_s": 0.0028,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -367,11 +433,11 @@
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0033,
+      "runtime_s": 0.0017,
       "provider": "local",
       "model": "random",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -379,23 +445,23 @@
       "seed": 0,
       "status": "ok",
       "skip_reason": null,
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0,
-      "tp": 0,
-      "fp": 269,
-      "fn": 4362,
-      "avg_steps": 270.0,
+      "precision": 0.2331,
+      "recall": 0.0213,
+      "f1": 0.0391,
+      "tp": 93,
+      "fp": 306,
+      "fn": 4269,
+      "avg_steps": 400.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0677,
+      "runtime_s": 17.8232,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -403,23 +469,23 @@
       "seed": 1,
       "status": "ok",
       "skip_reason": null,
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0,
-      "tp": 0,
-      "fp": 269,
-      "fn": 4362,
-      "avg_steps": 270.0,
+      "precision": 0.2331,
+      "recall": 0.0213,
+      "f1": 0.0391,
+      "tp": 93,
+      "fp": 306,
+      "fn": 4269,
+      "avg_steps": 400.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.1015,
+      "runtime_s": 17.5071,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -427,23 +493,23 @@
       "seed": 2,
       "status": "ok",
       "skip_reason": null,
-      "precision": 0.0,
-      "recall": 0.0,
-      "f1": 0.0,
-      "tp": 0,
-      "fp": 269,
-      "fn": 4362,
-      "avg_steps": 270.0,
+      "precision": 0.2331,
+      "recall": 0.0213,
+      "f1": 0.0391,
+      "tp": 93,
+      "fp": 306,
+      "fn": 4269,
+      "avg_steps": 400.0,
       "llm_calls": 0,
       "prompt_tokens": 0,
       "completion_tokens": 0,
       "quota_units": 0.0,
       "gpu_hours": 0.0,
-      "runtime_s": 0.0785,
+      "runtime_s": 18.2393,
       "provider": "local",
       "model": "deterministic",
       "warnings": [],
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     }
   ],
   "aggregates": [
@@ -454,23 +520,23 @@
       "skip_reason": null,
       "seeds_requested": 3,
       "seeds_completed": 3,
-      "precision_mean": 0.0,
-      "precision_std": 0.0,
-      "recall_mean": 0.0,
-      "recall_std": 0.0,
-      "f1_mean": 0.0,
-      "f1_std": 0.0,
-      "avg_steps_mean": 25.0,
+      "precision_mean": 0.0065,
+      "precision_std": 0.0113,
+      "recall_mean": 0.0007,
+      "recall_std": 0.0012,
+      "f1_mean": 0.0012,
+      "f1_std": 0.0021,
+      "avg_steps_mean": 51.0,
       "avg_steps_std": 0.0,
       "quota_units_mean": 0.0,
       "quota_units_std": 0.0,
       "gpu_hours_mean": 0.0,
       "gpu_hours_std": 0.0,
-      "runtime_s_mean": 0.0002,
-      "runtime_s_std": 0.0002,
+      "runtime_s_mean": 0.0012,
+      "runtime_s_std": 0.0007,
       "provider": "local",
       "model": "random",
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -479,23 +545,23 @@
       "skip_reason": null,
       "seeds_requested": 3,
       "seeds_completed": 3,
-      "precision_mean": 0.5,
+      "precision_mean": 0.717,
       "precision_std": 0.0,
-      "recall_mean": 0.3333,
+      "recall_mean": 0.8861,
       "recall_std": 0.0,
-      "f1_mean": 0.4,
+      "f1_mean": 0.7926,
       "f1_std": 0.0,
-      "avg_steps_mean": 3.0,
+      "avg_steps_mean": 630.0,
       "avg_steps_std": 0.0,
       "quota_units_mean": 0.0,
       "quota_units_std": 0.0,
       "gpu_hours_mean": 0.0,
       "gpu_hours_std": 0.0,
-      "runtime_s_mean": 0.0005,
-      "runtime_s_std": 0.0002,
+      "runtime_s_mean": 53.0827,
+      "runtime_s_std": 0.9382,
       "provider": "local",
       "model": "deterministic",
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -516,11 +582,11 @@
       "quota_units_std": 0.0,
       "gpu_hours_mean": 0.0,
       "gpu_hours_std": 0.0,
-      "runtime_s_mean": 0.013,
-      "runtime_s_std": 0.0171,
+      "runtime_s_mean": 0.0021,
+      "runtime_s_std": 0.0007,
       "provider": "local",
       "model": "random",
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -541,11 +607,11 @@
       "quota_units_std": 0.0,
       "gpu_hours_mean": 0.0,
       "gpu_hours_std": 0.0,
-      "runtime_s_mean": 0.0377,
-      "runtime_s_std": 0.0076,
+      "runtime_s_mean": 0.0558,
+      "runtime_s_std": 0.0272,
       "provider": "local",
       "model": "deterministic",
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "random",
@@ -566,11 +632,11 @@
       "quota_units_std": 0.0,
       "gpu_hours_mean": 0.0,
       "gpu_hours_std": 0.0,
-      "runtime_s_mean": 0.0038,
-      "runtime_s_std": 0.0015,
+      "runtime_s_mean": 0.0022,
+      "runtime_s_std": 0.0006,
       "provider": "local",
       "model": "random",
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     },
     {
       "method": "heuristic",
@@ -579,23 +645,23 @@
       "skip_reason": null,
       "seeds_requested": 3,
       "seeds_completed": 3,
-      "precision_mean": 0.0,
+      "precision_mean": 0.2331,
       "precision_std": 0.0,
-      "recall_mean": 0.0,
+      "recall_mean": 0.0213,
       "recall_std": 0.0,
-      "f1_mean": 0.0,
+      "f1_mean": 0.0391,
       "f1_std": 0.0,
-      "avg_steps_mean": 270.0,
+      "avg_steps_mean": 400.0,
       "avg_steps_std": 0.0,
       "quota_units_mean": 0.0,
       "quota_units_std": 0.0,
       "gpu_hours_mean": 0.0,
       "gpu_hours_std": 0.0,
-      "runtime_s_mean": 0.0826,
-      "runtime_s_std": 0.0173,
+      "runtime_s_mean": 17.8565,
+      "runtime_s_std": 0.3672,
       "provider": "local",
       "model": "deterministic",
-      "reproduction_command": "python scripts\\bench\\run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval\\results\\agent_comparison.json"
+      "reproduction_command": "dataforge bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2"
     }
   ]
 }

@@ -10,33 +10,13 @@ The planned PyPI distribution is `dataforge15`, but it is not published yet.
 The Python import namespace remains `dataforge` for the 0.1 line to avoid
 unnecessary churn. Use the source install below for now; after PyPI publication,
 the install name will be `dataforge15` and the import will be `import dataforge`.
+The first release-candidate package version is `0.1.0rc1`, intended for a
+TestPyPI rehearsal under the git tag `v0.1.0-rc1`.
 
 The current repository is an alpha implementation. It also contains the
 OpenEnv-compatible training environment, the SFT warmup workflow, a local MCP
 server package, and playground/demo sources. Warehouse integrations and
 production model-quality claims remain future work.
-
-## Reproducible Benchmark Snapshot
-
-Generated from `eval/results/agent_comparison.json` on commit `829e8a2`
-(`2026-05-11`, 3 seeds). Reproduce with:
-
-```bash
-dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --json
-```
-
-95% confidence intervals use a t interval over the three seed-level F1 scores.
-Only locally reproducible DataForge baselines are shown here; citation-only
-HoloClean/Raha/BClean rows intentionally stay out of the first-screen table.
-
-| Method | Dataset | F1 mean (95% CI) | Precision | Recall | Avg steps | Provider |
-| --- | --- | ---: | ---: | ---: | ---: | --- |
-| heuristic | hospital | 0.4000 [0.4000, 0.4000] | 0.5000 | 0.3333 | 3.0 | local |
-| random | hospital | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 25.0 | local |
-| random | flights | 0.0004 [0.0000, 0.0021] | 0.0050 | 0.0002 | 200.0 | local |
-| heuristic | flights | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 93.0 | local |
-| random | beers | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 200.0 | local |
-| heuristic | beers | 0.0000 [0.0000, 0.0000] | 0.0000 | 0.0000 | 270.0 | local |
 
 ## Current Status
 
@@ -76,10 +56,11 @@ Not shipped yet:
 python -m pip install -e ".[dev]"
 dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml
 dataforge15 profile fixtures/hospital_10rows.csv --constraints-out constraints.json
+dataforge15 constraints review constraints.json
 dataforge15 repair fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --dry-run
 dataforge15 repair fixtures/hospital_10rows.csv --constraints constraints.json --dry-run
 dataforge15 watch fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --once --json
-dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3
+dataforge15 bench --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --seed-list 0,1,2
 ```
 
 `dataforge` remains a temporary CLI compatibility alias for the first
@@ -195,14 +176,16 @@ backend provider key is explicitly configured.
 ## Benchmark Results
 
 <!-- BENCH:START -->
-Generated from `eval/results/agent_comparison.json`.
+Generated from `eval/results/agent_comparison.json` (schema `dataforge_benchmark_run_v2`, seeds `0, 1, 2`, git `dbd1bed0a03c`, dirty `true`).
 
 | Method | Precision | Recall | F1 | Avg Steps | Quota Units | GPU Hours |
 | --- | --- | --- | --- | --- | --- | --- |
-| heuristic | 0.1667 | 0.1111 | 0.1333 | 122.00 | 0.0000 | 0.0000 |
-| random | 0.0017 | 0.0001 | 0.0001 | 141.67 | 0.0000 | 0.0000 |
+| heuristic | 0.3167 | 0.3025 | 0.2772 | 374.33 | 0.0000 | 0.0000 |
+| random | 0.0038 | 0.0003 | 0.0005 | 150.33 | 0.0000 | 0.0000 |
 
 See `BENCHMARK_REPORT.md` for per-dataset tables, error bars, and citation-only SOTA rows.
+
+Dataset bytes are pinned to BigDaMa/raha revision `7be1334b8c7bbdac3f47ef514fb3e1e8c5fc181c` for hospital, flights, beers; dirty/clean SHA-256s are recorded in the JSON metadata.
 <!-- BENCH:END -->
 
 ## Local Setup
@@ -223,13 +206,16 @@ Make recipes. Python support is `>=3.11,<3.13`.
 Every inferred candidate starts as `pending`; repair ignores pending and
 rejected candidates. In v1, only accepted `column_type`, `domain_bound`, and
 `functional_dependency` candidates affect repair. Accepted regex and uniqueness
-candidates remain review evidence until verifier support is added.
+candidates remain review evidence until verifier support is added. Use
+`dataforge15 constraints review constraints.json` for the Textual review UI, or
+use deterministic CI flags such as `--accept cnd-... --no-tui --json`.
 
 `make backend-gate` is the release-quality backend check: lint, format, strict
-mypy, root tests, MCP tests, README truth, OpenAPI snapshot drift, secret scan,
-dependency audit availability, SBOM generation availability, and package build
-availability for both `dataforge15` and `dataforge15-mcp`. The gate covers the
-core `dataforge` distribution and release surfaces; the historical
+mypy, root tests, MCP tests, README truth, benchmark truth, OpenAPI snapshot
+drift, secret scan, dependency audit availability, SBOM generation
+availability, and package build availability for both `dataforge15` and
+`dataforge15-mcp`. The gate covers the core `dataforge` distribution and
+release surfaces; the historical
 `data_quality_env` namespace remains source-tree regression coverage, not part
 of the `dataforge15` wheel or source distribution.
 
@@ -242,11 +228,19 @@ dataforge15 release gate --json
 ```
 
 `--core` is the default OSS release check. `--maintainer-deploy` additionally
-checks maintainer-specific Hugging Face, Kaggle, Cloudflare, and domain state.
+checks maintainer-specific Hugging Face, Kaggle OAuth plus clean-config Kaggle
+CLI execution, Cloudflare, and domain state.
 `release gate` is the authoritative fresh-user proof: it builds the
 distribution, audits wheel contents, creates a dependency wheelhouse, installs
 with `pip --no-index --find-links`, then runs profile, repair dry-run, apply,
-audit, revert, and post-revert audit from outside the source checkout.
+constraint review, audit, revert, and post-revert audit from outside the source
+checkout.
+
+Release-candidate publishing is TestPyPI-only. Configure pending trusted
+publishers for `dataforge15` on TestPyPI and PyPI before tagging, then use
+`v0.1.0-rc1` for the TestPyPI rehearsal. The real PyPI workflow refuses
+pre-release metadata and should only run after ownership and trusted publishing
+are verified.
 
 Windows setup:
 

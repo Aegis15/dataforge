@@ -44,11 +44,11 @@ def load_sota_output(path: Path) -> dict[str, object]:
 
 
 def replace_benchmark_block(readme_text: str, block_text: str) -> str:
-    """Replace the README benchmark marker block idempotently."""
+    """Replace a benchmark marker block idempotently."""
     start_marker = "<!-- BENCH:START -->"
     end_marker = "<!-- BENCH:END -->"
     if start_marker not in readme_text or end_marker not in readme_text:
-        raise ValueError("README benchmark markers are missing.")
+        raise ValueError("Benchmark markers are missing.")
     start = readme_text.index(start_marker) + len(start_marker)
     end = readme_text.index(end_marker)
     return readme_text[:start] + "\n" + block_text.strip() + "\n" + readme_text[end:]
@@ -102,6 +102,37 @@ def _collect_skip_reasons(aggregates: list[AggregateBenchmarkResult]) -> list[st
     return reasons
 
 
+def _metadata_list(metadata: dict[str, object], key: str) -> list[str]:
+    value = metadata.get(key, [])
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value]
+
+
+def _dataset_revision_summary(agent_output: BenchmarkRunOutput) -> str:
+    raw_evidence = agent_output.metadata.get("dataset_evidence", [])
+    if not isinstance(raw_evidence, list):
+        return ""
+    revisions: list[str] = []
+    dataset_names: list[str] = []
+    for item in raw_evidence:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name", "")).strip()
+        revision = str(item.get("source_revision", "")).strip()
+        if name:
+            dataset_names.append(name)
+        if revision and revision not in revisions:
+            revisions.append(revision)
+    if not revisions:
+        return ""
+    return (
+        "\n\nDataset bytes are pinned to BigDaMa/raha revision "
+        f"`{', '.join(revisions)}` for {', '.join(dataset_names)}; "
+        "dirty/clean SHA-256s are recorded in the JSON metadata."
+    )
+
+
 def build_readme_benchmark_block(agent_output: BenchmarkRunOutput, report_path: Path) -> str:
     """Build the generated README benchmark summary block."""
     rows = _aggregate_across_datasets(agent_output.aggregates)
@@ -113,10 +144,20 @@ def build_readme_benchmark_block(agent_output: BenchmarkRunOutput, report_path: 
     skip_note = ""
     if skip_reasons:
         skip_note = "\n\nSkipped methods in this run: " + "; ".join(skip_reasons)
+    schema_version = str(agent_output.metadata.get("schema_version", "legacy"))
+    seed_values = _metadata_list(agent_output.metadata, "seed_list")
+    if not seed_values:
+        seed_values = [str(agent_output.metadata.get("seeds", ""))]
+    git_commit = str(agent_output.metadata.get("git_commit", "unknown"))
+    git_dirty = str(agent_output.metadata.get("git_dirty", "unknown")).lower()
+    dataset_summary = _dataset_revision_summary(agent_output)
     return (
-        "Generated from `eval/results/agent_comparison.json`.\n\n"
+        "Generated from `eval/results/agent_comparison.json` "
+        f"(schema `{schema_version}`, seeds `{', '.join(seed_values)}`, "
+        f"git `{git_commit[:12]}`, dirty `{git_dirty}`).\n\n"
         f"{table}\n\n"
         f"See `{report_path.name}` for per-dataset tables, error bars, and citation-only SOTA rows."
+        f"{dataset_summary}"
         f"{skip_note}"
     )
 
@@ -175,7 +216,7 @@ def render_benchmark_report(
             f"{float(row['precision']):.3f}",
             f"{float(row['recall']):.3f}",
             f"{float(row['f1']):.3f}",
-            str(row["note"]),
+            str(row.get("note", "Citation-only literature result.")),
         ]
         for row in raw_rows
         if isinstance(row, dict)
@@ -185,6 +226,9 @@ def render_benchmark_report(
         source.get("title", "Unknown source") if isinstance(source, dict) else "Unknown source"
     )
     source_url = source.get("url", "") if isinstance(source, dict) else ""
+    source_table = source.get("table", "") if isinstance(source, dict) else ""
+    source_hash = source.get("source_sha256", "") if isinstance(source, dict) else ""
+    source_retrieved = source.get("retrieved_at_utc", "") if isinstance(source, dict) else ""
     skip_reasons = _collect_skip_reasons(agent_output.aggregates)
     skip_note = ""
     if skip_reasons:
@@ -196,8 +240,13 @@ def render_benchmark_report(
     datasets = (
         [str(dataset) for dataset in dataset_values] if isinstance(dataset_values, list) else []
     )
+    seed_list = _metadata_list(agent_output.metadata, "seed_list")
     seeds = str(agent_output.metadata.get("seeds", ""))
     reproduction_command = str(agent_output.metadata.get("reproduction_command", ""))
+    schema_version = str(agent_output.metadata.get("schema_version", "legacy"))
+    git_commit = str(agent_output.metadata.get("git_commit", "unknown"))
+    git_dirty = str(agent_output.metadata.get("git_dirty", "unknown")).lower()
+    dataset_summary = _dataset_revision_summary(agent_output).strip()
 
     return (
         "# Benchmark Report\n\n"
@@ -207,22 +256,31 @@ def render_benchmark_report(
         f"- Methods: {', '.join(methods)}\n"
         f"- Datasets: {', '.join(datasets)}\n"
         f"- Seeds: {seeds}\n"
+        f"- Exact seed list: {', '.join(seed_list) if seed_list else seeds}\n"
+        f"- Evidence schema: `{schema_version}`\n"
+        f"- Git commit: `{git_commit}`; dirty worktree: `{git_dirty}`\n"
         "- Free-tier quota units: `max(llm_calls / 1000, (prompt_tokens + completion_tokens) / 100000)`\n"
         "- GRPO compute cost is reported as free-tier GPU-hours, not dollars.\n"
-        f"{skip_note}\n"
-        "## Cross-Dataset Local Results\n\n"
-        f"{local_summary}\n\n"
-        "## Per-Dataset Local Results\n\n"
+        + (f"- {dataset_summary}\n" if dataset_summary else "")
+        + f"{skip_note}\n"
+        + "## Cross-Dataset Local Results\n\n"
+        + f"{local_summary}\n\n"
+        + "## Per-Dataset Local Results\n\n"
         + "\n\n".join(per_dataset_sections)
         + "\n\n## Citation-Only SOTA Reference\n\n"
-        + f"Source: [{source_title}]({source_url})\n\n"
-        + "HoloClean rows are transcribed from BClean Table 4; see [HoloClean 2017](https://www.vldb.org/pvldb/vol10/p1190-rekatsinas.pdf) for the original system description.\n\n"
+        + f"Source: [{source_title}]({source_url}); {source_table}; "
+        + f"source SHA-256 `{source_hash}`; retrieved `{source_retrieved}`.\n\n"
+        + "HoloClean rows are transcribed from BClean Table 4; see "
+        + "[HoloClean 2017](https://www.vldb.org/pvldb/vol10/p1190-rekatsinas.pdf) "
+        + "for the original system description.\n\n"
         + _render_table(
             ["Method", "Dataset", "Precision", "Recall", "F1", "Note"],
             sota_rows,
         )
         + "\n\n## Methodology\n\n"
-        + "Local rows are reproduced from generated JSON. Citation-only SOTA rows are copied from literature and are not rerun in this repository. LLM quota units are free-tier fractions; GRPO compute cost is GPU-hours, not dollars.\n"
+        + "Local rows are reproduced from generated JSON. Citation-only SOTA rows are copied "
+        + "from literature and are not rerun in this repository. LLM quota units are free-tier "
+        + "fractions; GRPO compute cost is GPU-hours, not dollars.\n"
     )
 
 
@@ -232,8 +290,9 @@ def write_benchmark_outputs(
     sota_json_path: Path,
     report_path: Path,
     readme_path: Path,
+    homepage_path: Path | None = None,
 ) -> None:
-    """Generate the benchmark report and patch the README block."""
+    """Generate the benchmark report and patch generated public evidence blocks."""
     agent_output = load_agent_output(agent_json_path)
     sota_output = load_sota_output(sota_json_path)
     report_text = render_benchmark_report(agent_output, sota_output)
@@ -243,3 +302,8 @@ def write_benchmark_outputs(
     benchmark_block = build_readme_benchmark_block(agent_output, report_path)
     updated_readme = replace_benchmark_block(readme_text, benchmark_block)
     readme_path.write_text(updated_readme, encoding="utf-8")
+
+    if homepage_path is not None:
+        homepage_text = homepage_path.read_text(encoding="utf-8")
+        updated_homepage = replace_benchmark_block(homepage_text, benchmark_block)
+        homepage_path.write_text(updated_homepage, encoding="utf-8")

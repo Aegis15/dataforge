@@ -40,6 +40,6 @@ def test_mcp_distribution_uses_dataforge15_name_and_legacy_alias() -> None:
     project = pyproject["project"]
 
     assert project["name"] == "dataforge15-mcp"
-    assert "dataforge15>=0.1.0" in project["dependencies"]
+    assert "dataforge15>=0.1.0rc1,<0.2" in project["dependencies"]
     assert project["scripts"]["dataforge15-mcp"] == "dataforge_mcp.server:main"
     assert project["scripts"]["dataforge-mcp"] == "dataforge_mcp.server:main"

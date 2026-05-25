@@ -20,7 +20,8 @@ python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 ```
 
-The PyPI package is not published yet. After PyPI publication, use `python -m pip install dataforge15`; the import namespace remains `dataforge` for the 0.1 line.
+The PyPI package is not published yet. The first RC package version is
+`0.1.0rc1` for TestPyPI rehearsal. After PyPI publication, install with `python -m pip install dataforge15`; the import namespace remains `dataforge` for the 0.1 line.
 
 ## 2. Profile the hospital fixture
 
@@ -36,6 +37,8 @@ For machine-readable CI or agent calls:
 ```bash
 dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --json
 dataforge15 profile fixtures/hospital_10rows.csv --schema fixtures/hospital_schema.yaml --fail-on unsafe
+dataforge15 profile fixtures/hospital_10rows.csv --constraints-out constraints.json
+dataforge15 constraints review constraints.json
 ```
 
 ## 3. Preview repairs
@@ -74,10 +77,9 @@ post-state hash.
 ## 6. Regenerate benchmark docs
 
 ```bash
-python scripts/bench/run_agent_comparison.py --methods random,heuristic --datasets hospital,flights,beers --seeds 3 --output-json eval/results/agent_comparison.json
-python scripts/bench/run_sota_comparison.py
-python scripts/bench/generate_report.py
+python scripts/bench/refresh_benchmark_truth.py --seed-list 0,1,2
 ```
 
-The README benchmark block and `BENCHMARK_REPORT.md` are generated from
-committed JSON evidence. Public benchmark numbers should not be edited by hand.
+The README benchmark block, docs homepage block, and `BENCHMARK_REPORT.md` are
+generated from committed JSON evidence. Public benchmark numbers should not be
+edited by hand.

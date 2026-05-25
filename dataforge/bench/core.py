@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.metadata as package_metadata
+import platform
+import subprocess
+import sys
 from collections import OrderedDict
+from datetime import UTC, datetime
 from math import ceil
 from pathlib import Path
 from statistics import mean, stdev
@@ -10,10 +15,11 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from dataforge.datasets.real_world import GroundTruthCell
+from dataforge.datasets.real_world import GroundTruthCell, RealWorldDataset
 from dataforge.datasets.registry import DATASET_REGISTRY
 
 BenchmarkStatus = Literal["ok", "skipped"]
+BENCHMARK_SCHEMA_VERSION = "dataforge_benchmark_run_v2"
 
 
 class BenchmarkRepair(BaseModel):
@@ -101,6 +107,156 @@ class BenchmarkRunOutput(BaseModel):
     metadata: dict[str, object]
     records: list[SeedBenchmarkResult]
     aggregates: list[AggregateBenchmarkResult]
+
+
+class BenchmarkDatasetEvidence(BaseModel):
+    """Pinned source and loaded artifact evidence for one benchmark dataset."""
+
+    name: str = Field(min_length=1)
+    source_urls: tuple[str, str]
+    source_revision: str = Field(min_length=7)
+    dirty_sha256: str = Field(min_length=64, max_length=64)
+    clean_sha256: str = Field(min_length=64, max_length=64)
+    n_rows: int = Field(ge=0)
+    n_columns: int = Field(ge=1)
+
+
+class BenchmarkEvidenceMetadata(BaseModel):
+    """Typed provenance block written into benchmark JSON artifacts."""
+
+    schema_version: str = BENCHMARK_SCHEMA_VERSION
+    methods: list[str]
+    datasets: list[str]
+    seeds: int = Field(ge=1)
+    seed_list: list[int]
+    git_commit: str | None
+    git_dirty: bool | None
+    generated_at_utc: str
+    python_version: str
+    platform: str
+    dependency_versions: dict[str, str]
+    generator_command: str
+    reproduction_command: str
+    dataset_evidence: list[BenchmarkDatasetEvidence]
+    artifact_sha256s: dict[str, str]
+
+
+def build_seed_list(*, seeds: int, seed_list: list[int] | None = None) -> list[int]:
+    """Resolve either a seed count or explicit seed list into concrete seeds."""
+    if seed_list is not None:
+        if not seed_list:
+            raise ValueError("Benchmark seed list must contain at least one seed.")
+        if any(seed < 0 for seed in seed_list):
+            raise ValueError("Benchmark seeds must be >= 0.")
+        if len(set(seed_list)) != len(seed_list):
+            raise ValueError("Benchmark seed list must not contain duplicates.")
+        return list(seed_list)
+    if seeds <= 0:
+        raise ValueError("Benchmark seeds must be >= 1.")
+    return list(range(seeds))
+
+
+def _package_version(name: str) -> str:
+    """Return an installed package version or a stable missing marker."""
+    try:
+        return package_metadata.version(name)
+    except package_metadata.PackageNotFoundError:
+        return "not-installed"
+
+
+def benchmark_dependency_versions() -> dict[str, str]:
+    """Return versions of dependencies that influence benchmark behavior."""
+    return {
+        "dataforge15": _package_version("dataforge15"),
+        "httpx": _package_version("httpx"),
+        "pandas": _package_version("pandas"),
+        "pydantic": _package_version("pydantic"),
+        "python-dotenv": _package_version("python-dotenv"),
+        "typer": _package_version("typer"),
+    }
+
+
+def _project_root() -> Path:
+    """Return the source checkout root when running from this repository."""
+    return Path(__file__).resolve().parents[2]
+
+
+def _git_command(args: list[str]) -> str | None:
+    """Run a read-only git command and return stdout when available."""
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=_project_root(),
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return None
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def current_git_commit() -> str | None:
+    """Return the current source commit, if this checkout is under git."""
+    return _git_command(["rev-parse", "HEAD"])
+
+
+def git_worktree_dirty() -> bool | None:
+    """Return whether the checkout has tracked or untracked changes."""
+    status = _git_command(["status", "--porcelain"])
+    if status is None:
+        return None
+    return bool(status)
+
+
+def dataset_evidence_from_loaded(dataset: RealWorldDataset) -> BenchmarkDatasetEvidence:
+    """Build source and loaded-byte evidence for one dataset."""
+    return BenchmarkDatasetEvidence(
+        name=dataset.metadata.name,
+        source_urls=dataset.metadata.source_urls,
+        source_revision=dataset.metadata.source_revision,
+        dirty_sha256=dataset.dirty_sha256,
+        clean_sha256=dataset.clean_sha256,
+        n_rows=len(dataset.clean_df.index),
+        n_columns=len(dataset.clean_df.columns),
+    )
+
+
+def build_benchmark_metadata(
+    *,
+    methods: list[str],
+    datasets: list[str],
+    seed_list: list[int],
+    reproduction_command: str,
+    dataset_evidence: list[BenchmarkDatasetEvidence],
+) -> BenchmarkEvidenceMetadata:
+    """Build the typed provenance metadata stored in benchmark JSON."""
+    artifact_sha256s: dict[str, str] = {}
+    for evidence in dataset_evidence:
+        artifact_sha256s[f"dataset:{evidence.name}:dirty.csv"] = evidence.dirty_sha256
+        artifact_sha256s[f"dataset:{evidence.name}:clean.csv"] = evidence.clean_sha256
+
+    return BenchmarkEvidenceMetadata(
+        methods=methods,
+        datasets=datasets,
+        seeds=len(seed_list),
+        seed_list=seed_list,
+        git_commit=current_git_commit(),
+        git_dirty=git_worktree_dirty(),
+        generated_at_utc=datetime.now(UTC).replace(microsecond=0).isoformat(),
+        python_version=sys.version.split()[0],
+        platform=platform.platform(),
+        dependency_versions=benchmark_dependency_versions(),
+        generator_command=reproduction_command,
+        reproduction_command=reproduction_command,
+        dataset_evidence=dataset_evidence,
+        artifact_sha256s=artifact_sha256s,
+    )
 
 
 def chunk_row_indices(n_rows: int) -> tuple[tuple[int, ...], ...]:

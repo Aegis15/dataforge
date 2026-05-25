@@ -22,6 +22,14 @@ def _parse_csv_list(raw_value: str) -> list[str]:
     return [value for value in values if value]
 
 
+def _parse_seed_list(raw_value: str | None) -> list[int] | None:
+    """Parse an optional comma-separated seed list."""
+    if raw_value is None:
+        return None
+    seeds = [item.strip() for item in raw_value.split(",") if item.strip()]
+    return [int(seed) for seed in seeds]
+
+
 def _runner() -> Callable[..., Any]:
     """Load the benchmark runner lazily so core CLI imports stay lightweight."""
     global run_agent_comparison
@@ -51,6 +59,13 @@ def bench(
         int,
         typer.Option("--seeds", help="Number of seeds per method/dataset pair."),
     ] = 3,
+    seed_list: Annotated[
+        str | None,
+        typer.Option(
+            "--seed-list",
+            help="Explicit comma-separated seed list. Overrides --seeds for reproducibility.",
+        ),
+    ] = None,
     really_run_big_bench: Annotated[
         bool,
         typer.Option(
@@ -76,6 +91,7 @@ def bench(
             methods=_parse_csv_list(methods),
             datasets=_parse_csv_list(datasets),
             seeds=seeds,
+            seed_list=_parse_seed_list(seed_list),
             output_json=output_json,
             really_run_big_bench=really_run_big_bench,
         )

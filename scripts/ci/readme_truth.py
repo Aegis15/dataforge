@@ -32,6 +32,12 @@ DESIGN_PARTNER_TRUTH_DOCS = [
     PROJECT_ROOT / "docs" / "docs" / "index.md",
     PROJECT_ROOT / "docs" / "docs" / "architecture.md",
 ]
+PUBLIC_CLAIM_TRUTH_DOCS = [
+    README,
+    PROJECT_ROOT / "docs" / "docs" / "index.md",
+    PROJECT_ROOT / "docs" / "docs" / "quickstart.md",
+    PROJECT_ROOT / "docs" / "docs" / "release.md",
+]
 UNPUBLISHED_DISTS = (
     "dataforge15",
     "dataforge15-dbt",
@@ -68,6 +74,43 @@ DESIGN_PARTNER_QUALIFIERS = (
     "seeking",
     "before",
     "until",
+)
+BENCHMARK_BLOCK_START = "<!-- BENCH:START -->"
+BENCHMARK_BLOCK_END = "<!-- BENCH:END -->"
+PUBLIC_CLAIM_PATTERNS = (
+    re.compile(r"\b(?:f1|f1-score|precision|recall)\b[^\n]*\d", re.IGNORECASE),
+    re.compile(r"\b(?:sota|state[- ]of[- ]the[- ]art)\b", re.IGNORECASE),
+    re.compile(r"\b(?:beats?|outperforms?|improves? on|quality milestone)\b", re.IGNORECASE),
+    re.compile(r"\bproduction[- ](?:quality|grade) trained model\b", re.IGNORECASE),
+    re.compile(r"\bproduction model[- ]quality claims?\b", re.IGNORECASE),
+    re.compile(r"\b(?:live|hosted) (?:domain|playground|demo)\b", re.IGNORECASE),
+    re.compile(r"\bdeployed at https?://", re.IGNORECASE),
+)
+PUBLIC_CLAIM_QUALIFIERS = (
+    "not ",
+    "not yet",
+    "does not",
+    "do not",
+    "future",
+    "planned",
+    "until",
+    "unless",
+    "after",
+    "before",
+    "only after",
+    "once",
+    "generated from",
+    "generated evidence",
+    "citation-only",
+    "not rerun",
+    "verify",
+    "verified",
+    "verification",
+    "evidence exists",
+    "smoke",
+    "testpypi",
+    "source checkout",
+    "not shipped yet",
 )
 
 
@@ -208,6 +251,51 @@ def check_design_partner_claims(paths: list[Path]) -> list[str]:
     return errors
 
 
+def _generated_benchmark_lines(text: str) -> set[int]:
+    """Return line numbers covered by generated benchmark marker blocks."""
+    covered: set[int] = set()
+    inside = False
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        if BENCHMARK_BLOCK_START in line:
+            inside = True
+        if inside:
+            covered.add(line_number)
+        if BENCHMARK_BLOCK_END in line:
+            inside = False
+    return covered
+
+
+def check_public_claim_boundaries(paths: list[Path]) -> list[str]:
+    """Reject benchmark/model/live claims outside generated or qualified evidence text."""
+    errors: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            display_path = path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            display_path = path
+        text = path.read_text(encoding="utf-8")
+        generated_lines = _generated_benchmark_lines(text)
+        lines = text.splitlines()
+        for index, line in enumerate(lines):
+            line_number = index + 1
+            if line_number in generated_lines:
+                continue
+            if not any(pattern.search(line) for pattern in PUBLIC_CLAIM_PATTERNS):
+                continue
+            previous_line = lines[index - 1] if index > 0 else ""
+            next_line = lines[index + 1] if index + 1 < len(lines) else ""
+            context = f"{previous_line}\n{line}\n{next_line}".lower()
+            if any(qualifier in context for qualifier in PUBLIC_CLAIM_QUALIFIERS):
+                continue
+            errors.append(
+                f"{display_path}:{line_number} has a benchmark, model-quality, publication, "
+                "or live-surface claim outside a generated evidence block."
+            )
+    return errors
+
+
 def main() -> None:
     """Run all README truth checks."""
     readme_text = README.read_text(encoding="utf-8")
@@ -251,6 +339,7 @@ def main() -> None:
     errors.extend(url_errors)
     errors.extend(check_unpublished_install_claims(RELEASE_TRUTH_DOCS))
     errors.extend(check_design_partner_claims(DESIGN_PARTNER_TRUTH_DOCS))
+    errors.extend(check_public_claim_boundaries(PUBLIC_CLAIM_TRUTH_DOCS))
 
     if errors:
         print("README truth check FAILED:", file=sys.stderr)

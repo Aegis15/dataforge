@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from dataforge.datasets.real_world import DatasetDownloadError, load_real_world_dataset
-from dataforge.datasets.registry import DATASET_REGISTRY
+from dataforge.datasets.registry import DATASET_REGISTRY, RAHA_GIT_REVISION
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "fixtures" / "bench"
 
@@ -33,6 +33,10 @@ class TestDatasetRegistry:
         assert DATASET_REGISTRY["hospital"].n_rows == 1000
         assert DATASET_REGISTRY["flights"].n_columns == 7
         assert DATASET_REGISTRY["beers"].n_rows == 2410
+        assert DATASET_REGISTRY["hospital"].source_revision == RAHA_GIT_REVISION
+        assert "refs/heads/master" not in DATASET_REGISTRY["hospital"].source_urls[0]
+        assert len(DATASET_REGISTRY["hospital"].dirty_sha256) == 64
+        assert len(DATASET_REGISTRY["hospital"].clean_sha256) == 64
 
 
 class TestRealWorldLoader:
@@ -45,7 +49,11 @@ class TestRealWorldLoader:
         cache_root = tmp_path / "cache"
         _populate_cache(cache_root, "hospital", "hospital_dirty.csv", "hospital_clean.csv")
 
-        dataset = load_real_world_dataset("hospital", cache_root=cache_root)
+        dataset = load_real_world_dataset(
+            "hospital",
+            cache_root=cache_root,
+            verify_hashes=False,
+        )
 
         assert dataset.canonical_columns == (
             "index",
@@ -75,7 +83,11 @@ class TestRealWorldLoader:
             "dataforge.datasets.real_world._download_to_cache", _unexpected_download
         )
 
-        dataset = load_real_world_dataset("beers", cache_root=cache_root)
+        dataset = load_real_world_dataset(
+            "beers",
+            cache_root=cache_root,
+            verify_hashes=False,
+        )
 
         assert dataset.metadata.name == "beers"
         assert len(dataset.ground_truth) == 2
@@ -92,7 +104,12 @@ class TestRealWorldLoader:
 
         monkeypatch.setattr("dataforge.datasets.real_world._download_to_cache", _fail_download)
 
-        dataset = load_real_world_dataset("hospital", cache_root=cache_root)
+        dataset = load_real_world_dataset(
+            "hospital",
+            cache_root=cache_root,
+            verify_hashes=False,
+            allow_embedded_fallback=True,
+        )
 
         assert dataset.metadata.name == "hospital"
         assert len(dataset.ground_truth) == 2
@@ -119,3 +136,11 @@ class TestRealWorldLoader:
         assert "clean.csv" in message
         assert str(cache_root / "real_world" / "flights") in message
         assert "1." in message and "2." in message
+
+    def test_cache_hash_mismatch_fails_by_default(self, tmp_path: Path) -> None:
+        """Fixture-sized cache bytes must not be mistaken for canonical Raha data."""
+        cache_root = tmp_path / "cache"
+        _populate_cache(cache_root, "hospital", "hospital_dirty.csv", "hospital_clean.csv")
+
+        with pytest.raises(DatasetDownloadError, match="sha256 mismatch"):
+            load_real_world_dataset("hospital", cache_root=cache_root)
