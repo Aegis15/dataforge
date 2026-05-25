@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 import httpx
 
 DEFAULT_BACKEND_URL = "https://Praneshrajan15-dataforge-playground.hf.space"
+DEFAULT_FRONTEND_URL = "https://dataforge.praneshrajan15.workers.dev/playground"
 
 
 def normalize_url(value: str) -> str:
@@ -87,7 +88,11 @@ def verify(frontend_url: str, backend_url: str) -> None:
 def _build_parser() -> argparse.ArgumentParser:
     """Construct the CLI parser."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--frontend-url", required=True, help="Cloudflare frontend URL.")
+    parser.add_argument(
+        "--frontend-url",
+        default=DEFAULT_FRONTEND_URL,
+        help="Cloudflare frontend URL.",
+    )
     parser.add_argument(
         "--backend-url",
         default=DEFAULT_BACKEND_URL,

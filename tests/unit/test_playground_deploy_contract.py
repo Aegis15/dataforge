@@ -12,13 +12,13 @@ from playground.api.app import _build_cors_origin_regex, _build_cors_origins
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 WRANGLER_PATH = PROJECT_ROOT / "wrangler.toml"
-WRANGLER_DATAFORGE_DEV_PATH = PROJECT_ROOT / "wrangler.dataforge-dev.toml"
 ASSETSIGNORE_PATH = PROJECT_ROOT / "playground" / "web" / "public" / ".assetsignore"
 WEB_PACKAGE_PATH = PROJECT_ROOT / "playground" / "web" / "package.json"
 WEB_CONFIG_PATH = PROJECT_ROOT / "playground" / "web" / "config.js"
 PUBLIC_CONFIG_PATH = PROJECT_ROOT / "playground" / "web" / "public" / "config.js"
 HEADERS_PATH = PROJECT_ROOT / "playground" / "web" / "public" / "_headers"
 RENDERER_PATH = PROJECT_ROOT / "scripts" / "playground" / "render_web_config.py"
+DEPLOY_SPACE_PATH = PROJECT_ROOT / "scripts" / "playground" / "deploy_space.py"
 VERIFIER_PATH = PROJECT_ROOT / "scripts" / "playground" / "verify_frontend_deploy.py"
 HF_SYNC_WORKFLOW_PATH = PROJECT_ROOT / ".github" / "workflows" / "sync-to-hf.yml"
 
@@ -50,20 +50,6 @@ def test_wrangler_config_declares_subpath_worker_assets() -> None:
     assert 'not_found_handling = "single-page-application"' in body
 
 
-def test_dataforge_dev_route_config_is_explicitly_release_gated() -> None:
-    """The custom domain route is kept separate so invisible zones do not break Worker deploys."""
-    body = WRANGLER_DATAFORGE_DEV_PATH.read_text(encoding="utf-8")
-    assert 'name = "dataforge"' in body
-    assert 'pattern = "dataforge.dev/playground*"' in body
-    assert 'zone_name = "dataforge.dev"' in body
-    assert "[build]" in body
-    assert (
-        'command = "npm --prefix playground/web install && npm --prefix playground/web run build"'
-        in body
-    )
-    assert 'directory = "./playground/web/dist"' in body
-
-
 def test_assetsignore_and_headers_protect_runtime_config() -> None:
     """Non-public docs stay out of the asset upload and config.js stays uncached."""
     assert "DEPLOY.md" in ASSETSIGNORE_PATH.read_text(encoding="utf-8")
@@ -92,6 +78,21 @@ def test_hf_sync_workflow_targets_dataforge_playground_space() -> None:
     body = HF_SYNC_WORKFLOW_PATH.read_text(encoding="utf-8")
     assert "HF_SPACE_ID: Praneshrajan15/dataforge-playground" in body
     assert "HF_SPACE_ID: Praneshrajan15/data-quality-env" not in body
+
+
+def test_workers_dev_is_the_default_public_playground_url() -> None:
+    """Deploy scripts default to the live workers.dev frontend, not the optional domain."""
+    deploy_space = DEPLOY_SPACE_PATH.read_text(encoding="utf-8")
+    verifier = VERIFIER_PATH.read_text(encoding="utf-8")
+
+    assert (
+        'DEFAULT_FRONTEND_ORIGIN = "https://dataforge.praneshrajan15.workers.dev"'
+        in deploy_space
+    )
+    assert (
+        'DEFAULT_FRONTEND_URL = "https://dataforge.praneshrajan15.workers.dev/playground"'
+        in verifier
+    )
 
 
 def test_renderer_writes_normalized_backend_url(tmp_path: Path) -> None:

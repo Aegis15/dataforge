@@ -63,29 +63,15 @@ The default config deploys to the enabled Worker URL:
 `wrangler.toml` includes a `[build]` command, so `npx wrangler deploy` creates
 `playground/web/dist` before Wrangler checks the static assets directory.
 
-The release-gated custom-domain config is `wrangler.dataforge-dev.toml`. Use it
-only after `python -m dataforge release doctor --json` reports
-`cloudflare_zone_visible: true` for `dataforge.dev`:
-
-```bash
-npx wrangler@4.94.0 deploy --config wrangler.dataforge-dev.toml
-```
-
-The configured custom route is `dataforge.dev/playground*`. The Cloudflare zone
-for `dataforge.dev` must be present in the same Cloudflare account; otherwise
-Wrangler will upload the Worker but fail route activation.
-
 ## Step 4: Verify
 
 ```bash
-python scripts/playground/verify_frontend_deploy.py \
-  --frontend-url https://dataforge.dev/playground \
-  --backend-url https://Praneshrajan15-dataforge-playground.hf.space
+python scripts/playground/verify_frontend_deploy.py
 ```
 
 The verifier checks that:
 
-- `https://dataforge.dev/playground` serves the built React shell and hashed assets.
+- `https://dataforge.praneshrajan15.workers.dev/playground` serves the built React shell and hashed assets.
 - `config.js` contains the Hugging Face backend URL and is uncached.
 - The backend root returns API metadata instead of stale frontend HTML.
 - `/api/health` exposes `status`, `advanced_available`, and `max_upload_bytes`.
@@ -113,3 +99,6 @@ accessibility checks.
 - In production, `DATAFORGE_PLAYGROUND_ORIGINS` must contain the exact
   Cloudflare frontend origin. The backend does not allow broad `workers.dev`
   wildcards.
+- Future custom domains are optional launch polish; add them only as exact
+  comma-separated CORS origins after their Cloudflare route is independently
+  verified.

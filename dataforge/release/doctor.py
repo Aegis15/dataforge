@@ -3,16 +3,11 @@
 from __future__ import annotations
 
 import json
-import os
-import re
 import shutil
-import socket
 import subprocess
 import sys
+import tempfile
 import tomllib
-import urllib.error
-import urllib.parse
-import urllib.request
 from dataclasses import asdict, dataclass
 from importlib import metadata as importlib_metadata
 from pathlib import Path
@@ -21,12 +16,6 @@ from typing import Any
 EXPECTED_HF_USER = "Praneshrajan15"
 DEFAULT_KAGGLE_CREDENTIALS = Path.home() / ".kaggle" / "credentials.json"
 STALE_KAGGLE_JSON = Path.home() / ".kaggle" / "kaggle.json"
-DATAFORGE_DOMAIN = "dataforge.dev"
-WRANGLER_CONFIG = (
-    Path(os.environ["APPDATA"]) / "xdg.config" / ".wrangler" / "config" / "default.toml"
-    if os.environ.get("APPDATA")
-    else Path.home() / ".config" / ".wrangler" / "config" / "default.toml"
-)
 
 
 @dataclass(frozen=True)
@@ -191,17 +180,24 @@ def _check_cloudflare() -> DoctorCheck:
     npx = shutil.which("npx") or shutil.which("npx.cmd")
     if npx is None:
         return DoctorCheck("cloudflare", False, "npx/wrangler not available on PATH.", {})
-    command = [npx, "wrangler", "whoami"]
+    env_file_path = ""
     try:
-        result = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-            check=False,
-        )
+        with tempfile.NamedTemporaryFile(delete=False) as env_file:
+            env_file_path = env_file.name
+        command = [npx, "wrangler", "whoami", "--env-file", env_file_path]
+        try:
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=60,
+                check=False,
+            )
+        finally:
+            if env_file_path:
+                Path(env_file_path).unlink(missing_ok=True)
     except FileNotFoundError:
         return DoctorCheck("cloudflare", False, "npx/wrangler not available on PATH.", {})
     except subprocess.TimeoutExpired:
@@ -220,85 +216,8 @@ def _check_cloudflare() -> DoctorCheck:
             "wrangler_available": result.returncode == 0,
             "logged_in": ok,
             "workers_routes_write": has_route_scope,
-            "command": " ".join(command),
-        },
-    )
-
-
-def _check_domain() -> DoctorCheck:
-    try:
-        _, _, ips = socket.gethostbyname_ex(DATAFORGE_DOMAIN)
-    except OSError:
-        ips = []
-    ok = bool(ips)
-    return DoctorCheck(
-        "dataforge_domain",
-        ok,
-        "dataforge.dev resolves; route activation is verified by playground deploy checks."
-        if ok
-        else "dataforge.dev does not resolve to an A record yet.",
-        {
-            "domain": DATAFORGE_DOMAIN,
-            "a_records_seen": len(ips),
-            "route": "dataforge.dev/playground*",
-        },
-    )
-
-
-def _read_wrangler_oauth_token(path: Path = WRANGLER_CONFIG) -> str:
-    if not path.exists():
-        raise RuntimeError(f"Wrangler OAuth config not found: {path}")
-    text = path.read_text(encoding="utf-8")
-    match = re.search(r'(?m)^oauth_token\s*=\s*"([^"]+)"', text)
-    if match is None or not match.group(1).strip():
-        raise RuntimeError(f"Wrangler OAuth token missing from: {path}")
-    return match.group(1).strip()
-
-
-def _check_cloudflare_zone_visible() -> DoctorCheck:
-    try:
-        token = _read_wrangler_oauth_token()
-        query = urllib.parse.urlencode({"name": DATAFORGE_DOMAIN})
-        request = urllib.request.Request(
-            f"https://api.cloudflare.com/client/v4/zones?{query}",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
-            method="GET",
-        )
-        with urllib.request.urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return DoctorCheck(
-            "cloudflare_zone_visible",
-            False,
-            f"Cloudflare zone lookup failed with HTTP {exc.code}.",
-            {"domain": DATAFORGE_DOMAIN, "tokens_printed": False},
-        )
-    except Exception as exc:
-        return DoctorCheck(
-            "cloudflare_zone_visible",
-            False,
-            f"Could not verify Cloudflare zone visibility: {exc}",
-            {"domain": DATAFORGE_DOMAIN, "tokens_printed": False},
-        )
-
-    zones = payload.get("result", [])
-    if not isinstance(zones, list):
-        zones = []
-    visible = [
-        zone for zone in zones if isinstance(zone, dict) and zone.get("name") == DATAFORGE_DOMAIN
-    ]
-    ok = bool(visible)
-    return DoctorCheck(
-        "cloudflare_zone_visible",
-        ok,
-        "Cloudflare OAuth context can see dataforge.dev."
-        if ok
-        else "Cloudflare OAuth context cannot see a dataforge.dev zone; route activation will fail.",
-        {
-            "domain": DATAFORGE_DOMAIN,
-            "visible_zone_count": len(visible),
-            "statuses": [str(zone.get("status", "")) for zone in visible],
-            "tokens_printed": False,
+            "command": f"{npx} wrangler whoami --env-file <empty-env-file>",
+            "env_file_override": "empty",
         },
     )
 
@@ -389,8 +308,6 @@ def _maintainer_deploy_checks(kaggle_credentials: Path) -> list[DoctorCheck]:
         _check_kaggle_oauth(kaggle_credentials),
         _check_kaggle_cli_clean_config(kaggle_credentials),
         _check_cloudflare(),
-        _check_cloudflare_zone_visible(),
-        _check_domain(),
     ]
 
 
