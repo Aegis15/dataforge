@@ -19,6 +19,10 @@ from scripts.data.build_oracle_sft_trajectories import (
     deterministic_row_split,
 )
 
+FIXTURE_REVISION = "fixture"
+FIXTURE_DIRTY_SHA256 = "d" * 64
+FIXTURE_CLEAN_SHA256 = "c" * 64
+
 
 def _dataset(name: str = "flights") -> RealWorldDataset:
     dirty_df = pd.DataFrame(
@@ -49,6 +53,9 @@ def _dataset(name: str = "flights") -> RealWorldDataset:
             n_columns=len(dirty_df.columns),
             error_types=("missing_value", "formatting"),
             source_urls=("dirty", "clean"),
+            source_revision=FIXTURE_REVISION,
+            dirty_sha256=FIXTURE_DIRTY_SHA256,
+            clean_sha256=FIXTURE_CLEAN_SHA256,
             citation="fixture citation",
         ),
         dirty_df=dirty_df,
@@ -80,6 +87,8 @@ def _dataset(name: str = "flights") -> RealWorldDataset:
                 clean_value="11:08 p.m.",
             ),
         ),
+        dirty_sha256=FIXTURE_DIRTY_SHA256,
+        clean_sha256=FIXTURE_CLEAN_SHA256,
     )
 
 

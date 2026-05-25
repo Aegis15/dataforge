@@ -462,6 +462,8 @@ def build_light_dataset(
         clean_df=clean_df,
         canonical_columns=dataset.canonical_columns,
         ground_truth=tuple(ground_truth),
+        dirty_sha256=dataset.dirty_sha256,
+        clean_sha256=dataset.clean_sha256,
     )
 
 

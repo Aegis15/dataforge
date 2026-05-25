@@ -86,8 +86,7 @@ def test_workers_dev_is_the_default_public_playground_url() -> None:
     verifier = VERIFIER_PATH.read_text(encoding="utf-8")
 
     assert (
-        'DEFAULT_FRONTEND_ORIGIN = "https://dataforge.praneshrajan15.workers.dev"'
-        in deploy_space
+        'DEFAULT_FRONTEND_ORIGIN = "https://dataforge.praneshrajan15.workers.dev"' in deploy_space
     )
     assert (
         'DEFAULT_FRONTEND_URL = "https://dataforge.praneshrajan15.workers.dev/playground"'

@@ -32,6 +32,10 @@ from scripts.data.collect_sft_trajectories import (
 )
 from scripts.data.validate_sft_readiness import SftReadinessError
 
+FIXTURE_REVISION = "fixture"
+FIXTURE_DIRTY_SHA256 = "d" * 64
+FIXTURE_CLEAN_SHA256 = "c" * 64
+
 
 def _dataset() -> RealWorldDataset:
     dirty_df = pd.DataFrame(
@@ -54,6 +58,9 @@ def _dataset() -> RealWorldDataset:
             n_columns=2,
             error_types=("missing_value", "formatting"),
             source_urls=("dirty", "clean"),
+            source_revision=FIXTURE_REVISION,
+            dirty_sha256=FIXTURE_DIRTY_SHA256,
+            clean_sha256=FIXTURE_CLEAN_SHA256,
             citation="fixture citation",
         ),
         dirty_df=dirty_df,
@@ -68,6 +75,8 @@ def _dataset() -> RealWorldDataset:
             ),
             GroundTruthCell(row=1, column="Score", dirty_value="45", clean_value="4.5"),
         ),
+        dirty_sha256=FIXTURE_DIRTY_SHA256,
+        clean_sha256=FIXTURE_CLEAN_SHA256,
     )
 
 
@@ -86,12 +95,17 @@ def _named_dataset(
             n_columns=len(canonical_columns),
             error_types=("formatting",),
             source_urls=("dirty", "clean"),
+            source_revision=FIXTURE_REVISION,
+            dirty_sha256=FIXTURE_DIRTY_SHA256,
+            clean_sha256=FIXTURE_CLEAN_SHA256,
             citation="fixture citation",
         ),
         dirty_df=dirty_df,
         clean_df=clean_df,
         canonical_columns=canonical_columns,
         ground_truth=ground_truth,
+        dirty_sha256=FIXTURE_DIRTY_SHA256,
+        clean_sha256=FIXTURE_CLEAN_SHA256,
     )
 
 
