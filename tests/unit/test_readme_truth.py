@@ -66,3 +66,65 @@ def test_generated_benchmark_claim_block_is_allowed(tmp_path: Path) -> None:
     )
 
     assert readme_truth.check_public_claim_boundaries([claim_path]) == []
+
+
+def test_workers_dev_playground_url_is_checked_but_custom_domain_is_not() -> None:
+    """The live URL checker follows Workers/HF surfaces, not future branding."""
+    text = (
+        "Try https://dataforge.praneshrajan15.workers.dev/playground now.\n"
+        "Future optional custom domain: https://dataforge.dev/playground.\n"
+        "Backend: https://Praneshrajan15-dataforge-playground.hf.space.\n"
+    )
+
+    urls = readme_truth.extract_playground_urls(text)
+
+    assert "https://dataforge.praneshrajan15.workers.dev/playground" in urls
+    assert "https://Praneshrajan15-dataforge-playground.hf.space" in urls
+    assert all("dataforge.dev" not in url for url in urls)
+
+
+def test_unqualified_custom_domain_claim_fails(tmp_path: Path) -> None:
+    """dataforge.dev must never be presented as a current release surface."""
+    claim_path = tmp_path / "claim.md"
+    claim_path.write_text("Live playground: https://dataforge.dev/playground\n", encoding="utf-8")
+
+    errors = readme_truth.check_custom_domain_claims([claim_path])
+
+    assert errors
+    assert "future optional custom domain" in errors[0]
+
+
+def test_future_optional_custom_domain_claim_is_allowed(tmp_path: Path) -> None:
+    """Future-only custom-domain wording is honest and should not be release-blocking."""
+    claim_path = tmp_path / "claim.md"
+    claim_path.write_text(
+        "Future optional custom domain, not a release target: https://dataforge.dev/playground\n",
+        encoding="utf-8",
+    )
+
+    assert readme_truth.check_custom_domain_claims([claim_path]) == []
+
+
+def test_unqualified_unshipped_integration_claim_fails(tmp_path: Path) -> None:
+    """Airbyte and Databricks must stay roadmap-only until packages exist."""
+    claim_path = tmp_path / "claim.md"
+    claim_path.write_text("Ships dataforge-airbyte and dataforge-databricks.\n", encoding="utf-8")
+
+    errors = readme_truth.check_unshipped_integration_claims([claim_path])
+
+    assert errors
+    assert "unqualified" in errors[0]
+
+
+def test_unqualified_model_family_claim_fails(tmp_path: Path) -> None:
+    """The 0.5B-to-7B model family claim needs release evidence first."""
+    claim_path = tmp_path / "claim.md"
+    claim_path.write_text(
+        "DataForge ships a 0.5B to 7B SFT GRPO GiGPO model family.\n",
+        encoding="utf-8",
+    )
+
+    errors = readme_truth.check_public_claim_boundaries([claim_path])
+
+    assert errors
+    assert "outside a generated evidence block" in errors[0]

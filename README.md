@@ -169,6 +169,11 @@ Streamable HTTP is available for local experiments.
   CSV, review categorical risk and pending inferred constraints, inspect
   verified dry-run repairs and non-repairs, then export a receipt with the
   local CLI apply/audit/revert command shape.
+- The current verified public playground URL is
+  `https://dataforge.praneshrajan15.workers.dev/playground`, backed by
+  `https://Praneshrajan15-dataforge-playground.hf.space`.
+- `https://dataforge.dev/playground` is a future optional custom domain, not a
+  release-readiness target.
 - `playground-model/` is a separate Gradio Space demo for the published
   `DataForge-0.5B-SFT` smoke checkpoint. It accepts small CSV snippets and is
   intentionally limited to demo use.

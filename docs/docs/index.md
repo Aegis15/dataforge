@@ -32,6 +32,11 @@ it does not claim design-partner or customer validation evidence yet.
 - A React playground deployed through Cloudflare Workers Static Assets, backed
   by a Hugging Face Docker Space API.
 
+The current verified public playground is
+`https://dataforge.praneshrajan15.workers.dev/playground`; the API backend is
+`https://Praneshrajan15-dataforge-playground.hf.space`. A `dataforge.dev`
+custom domain is future optional branding, not a 0.1 release target.
+
 ## Benchmark Evidence
 
 <!-- BENCH:START -->

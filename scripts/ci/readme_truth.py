@@ -38,6 +38,9 @@ PUBLIC_CLAIM_TRUTH_DOCS = [
     PROJECT_ROOT / "docs" / "docs" / "quickstart.md",
     PROJECT_ROOT / "docs" / "docs" / "release.md",
 ]
+CUSTOM_DOMAIN_TRUTH_DOCS = sorted(
+    set(RELEASE_TRUTH_DOCS + DESIGN_PARTNER_TRUTH_DOCS + PUBLIC_CLAIM_TRUTH_DOCS)
+)
 UNPUBLISHED_DISTS = (
     "dataforge15",
     "dataforge15-dbt",
@@ -85,6 +88,8 @@ PUBLIC_CLAIM_PATTERNS = (
     re.compile(r"\bproduction model[- ]quality claims?\b", re.IGNORECASE),
     re.compile(r"\b(?:live|hosted) (?:domain|playground|demo)\b", re.IGNORECASE),
     re.compile(r"\bdeployed at https?://", re.IGNORECASE),
+    re.compile(r"\b0\.5B\b[^\n]*(?:->|to|-|→)[^\n]*\b7B\b", re.IGNORECASE),
+    re.compile(r"\bSFT\b[^\n]*\bGRPO\b[^\n]*\bGiGPO\b", re.IGNORECASE),
 )
 PUBLIC_CLAIM_QUALIFIERS = (
     "not ",
@@ -111,6 +116,40 @@ PUBLIC_CLAIM_QUALIFIERS = (
     "testpypi",
     "source checkout",
     "not shipped yet",
+)
+CUSTOM_DOMAIN_PATTERN = re.compile(
+    r"(?:https?://(?:www\.)?dataforge\.dev(?:/[^\s)]*)?|\bdataforge\.dev\b)"
+)
+CUSTOM_DOMAIN_QUALIFIERS = (
+    "future",
+    "optional",
+    "deferred",
+    "later",
+    "planned",
+    "not ",
+    "not yet",
+    "out of scope",
+    "not a release",
+    "after",
+    "branding",
+    "custom domain",
+)
+UNSHIPPED_INTEGRATION_PATTERNS = (
+    re.compile(r"\bdataforge-airbyte\b", re.IGNORECASE),
+    re.compile(r"\bdataforge-databricks\b", re.IGNORECASE),
+    re.compile(r"\bAirbyte\b", re.IGNORECASE),
+    re.compile(r"\bDatabricks\b", re.IGNORECASE),
+)
+UNSHIPPED_INTEGRATION_QUALIFIERS = (
+    "future",
+    "planned",
+    "not shipped",
+    "not yet",
+    "roadmap",
+    "external adapter packages",
+    "should only",
+    "until",
+    "once",
 )
 
 
@@ -168,9 +207,13 @@ def get_registered_release_commands() -> set[str]:
 
 
 def extract_playground_urls(text: str) -> list[str]:
-    """Find playground URLs in the README."""
-    pattern = re.compile(r"https?://[^\s)]+(?:pages\.dev|hf\.space|dataforge\.dev)[^\s)]*")
-    return pattern.findall(text)
+    """Find live playground URLs in the README.
+
+    The optional custom domain is intentionally excluded because it is future
+    branding, not a release-readiness target.
+    """
+    pattern = re.compile(r"https?://[^\s)`]+(?:workers\.dev|pages\.dev|hf\.space)[^\s)`]*")
+    return [match.rstrip(".,;:") for match in pattern.findall(text)]
 
 
 def check_playground_urls(urls: list[str]) -> list[str]:
@@ -296,6 +339,58 @@ def check_public_claim_boundaries(paths: list[Path]) -> list[str]:
     return errors
 
 
+def check_custom_domain_claims(paths: list[Path]) -> list[str]:
+    """Reject unqualified claims that dataforge.dev is live or release-blocking."""
+    errors: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            display_path = path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            display_path = path
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if not CUSTOM_DOMAIN_PATTERN.search(line):
+                continue
+            previous_line = lines[index - 1] if index > 0 else ""
+            next_line = lines[index + 1] if index + 1 < len(lines) else ""
+            context = f"{previous_line}\n{line}\n{next_line}".lower()
+            if any(qualifier in context for qualifier in CUSTOM_DOMAIN_QUALIFIERS):
+                continue
+            errors.append(
+                f"{display_path}:{index + 1} presents dataforge.dev as a current live "
+                "surface. It must be described only as a future optional custom domain."
+            )
+    return errors
+
+
+def check_unshipped_integration_claims(paths: list[Path]) -> list[str]:
+    """Reject Airbyte/Databricks claims unless they are clearly roadmap-only."""
+    errors: list[str] = []
+    for path in paths:
+        if not path.exists():
+            continue
+        try:
+            display_path = path.relative_to(PROJECT_ROOT)
+        except ValueError:
+            display_path = path
+        lines = path.read_text(encoding="utf-8").splitlines()
+        for index, line in enumerate(lines):
+            if not any(pattern.search(line) for pattern in UNSHIPPED_INTEGRATION_PATTERNS):
+                continue
+            previous_line = lines[index - 1] if index > 0 else ""
+            next_line = lines[index + 1] if index + 1 < len(lines) else ""
+            context = f"{previous_line}\n{line}\n{next_line}".lower()
+            if any(qualifier in context for qualifier in UNSHIPPED_INTEGRATION_QUALIFIERS):
+                continue
+            errors.append(
+                f"{display_path}:{index + 1} has an unqualified Airbyte or Databricks "
+                "integration claim without shipped package evidence."
+            )
+    return errors
+
+
 def main() -> None:
     """Run all README truth checks."""
     readme_text = README.read_text(encoding="utf-8")
@@ -340,6 +435,8 @@ def main() -> None:
     errors.extend(check_unpublished_install_claims(RELEASE_TRUTH_DOCS))
     errors.extend(check_design_partner_claims(DESIGN_PARTNER_TRUTH_DOCS))
     errors.extend(check_public_claim_boundaries(PUBLIC_CLAIM_TRUTH_DOCS))
+    errors.extend(check_custom_domain_claims(CUSTOM_DOMAIN_TRUTH_DOCS))
+    errors.extend(check_unshipped_integration_claims(PUBLIC_CLAIM_TRUTH_DOCS))
 
     if errors:
         print("README truth check FAILED:", file=sys.stderr)

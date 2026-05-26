@@ -70,6 +70,14 @@ On Windows PowerShell:
 Get-Command dataforge15-mcp
 ```
 
+Before describing a build as agent-ready, run an MCP Inspector smoke check
+against a fixture directory and confirm the profile, detect, verify, dry-run
+apply, and disabled-apply paths:
+
+```bash
+npx @modelcontextprotocol/inspector dataforge15-mcp serve --allowed-root /path/to/csv/workspace
+```
+
 ## Safety Model
 
 `apply` mode uses DataForge's detector -> repairer -> SafetyFilter ->
