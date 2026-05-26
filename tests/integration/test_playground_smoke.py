@@ -163,6 +163,143 @@ def test_profile_hospital(client: TestClient) -> None:
 
 
 @pytest.mark.integration
+def test_analyze_hospital_returns_proof_loop_payload(client: TestClient) -> None:
+    """POST /api/analyze returns risk, constraints, verified repairs, and apply handoff."""
+    csv_bytes = _hospital_csv_bytes()
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("hospital_10rows.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["source"]["name"] == "hospital_10rows.csv"
+    assert body["source"]["rows"] == 10
+    assert body["risk_summary"]["dataset_level"] in {"medium", "high"}
+    assert body["risk_summary"]["repair_readiness"] in {"verified", "partial", "blocked"}
+    assert body["schema_inference"]["schema_version"] == "constraint_review_v1"
+    assert body["schema_inference"]["source_sha256"] == body["source"]["sha256"]
+    assert body["schema_inference"]["candidates"]
+    assert all(
+        candidate["decision"] == "pending" for candidate in body["schema_inference"]["candidates"]
+    )
+    assert "issues" in body
+    assert "repairs" in body
+    assert "verification" in body
+    assert "txn_journal" in body
+    assert body["txn_journal"]["applied"] is False
+    assert body["receipt"]["contract_version"] == "repair_contract_v2"
+    assert body["receipt"]["source_sha256"] == body["source"]["sha256"]
+    assert (
+        body["apply_handoff"]["dry_run_command"]
+        == "dataforge15 repair path/to/hospital_10rows.csv --dry-run"
+    )
+    assert body["limitations"]
+
+
+@pytest.mark.integration
+def test_analyze_clean_csv_returns_no_action_with_pending_assumptions(client: TestClient) -> None:
+    """Clean inputs still surface inferred assumptions without inventing repairs."""
+    csv_bytes = b"id,name\n1,Ada\n2,Lin\n3,Grace\n"
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("clean.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["source"]["rows"] == 3
+    assert body["receipt"]["issues_count"] == 0
+    assert body["repairs"] == []
+    assert body["risk_summary"]["repair_readiness"] == "no_action"
+    assert body["schema_inference"]["candidates"]
+    assert all(
+        candidate["decision"] == "pending" for candidate in body["schema_inference"]["candidates"]
+    )
+
+
+@pytest.mark.integration
+def test_analyze_malformed_csv_returns_problem_detail(client: TestClient) -> None:
+    """Malformed analyze uploads return the same stable CSV problem detail."""
+    response = client.post(
+        "/api/analyze",
+        files={"file": ("broken.csv", io.BytesIO(b'id,name\n1,"unterminated'), "text/csv")},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == "invalid_csv"
+    assert body["status"] == 400
+
+
+@pytest.mark.integration
+def test_analyze_accepts_reviewed_constraints(client: TestClient) -> None:
+    """Accepted inferred repair-supported constraints feed the shared repair engine."""
+    csv_bytes = (
+        b"code,name\n"
+        b"A,Alpha\n"
+        b"A,Alpha\n"
+        b"A,Alfa\n"
+        b"B,Beta\n"
+        b"B,Beta\n"
+        b"C,Gamma\n"
+        b"C,Gamma\n"
+        b"D,Delta\n"
+        b"D,Delta\n"
+        b"E,Echo\n"
+    )
+    first = client.post(
+        "/api/analyze",
+        files={"file": ("fd.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    assert first.status_code == 200
+    candidates = first.json()["schema_inference"]["candidates"]
+    fd_candidate = next(
+        candidate
+        for candidate in candidates
+        if candidate["kind"] == "functional_dependency"
+        and candidate["columns"] == ["code"]
+        and candidate["dependent"] == "name"
+    )
+
+    second = client.post(
+        "/api/analyze",
+        data={"accepted_constraint_ids": f'["{fd_candidate["candidate_id"]}"]'},
+        files={"file": ("fd.csv", io.BytesIO(csv_bytes), "text/csv")},
+    )
+    assert second.status_code == 200
+    body = second.json()
+    assert fd_candidate["candidate_id"] in body["receipt"]["accepted_constraint_ids"]
+    assert any(repair["detector_id"] == "fd_violation" for repair in body["repairs"])
+    assert body["apply_handoff"]["apply_command"].endswith("--constraints constraints.json --apply")
+
+
+@pytest.mark.integration
+def test_analyze_rejects_unknown_constraint_id(client: TestClient) -> None:
+    """Unknown accepted constraints fail as RFC 9457 problem details."""
+    response = client.post(
+        "/api/analyze",
+        data={"accepted_constraint_ids": '["cnd-0000000000000000"]'},
+        files={"file": ("hospital_10rows.csv", io.BytesIO(_hospital_csv_bytes()), "text/csv")},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == "unknown_constraint_id"
+    assert body["type"].endswith("/unknown_constraint_id")
+    assert body["unknown_ids"] == ["cnd-0000000000000000"]
+
+
+@pytest.mark.integration
+def test_analyze_advanced_unavailable_without_provider_key(client: TestClient) -> None:
+    """POST /api/analyze?advanced=true returns 400 when no provider key is configured."""
+    response = client.post(
+        "/api/analyze",
+        params={"advanced": "true"},
+        files={"file": ("hospital_10rows.csv", io.BytesIO(_hospital_csv_bytes()), "text/csv")},
+    )
+    assert response.status_code == 400
+    assert response.json()["error"] == "advanced_mode_unavailable"
+
+
+@pytest.mark.integration
 def test_profile_advanced_unavailable_without_provider_key(client: TestClient) -> None:
     """POST /api/profile?advanced=true returns 400 when no provider key is configured."""
     csv_bytes = _hospital_csv_bytes()

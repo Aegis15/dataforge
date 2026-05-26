@@ -2,21 +2,24 @@
 
 > Status: Reviewed
 > Owner: @Praneshrajan15
-> Last updated: 2026-05-20
+> Last updated: 2026-05-26
 
 ## 1. Purpose (2 sentences)
 
-Provide a stateless, free-tier browser demo of DataForge profiling and
-repair-dry-run behavior without weakening the core Safety -> Verifier ->
-Transaction shape. The frontend is served from Cloudflare Workers Static Assets
-and the backend is served as an API-only Hugging Face Docker Space.
+Provide a stateless, free-tier browser proof loop for DataForge's core promise:
+upload messy CSV data, understand risk, review inferred assumptions, inspect
+verified repair proposals, and leave with an auditable apply handoff. The
+frontend is served from Cloudflare Workers Static Assets and the backend is
+served as an API-only Hugging Face Docker Space.
 
 ## 2. Outcomes (measurable, binary pass/fail)
 
 - [ ] `GET /api/health` returns `status`, `advanced_available`, and `max_upload_bytes`.
 - [ ] `GET /` returns stable API service metadata and never tries to serve a SPA.
-- [ ] `POST /api/profile` on `hospital_10rows.csv` returns a valid issue list within 5 s warm.
-- [ ] `POST /api/repair?dry_run=true` returns fixes plus a redacted journal derived from a real `RepairTransaction`.
+- [ ] `POST /api/analyze` on `hospital_10rows.csv` returns source facts, schema inference, categorical risk, issues, verified repairs, verification evidence, dry-run journal, receipt, apply handoff, and limitations within 5 s warm.
+- [ ] `POST /api/analyze` keeps inferred constraints pending by default and uses only submitted accepted constraint IDs for repair semantics.
+- [ ] Unknown accepted constraint IDs return 400 `application/problem+json` with `error="unknown_constraint_id"`.
+- [ ] `POST /api/profile` and `POST /api/repair?dry_run=true` remain compatibility routes backed by the shared analyzer/serializer contracts.
 - [ ] API errors use RFC 9457 `application/problem+json` while preserving stable error codes as extension members.
 - [ ] OpenAPI snapshots under `specs/openapi/` match the generated Playground and OpenEnv schemas.
 - [ ] `advanced=true` is rejected with 400 when no provider key is configured and accepted when one is present.
@@ -25,6 +28,8 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - [ ] Rate limiting returns 429 on the 11th POST within a minute from one client.
 - [ ] The frontend uses relative assets plus `config.js` and never assumes HF static hosting.
 - [ ] No browser storage APIs or frontend API keys appear under `playground/web/`.
+- [ ] The frontend primary action is Analyze; result tabs are Risk, Repairs, and Receipt.
+- [ ] Constraint selections are per-run memory only and are never persisted to browser storage.
 - [ ] The authoritative HF deploy path uses `scripts/playground/stage_space.py`, not subtree push.
 - [ ] The frontend imports the generated DataForge color system, passes
   `npm run colors:check`, and contains no hand-authored raw hex colors.
@@ -34,8 +39,10 @@ and the backend is served as an API-only Hugging Face Docker Space.
 ## 3. Scope
 
 **IN**:
-- API endpoints: `/`, `/api/health`, `/api/samples/{name}`, `/api/profile`, `/api/repair`
+- API endpoints: `/`, `/api/health`, `/api/samples/{name}`, `/api/analyze`, `/api/profile`, `/api/repair`
 - Temporary-directory-only dry-run transaction journaling
+- Schema-inference review artifacts with pending-by-default constraints
+- Categorical risk and repair readiness summaries
 - Heuristic-first behavior with optional advanced mode
 - Cloudflare Workers Static Assets frontend with runtime backend configuration
   via `config.js`
@@ -52,7 +59,7 @@ and the backend is served as an API-only Hugging Face Docker Space.
 
 ## 4. Constraints
 
-- Performance: warm `/api/profile` and `/api/repair` on the 10-row sample should complete within 5 s.
+- Performance: warm `/api/analyze` on the 10-row sample should complete within 5 s; compatibility `/api/profile` and `/api/repair` should remain in the same envelope.
 - Compatibility: Python 3.11/3.12 development, Python 3.12 Docker runtime, modern evergreen browsers.
 - Safety: no endpoint may silently bypass safety or verifier failures.
 - Visual quality: color tokens come from `SPEC_color_system.md`; color never
@@ -71,6 +78,8 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Cloudflare Workers Static Assets serves the frontend; Hugging Face Space
   `dataforge-playground` serves the API backend.
 - The hosted playground is stateless and dry-run only.
+- Inferred constraints are pending unless explicitly accepted for the current run.
+- Apply and revert remain local CLI transaction workflows.
 - Heuristic mode is the default; advanced mode is opt-in and backend-key-gated.
 - Playground-only runtime dependencies stay out of core package runtime deps.
 - The HF deploy artifact is built from a staged repo snapshot, not from subtree push.
@@ -82,9 +91,10 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Depends on: none
 - Estimated complexity: M
 
-### 6.2 Shared repair-pipeline reuse
-- Acceptance: `/api/repair` calls `dataforge.engine.repair.run_repair_pipeline`
-  and returns a redacted `RepairTransaction` view.
+### 6.2 Shared analyzer and repair-pipeline reuse
+- Acceptance: `/api/analyze` calls `dataforge.engine.repair.run_repair_pipeline`
+  with dry-run transactions, returns proof-loop evidence, and `/api/profile`
+  plus `/api/repair` remain thin compatibility projections where possible.
 - Depends on: 6.1
 - Estimated complexity: L
 
@@ -115,12 +125,19 @@ and the backend is served as an API-only Hugging Face Docker Space.
 - Depends on: 6.1, 6.2
 - Estimated complexity: S
 
+### 6.8 Constraint review proof loop
+- Acceptance: schema inference emits `constraint_review_v1` candidates in
+  `/api/analyze`; candidates default to `pending`; only submitted accepted IDs
+  affect repair; the receipt records accepted IDs and source hash.
+- Depends on: 6.2
+- Estimated complexity: M
+
 ## 7. Verification
 
 - Integration tests: `tests/integration/test_playground_smoke.py`
 - Unit tests: `tests/unit/test_playground_stage_space.py`, `tests/unit/test_playground_web_contract.py`
 - Regression tests: `tests/regression/test_env.py`
-- Frontend visual contract: `npm run colors:check`, `npm run audit:colors`
+- Frontend visual contract: `npm run colors:check`, `npm run audit:colors`, `npm run test:unit`, `npm run test:e2e`
 - CI assertions: no browser storage APIs, no frontend API keys, no raw
   hand-authored hex colors, valid HF Space front matter
 
@@ -146,14 +163,21 @@ Expected output: `{"status":"ok","advanced_available":<bool>,"max_upload_bytes":
 Reasoning: the frontend needs this to render the advanced toggle and upload guard honestly.
 
 ### Case A.3: Advanced mode is key-gated
-Input: `POST /api/profile?advanced=true` with and without a provider key
+Input: `POST /api/analyze?advanced=true` with and without a provider key
 Expected output: 400 when unkeyed, 200 when keyed
 Reasoning: prevents a dead toggle in the hosted UI.
 
-### Case A.4: Repair returns a real ephemeral journal
+### Case A.4: Analyze returns the proof-loop payload
+Input: `POST /api/analyze` with `hospital_10rows.csv`
+Expected output: `source`, `schema_inference`, `risk_summary`, `issues`,
+`repairs`, `verification`, `txn_journal`, `receipt`, `apply_handoff`, and
+`limitations`
+Reasoning: proves the hosted flow reflects the product promise without enabling browser mutation.
+
+### Case A.4b: Compatibility repair returns a real ephemeral journal
 Input: `POST /api/repair?dry_run=true` with `hospital_10rows.csv`
 Expected output: `fixes` plus `txn_journal` with `txn_id`, `created_at`, `source_sha256`, and `events`
-Reasoning: proves the hosted flow still reflects the true transaction model.
+Reasoning: keeps old clients on the true transaction model while `/api/analyze` becomes primary.
 
 ### Case A.5: Rate limit boundary
 Input: 11 POST requests from one client in under a minute
@@ -171,7 +195,7 @@ Expected output: staged repo contains every Docker COPY source and omits the fro
 Reasoning: prevents deploy docs from drifting away from the actual Docker build context.
 
 ### Case A.8: Problem detail shape
-Input: `POST /api/profile?advanced=true` without a provider key.
+Input: `POST /api/analyze?advanced=true` without a provider key.
 Expected output: 400 `application/problem+json` with `type`, `title`, `status`, `detail`, and `error="advanced_mode_unavailable"`.
 Reasoning: gives clients a stable error contract without preserving ad hoc FastAPI exception wrappers.
 
@@ -179,3 +203,8 @@ Reasoning: gives clients a stable error contract without preserving ad hoc FastA
 Input: generated Playground or OpenEnv schema differs from `specs/openapi/*.json`.
 Expected output: backend gate fails and asks the contributor to regenerate snapshots intentionally.
 Reasoning: treats API schema as a reviewed contract artifact.
+
+### Case A.10: Unknown accepted constraint ID
+Input: `POST /api/analyze` with `accepted_constraint_ids=["cnd-missing"]`
+Expected output: 400 `application/problem+json` with `error="unknown_constraint_id"`
+Reasoning: prevents stale UI state or forged IDs from silently changing repair semantics.

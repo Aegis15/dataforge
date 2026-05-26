@@ -1,5 +1,11 @@
 import { backendPath, normalizeBackendUrl } from "./config";
-import type { BackendCapability, ProblemDetail, ProfileResponse, RepairResponse } from "./types";
+import type {
+  AnalyzeResponse,
+  BackendCapability,
+  ProblemDetail,
+  ProfileResponse,
+  RepairResponse,
+} from "./types";
 
 const REQUEST_TIMEOUT_MS = 20_000;
 
@@ -42,6 +48,23 @@ export class DataForgeClient {
     const formData = new FormData();
     formData.append("file", file);
     return this.requestJson<ProfileResponse>(`/api/profile${params}`, {
+      method: "POST",
+      body: formData,
+    });
+  }
+
+  async analyze(
+    file: File,
+    advanced: boolean,
+    acceptedConstraintIds: string[] = [],
+  ): Promise<AnalyzeResponse> {
+    const params = advanced ? "?advanced=true" : "";
+    const formData = new FormData();
+    formData.append("file", file);
+    if (acceptedConstraintIds.length > 0) {
+      formData.append("accepted_constraint_ids", JSON.stringify(acceptedConstraintIds));
+    }
+    return this.requestJson<AnalyzeResponse>(`/api/analyze${params}`, {
       method: "POST",
       body: formData,
     });

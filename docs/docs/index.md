@@ -62,6 +62,7 @@ flowchart LR
 ## Start here
 
 Run the [quickstart](quickstart.md) first. Use the [playground
-guide](playground.md) for the hosted Profile -> Repair -> Verify -> Revert
-surface, then read the [architecture reference](architecture.md) if you need
-the full mental model before extending the system.
+guide](playground.md) for the hosted Analyze -> Risk -> Constraint Review ->
+Verified Repairs -> Receipt surface, then read the
+[architecture reference](architecture.md) if you need the full mental model
+before extending the system.

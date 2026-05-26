@@ -32,13 +32,16 @@ import {
   validateCsvFile,
 } from "./csv";
 import type {
+  AnalyzeResponse,
   BackendCapability,
+  ConstraintCandidate,
   CsvPreview,
   DatasetInput,
   IssueGroup,
   ProblemDetail,
-  ProfileResponse,
-  RepairResponse,
+  RepairFailure,
+  RepairReadiness,
+  RiskLevel,
   Severity,
   VerifiedFix,
 } from "./types";
@@ -50,9 +53,9 @@ const SAMPLE_OPTIONS = [
 ];
 
 const TABS = [
-  { id: "profile", label: "Profile" },
-  { id: "repair", label: "Repair" },
-  { id: "journal", label: "Journal" },
+  { id: "risk", label: "Risk" },
+  { id: "repairs", label: "Repairs" },
+  { id: "receipt", label: "Receipt" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -72,11 +75,10 @@ function App() {
   const [datasetState, setDatasetState] = useState<WorkState>("idle");
   const [dataset, setDataset] = useState<DatasetInput | null>(null);
   const [advanced, setAdvanced] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabId>("profile");
-  const [profile, setProfile] = useState<ProfileResponse | null>(null);
-  const [repair, setRepair] = useState<RepairResponse | null>(null);
-  const [profileState, setProfileState] = useState<WorkState>("idle");
-  const [repairState, setRepairState] = useState<WorkState>("idle");
+  const [activeTab, setActiveTab] = useState<TabId>("risk");
+  const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
+  const [analysisState, setAnalysisState] = useState<WorkState>("idle");
+  const [acceptedConstraintIds, setAcceptedConstraintIds] = useState<string[]>([]);
   const [problem, setProblem] = useState<ProblemDetail | null>(null);
   const [filter, setFilter] = useState("");
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
@@ -84,13 +86,13 @@ function App() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
 
   const maxUploadBytes = capability?.max_upload_bytes ?? DEFAULT_MAX_UPLOAD_BYTES;
-  const busy = datasetState === "loading" || profileState === "loading" || repairState === "loading";
+  const busy = datasetState === "loading" || analysisState === "loading";
   const canRun = backendState === "ready" && dataset !== null && !busy;
   const evidenceText = useMemo(
-    () => (repair && dataset ? buildEvidenceExport(dataset.file.name, profile, repair) : ""),
-    [dataset, profile, repair],
+    () => (analysis && dataset ? buildEvidenceExport(dataset.file.name, analysis) : ""),
+    [analysis, dataset],
   );
-  const groupedIssues = useMemo(() => groupIssues(profile?.issues ?? []), [profile]);
+  const groupedIssues = useMemo(() => groupIssues(analysis?.issues ?? []), [analysis]);
   const visibleIssues = useMemo(
     () => filterAndSortIssues(groupedIssues, filter, severityFilter, sortKey),
     [filter, groupedIssues, severityFilter, sortKey],
@@ -141,12 +143,11 @@ function App() {
       const preview = parseCsvPreview(await file.text());
       setDataset({ file, source, sampleName, preview });
       setDatasetState("ready");
-      setProfile(null);
-      setRepair(null);
+      setAnalysis(null);
+      setAcceptedConstraintIds([]);
       setCopyState("idle");
-      setProfileState("idle");
-      setRepairState("idle");
-      setActiveTab("profile");
+      setAnalysisState("idle");
+      setActiveTab("risk");
     } catch (error) {
       setDatasetState("error");
       setProblem(localProblem(error instanceof Error ? error.message : "The CSV preview failed."));
@@ -176,19 +177,26 @@ function App() {
     }
   }
 
-  async function runProfile() {
+  async function runAnalyze(ids: string[]) {
     if (!dataset || !canRun) {
       return;
     }
-    setProfileState("loading");
+    setAnalysisState("loading");
     setProblem(null);
-    setActiveTab("profile");
+    setCopyState("idle");
+    setActiveTab("risk");
     try {
-      setProfile(await client.profile(dataset.file, advanced));
-      setProfileState("ready");
+      const nextAnalysis = await client.analyze(dataset.file, advanced, ids);
+      setAnalysis(nextAnalysis);
+      setAcceptedConstraintIds(
+        nextAnalysis.schema_inference.candidates
+          .filter((candidate) => candidate.decision === "accepted")
+          .map((candidate) => candidate.candidate_id),
+      );
+      setAnalysisState("ready");
     } catch (error) {
       const nextProblem = problemFromUnknown(error);
-      setProfileState("error");
+      setAnalysisState("error");
       setProblem(nextProblem);
       if (nextProblem.error === "advanced_mode_unavailable") {
         setAdvanced(false);
@@ -199,28 +207,13 @@ function App() {
     }
   }
 
-  async function runRepair() {
-    if (!dataset || !canRun) {
-      return;
-    }
-    setRepairState("loading");
-    setProblem(null);
-    setCopyState("idle");
-    setActiveTab("repair");
-    try {
-      setRepair(await client.repair(dataset.file, advanced));
-      setRepairState("ready");
-    } catch (error) {
-      const nextProblem = problemFromUnknown(error);
-      setRepairState("error");
-      setProblem(nextProblem);
-      if (nextProblem.error === "advanced_mode_unavailable") {
-        setAdvanced(false);
-        setCapability((current) =>
-          current ? { ...current, advanced_available: false } : current,
-        );
+  function toggleConstraint(candidateId: string, checked: boolean) {
+    setAcceptedConstraintIds((current) => {
+      if (checked) {
+        return current.includes(candidateId) ? current : [...current, candidateId];
       }
-    }
+      return current.filter((id) => id !== candidateId);
+    });
   }
 
   async function copyEvidence() {
@@ -345,13 +338,18 @@ function App() {
           </label>
 
           <div className="action-row">
-            <button className="primary-action" type="button" disabled={!canRun} onClick={() => void runProfile()}>
+            <button className="primary-action" type="button" disabled={!canRun} onClick={() => void runAnalyze([])}>
               <Activity aria-hidden="true" />
-              Profile
+              Analyze
             </button>
-            <button className="secondary-action" type="button" disabled={!canRun} onClick={() => void runRepair()}>
-              <Wrench aria-hidden="true" />
-              Repair dry run
+            <button
+              className="secondary-action"
+              type="button"
+              disabled={!canRun || acceptedConstraintIds.length === 0}
+              onClick={() => void runAnalyze(acceptedConstraintIds)}
+            >
+              <RefreshCw aria-hidden="true" />
+              Rerun with accepted constraints
             </button>
           </div>
         </section>
@@ -370,7 +368,7 @@ function App() {
             <EmptyState
               icon={<FileText aria-hidden="true" />}
               title="No dataset loaded"
-              body="Choose a sample or upload a CSV to inspect the first rows before sending it to the backend."
+              body="Choose a sample or upload a CSV to inspect the first rows before backend analysis."
             />
           )}
         </section>
@@ -379,9 +377,9 @@ function App() {
           <div className="panel-heading">
             <div>
               <p className="eyebrow">Evidence</p>
-              <h2 id="results-title">Results</h2>
+              <h2 id="results-title">Proof loop</h2>
             </div>
-            {repair ? (
+            {analysis ? (
               <div className="evidence-actions">
                 <button type="button" className="icon-button" onClick={() => void copyEvidence()}>
                   <ClipboardCopy aria-hidden="true" />
@@ -418,24 +416,26 @@ function App() {
             ))}
           </div>
 
-          <ResultPanel id="profile" activeTab={activeTab}>
-            <ProfileView
-              state={profileState}
-              profile={profile}
+          <ResultPanel id="risk" activeTab={activeTab}>
+            <RiskView
+              state={analysisState}
+              analysis={analysis}
               issues={visibleIssues}
               filter={filter}
               severityFilter={severityFilter}
               sortKey={sortKey}
+              selectedConstraintIds={acceptedConstraintIds}
               onFilterChange={setFilter}
               onSeverityFilterChange={setSeverityFilter}
               onSortChange={setSortKey}
+              onToggleConstraint={toggleConstraint}
             />
           </ResultPanel>
-          <ResultPanel id="repair" activeTab={activeTab}>
-            <RepairView state={repairState} repair={repair} dataset={dataset} />
+          <ResultPanel id="repairs" activeTab={activeTab}>
+            <RepairsView state={analysisState} analysis={analysis} dataset={dataset} />
           </ResultPanel>
-          <ResultPanel id="journal" activeTab={activeTab}>
-            <JournalView repair={repair} />
+          <ResultPanel id="receipt" activeTab={activeTab}>
+            <ReceiptView analysis={analysis} />
           </ResultPanel>
         </section>
       </main>
@@ -539,54 +539,56 @@ function ResultPanel({
   );
 }
 
-function ProfileView({
+function RiskView({
   state,
-  profile,
+  analysis,
   issues,
   filter,
   severityFilter,
   sortKey,
+  selectedConstraintIds,
   onFilterChange,
   onSeverityFilterChange,
   onSortChange,
+  onToggleConstraint,
 }: {
   state: WorkState;
-  profile: ProfileResponse | null;
+  analysis: AnalyzeResponse | null;
   issues: IssueGroup[];
   filter: string;
   severityFilter: Severity | "all";
   sortKey: SortKey;
+  selectedConstraintIds: string[];
   onFilterChange: (value: string) => void;
   onSeverityFilterChange: (value: Severity | "all") => void;
   onSortChange: (value: SortKey) => void;
+  onToggleConstraint: (candidateId: string, checked: boolean) => void;
 }) {
   if (state === "loading") {
-    return <LoadingState label="Profiling CSV" />;
+    return <LoadingState label="Analyzing CSV" />;
   }
-  if (!profile) {
+  if (!analysis) {
     return (
       <EmptyState
         icon={<Activity aria-hidden="true" />}
-        title="Profile evidence appears here"
-        body="Run profile to see grouped issue evidence, row counts, and severity."
+        title="Analysis evidence appears here"
+        body="Run Analyze to see risk, inferred constraints, verified repairs, and the dry-run receipt."
       />
     );
   }
+
   return (
     <div className="result-stack">
-      <div className="metric-strip" aria-label="Profile summary">
-        <Metric label="Rows" value={profile.meta.rows} />
-        <Metric label="Columns" value={profile.meta.columns} />
-        <Metric label="Issues" value={profile.meta.total_issues} />
-        <Metric label="Contract" value={profile.meta.contract_version} compact />
+      <div className="metric-strip" aria-label="Risk summary">
+        <Metric label="Rows" value={analysis.source.rows} />
+        <Metric label="Columns" value={analysis.source.columns} />
+        <Metric label="Issues" value={analysis.receipt.issues_count} />
+        <Metric label="Pending repair constraints" value={analysis.risk_summary.pending_repair_supported_constraints} />
       </div>
-      <EvidenceNote
-        title={profile.meta.total_issues === 0 ? "No issues matched current detectors" : "Issue groups are detector evidence"}
-        body={
-          profile.meta.total_issues === 0
-            ? "The current detector set did not flag this CSV. Review source context before treating the data as production-clean."
-            : "Unsafe items should be reviewed first; review items are plausible repairs that still need context. Row indices are zero-based."
-        }
+      <RiskSummaryPanel
+        datasetLevel={analysis.risk_summary.dataset_level}
+        readiness={analysis.risk_summary.repair_readiness}
+        reasons={analysis.risk_summary.reasons}
       />
 
       <div className="filter-row">
@@ -625,18 +627,57 @@ function ProfileView({
         <EmptyState
           icon={<ShieldCheck aria-hidden="true" />}
           title="No matching issues"
-          body="Adjust the filters or profile another dataset."
+          body="Adjust the filters or analyze another dataset."
         />
       ) : (
         <IssueTable issues={issues} />
       )}
+
+      <ConstraintReviewTable
+        candidates={analysis.schema_inference.candidates}
+        selectedConstraintIds={selectedConstraintIds}
+        onToggleConstraint={onToggleConstraint}
+      />
     </div>
+  );
+}
+
+function RiskSummaryPanel({
+  datasetLevel,
+  readiness,
+  reasons,
+}: {
+  datasetLevel: RiskLevel;
+  readiness: RepairReadiness;
+  reasons: string[];
+}) {
+  return (
+    <div className="risk-panel">
+      <div className="risk-badge-row">
+        <RiskBadge label="Dataset risk" value={datasetLevel} />
+        <RiskBadge label="Repair readiness" value={readiness} />
+      </div>
+      <ul className="risk-reasons" aria-label="Risk reasons">
+        {reasons.map((reason) => (
+          <li key={reason}>{reason}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function RiskBadge({ label, value }: { label: string; value: RiskLevel | RepairReadiness }) {
+  return (
+    <span className={`risk-badge risk-badge--${value}`}>
+      <strong>{label}</strong>
+      {formatLabel(value)}
+    </span>
   );
 }
 
 function IssueTable({ issues }: { issues: IssueGroup[] }) {
   return (
-    <div className="table-frame" tabIndex={0} aria-label="Grouped profile issues">
+    <div className="table-frame" tabIndex={0} aria-label="Grouped issue evidence">
       <table>
         <thead>
           <tr>
@@ -657,7 +698,7 @@ function IssueTable({ issues }: { issues: IssueGroup[] }) {
               <td>
                 <SeverityBadge severity={issue.severity} />
               </td>
-              <td>{formatRows(issue.row_indices)}</td>
+              <td>{formatRows(issue.row_indices, issue.row_indices_truncated)}</td>
               <td>{issue.count}</td>
             </tr>
           ))}
@@ -667,59 +708,141 @@ function IssueTable({ issues }: { issues: IssueGroup[] }) {
   );
 }
 
-function RepairView({
+function ConstraintReviewTable({
+  candidates,
+  selectedConstraintIds,
+  onToggleConstraint,
+}: {
+  candidates: ConstraintCandidate[];
+  selectedConstraintIds: string[];
+  onToggleConstraint: (candidateId: string, checked: boolean) => void;
+}) {
+  const selected = new Set(selectedConstraintIds);
+  const sortedCandidates = [...candidates].sort((a, b) => {
+    if (a.repair_supported !== b.repair_supported) {
+      return a.repair_supported ? -1 : 1;
+    }
+    if (a.decision !== b.decision) {
+      return a.decision.localeCompare(b.decision);
+    }
+    return b.confidence - a.confidence;
+  });
+
+  return (
+    <section className="result-stack" aria-labelledby="constraint-review-title">
+      <div className="panel-heading panel-heading--tight">
+        <div>
+          <p className="eyebrow">Assumptions</p>
+          <h3 id="constraint-review-title">Constraint review</h3>
+        </div>
+        <span className="muted-pill">{candidates.length} inferred</span>
+      </div>
+      {candidates.length === 0 ? (
+        <EmptyState
+          icon={<ShieldCheck aria-hidden="true" />}
+          title="No inferred constraints"
+          body="The schema inference pass did not emit reviewable candidates for this CSV."
+        />
+      ) : (
+        <div className="table-frame" tabIndex={0} aria-label="Constraint review table">
+          <table className="constraint-table">
+            <thead>
+              <tr>
+                <th scope="col">Accept</th>
+                <th scope="col">Kind</th>
+                <th scope="col">Columns</th>
+                <th scope="col">Confidence</th>
+                <th scope="col">Decision</th>
+                <th scope="col">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedCandidates.map((candidate) => (
+                <tr key={candidate.candidate_id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`Accept ${candidate.kind} constraint ${candidate.candidate_id}`}
+                      checked={selected.has(candidate.candidate_id)}
+                      disabled={!candidate.repair_supported}
+                      onChange={(event) =>
+                        onToggleConstraint(candidate.candidate_id, event.target.checked)
+                      }
+                    />
+                  </td>
+                  <td>
+                    <code>{formatLabel(candidate.kind)}</code>
+                  </td>
+                  <td>{formatConstraintColumns(candidate)}</td>
+                  <td>{formatPercent(candidate.confidence)}</td>
+                  <td>{candidate.repair_supported ? candidate.decision : "unsupported"}</td>
+                  <td>{candidate.evidence}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function RepairsView({
   state,
-  repair,
+  analysis,
   dataset,
 }: {
   state: WorkState;
-  repair: RepairResponse | null;
+  analysis: AnalyzeResponse | null;
   dataset: DatasetInput | null;
 }) {
   if (state === "loading") {
-    return <LoadingState label="Running dry repair" />;
+    return <LoadingState label="Verifying repair proposals" />;
   }
-  if (!repair) {
+  if (!analysis) {
     return (
       <EmptyState
         icon={<Wrench aria-hidden="true" />}
-        title="Dry-run repairs appear here"
+        title="Verified repairs appear here"
         body={
           dataset
-            ? "Run repair dry run to inspect proposed changes, verifier evidence, and the transaction receipt."
+            ? "Run Analyze to inspect proposed changes, verifier evidence, and non-repairs."
             : "Load a sample or upload a CSV before requesting repair evidence."
         }
       />
     );
   }
-  if (repair.fixes.length === 0) {
-    return (
-      <div className="result-stack">
-        <EvidenceNote
-          title="No verified repairs were proposed"
-          body="This means the dry-run pipeline did not find a candidate that passed safety and verifier gates. It is not a proof that every value is correct."
-        />
-        {repair.receipt ? <ReceiptSummary repair={repair} /> : null}
-      </div>
-    );
-  }
+
   return (
     <div className="result-stack">
-      <EvidenceNote
-        title="Verified dry-run evidence"
-        body="Every listed fix passed the hosted safety and verifier gates. Nothing is applied in the browser; use the CLI for reversible local apply workflows."
-      />
-      {repair.receipt ? <ReceiptSummary repair={repair} /> : null}
-      <div className="repair-list">
-        {repair.fixes.map((fix) => (
-          <RepairDiff key={`${fix.row}:${fix.column}:${fix.old_value}:${fix.new_value}`} fix={fix} />
-        ))}
+      <div className="metric-strip" aria-label="Verification summary">
+        <Metric label="Safety" value={analysis.verification.safety_verdict} compact />
+        <Metric label="Verifier" value={analysis.verification.verifier_verdict} compact />
+        <Metric label="Verified fixes" value={analysis.repairs.length} />
+        <Metric label="Attempted not fixed" value={analysis.verification.failures.length} />
       </div>
+      <EvidenceNote
+        title={analysis.repairs.length > 0 ? "Verified dry-run evidence" : "No verified repairs were proposed"}
+        body={
+          analysis.repairs.length > 0
+            ? "Every listed fix passed the hosted safety and verifier gates."
+            : "The dry-run pipeline did not find a candidate that passed safety and verifier gates."
+        }
+      />
+      <ReceiptSummary analysis={analysis} />
+      {analysis.repairs.length > 0 ? (
+        <div className="repair-list">
+          {analysis.repairs.map((fix) => (
+            <RepairDiff key={`${fix.row}:${fix.column}:${fix.old_value}:${fix.new_value}`} fix={fix} analysis={analysis} />
+          ))}
+        </div>
+      ) : null}
+      <FailureList failures={analysis.verification.failures} />
     </div>
   );
 }
 
-function RepairDiff({ fix }: { fix: VerifiedFix }) {
+function RepairDiff({ fix, analysis }: { fix: VerifiedFix; analysis: AnalyzeResponse }) {
   return (
     <article className="repair-row">
       <header>
@@ -728,7 +851,7 @@ function RepairDiff({ fix }: { fix: VerifiedFix }) {
             Row {fix.row}, <code>{fix.column}</code>
           </strong>
           <small>
-            {fix.detector_id} - confidence {Number(fix.confidence).toFixed(2)}
+            {fix.detector_id} - confidence {Number(fix.confidence).toFixed(2)} - source {shortHash(analysis.source.sha256)}
           </small>
         </div>
         <span className="provenance-pill">{fix.provenance}</span>
@@ -749,40 +872,102 @@ function RepairDiff({ fix }: { fix: VerifiedFix }) {
   );
 }
 
-function JournalView({ repair }: { repair: RepairResponse | null }) {
-  if (!repair?.txn_journal) {
+function FailureList({ failures }: { failures: RepairFailure[] }) {
+  if (failures.length === 0) {
+    return null;
+  }
+  return (
+    <section className="failure-list" aria-labelledby="failures-title">
+      <h3 id="failures-title">Attempted but not fixed</h3>
+      {failures.map((failure) => (
+        <article
+          className="failure-row"
+          key={`${failure.row}:${failure.column}:${failure.issue_type}:${failure.reason}`}
+        >
+          <strong>
+            Row {failure.row}, <code>{failure.column}</code>
+          </strong>
+          <span>{failure.issue_type} - {failure.status} - attempts {failure.attempt_count}</span>
+          <p>{failure.reason}</p>
+          {failure.unsat_core.length > 0 ? (
+            <code>{failure.unsat_core.join(", ")}</code>
+          ) : null}
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function ReceiptView({ analysis }: { analysis: AnalyzeResponse | null }) {
+  if (!analysis) {
     return (
       <EmptyState
         icon={<ShieldCheck aria-hidden="true" />}
-        title="No journal yet"
-        body="A dry-run transaction journal is shown after repair completes."
+        title="No receipt yet"
+        body="A dry-run receipt and local apply handoff are shown after analysis completes."
       />
     );
   }
   return (
-    <div className="journal-grid">
-      <Metric label="Transaction" value={repair.txn_journal.txn_id} compact />
-      <Metric label="Fixes" value={repair.txn_journal.fixes_count} />
-      <Metric label="Applied" value={repair.txn_journal.applied ? "yes" : "no"} />
-      <Metric label="Source hash" value={repair.txn_journal.source_sha256.slice(0, 12)} compact />
-      <pre tabIndex={0} aria-label="Dry-run transaction journal">
-        {JSON.stringify(repair.txn_journal, null, 2)}
-      </pre>
+    <div className="result-stack">
+      <ReceiptSummary analysis={analysis} />
+      <ApplyHandoffPanel analysis={analysis} />
+      <div className="journal-grid">
+        <Metric label="Transaction" value={analysis.txn_journal.txn_id} compact />
+        <Metric label="Fixes" value={analysis.txn_journal.fixes_count} />
+        <Metric label="Applied" value={analysis.txn_journal.applied ? "yes" : "no"} />
+        <Metric label="Source hash" value={shortHash(analysis.txn_journal.source_sha256)} compact />
+        <pre tabIndex={0} aria-label="Dry-run transaction journal">
+          {JSON.stringify(analysis.txn_journal, null, 2)}
+        </pre>
+        <pre tabIndex={0} aria-label="Repair receipt">
+          {JSON.stringify(analysis.receipt, null, 2)}
+        </pre>
+      </div>
+      <ul className="limitations" aria-label="Playground limitations">
+        {analysis.limitations.map((limitation) => (
+          <li key={limitation}>{limitation}</li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function ReceiptSummary({ repair }: { repair: RepairResponse }) {
-  if (!repair.receipt) {
-    return null;
-  }
+function ReceiptSummary({ analysis }: { analysis: AnalyzeResponse }) {
   return (
     <div className="receipt-grid" aria-label="Repair receipt summary">
-      <Metric label="Safety" value={repair.receipt.safety_verdict} compact />
-      <Metric label="Verifier" value={repair.receipt.verifier_verdict} compact />
-      <Metric label="Issues" value={repair.receipt.issues_count} />
-      <Metric label="Fixes" value={repair.receipt.fixes_count} />
-      <p>{repair.receipt.reason}</p>
+      <Metric label="Safety" value={analysis.receipt.safety_verdict} compact />
+      <Metric label="Verifier" value={analysis.receipt.verifier_verdict} compact />
+      <Metric label="Accepted constraints" value={analysis.receipt.accepted_constraint_ids.length} />
+      <Metric label="Reversible" value={analysis.receipt.reversible ? "yes" : "no"} />
+      <p>{analysis.receipt.reason}</p>
+    </div>
+  );
+}
+
+function ApplyHandoffPanel({ analysis }: { analysis: AnalyzeResponse }) {
+  return (
+    <section className="handoff-panel" aria-labelledby="handoff-title">
+      <div>
+        <p className="eyebrow">Apply handoff</p>
+        <h3 id="handoff-title">Local transaction boundary</h3>
+      </div>
+      <div className="command-list">
+        <CommandRow label="Dry run" command={analysis.apply_handoff.dry_run_command} />
+        <CommandRow label="Apply" command={analysis.apply_handoff.apply_command} />
+        <CommandRow label="Audit" command={analysis.apply_handoff.audit_command} />
+        <CommandRow label="Revert" command={analysis.apply_handoff.revert_command} />
+      </div>
+      <p>{analysis.apply_handoff.note}</p>
+    </section>
+  );
+}
+
+function CommandRow({ label, command }: { label: string; command: string }) {
+  return (
+    <div className="command-row">
+      <span>{label}</span>
+      <code>{command}</code>
     </div>
   );
 }
@@ -894,6 +1079,23 @@ function filterAndSortIssues(
     }
     return groupIssues([a, b])[0].key === a.key ? -1 : 1;
   });
+}
+
+function formatConstraintColumns(candidate: ConstraintCandidate): string {
+  const left = candidate.columns.join(", ");
+  return candidate.dependent ? `${left} -> ${candidate.dependent}` : left;
+}
+
+function formatPercent(value: number): string {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatLabel(value: string): string {
+  return value.replace(/_/g, " ");
+}
+
+function shortHash(value: string): string {
+  return value.slice(0, 12);
 }
 
 function problemFromUnknown(error: unknown): ProblemDetail {

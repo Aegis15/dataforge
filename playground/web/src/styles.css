@@ -145,6 +145,14 @@ h2 {
   letter-spacing: 0;
 }
 
+h3 {
+  margin: 0;
+  color: var(--df-text-1);
+  font-size: 0.9rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
 .workspace {
   display: grid;
   grid-template-columns: minmax(320px, 392px) minmax(0, 1fr);
@@ -176,6 +184,10 @@ h2 {
   justify-content: space-between;
   gap: 14px;
   margin-bottom: 12px;
+}
+
+.panel-heading--tight {
+  margin-bottom: 0;
 }
 
 .status-pill,
@@ -491,6 +503,73 @@ tr:last-child td {
   font-size: 0.9rem;
 }
 
+.risk-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--df-line);
+  border-radius: 6px;
+  background: var(--df-surface-2);
+  padding: 10px;
+  box-shadow: var(--shadow-inset);
+}
+
+.risk-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.risk-badge {
+  display: inline-grid;
+  gap: 2px;
+  min-width: 170px;
+  border: 1px solid var(--df-line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: var(--df-text-1);
+  background: var(--df-surface-1);
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-transform: capitalize;
+}
+
+.risk-badge strong {
+  color: var(--df-text-2);
+  font-size: 0.7rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.risk-badge--none,
+.risk-badge--low,
+.risk-badge--verified,
+.risk-badge--no_action {
+  color: var(--df-status-safe-text);
+  border-color: var(--df-status-safe-line);
+  background: var(--df-status-safe-bg);
+}
+
+.risk-badge--medium,
+.risk-badge--partial {
+  color: var(--df-status-review-text);
+  border-color: var(--df-status-review-line);
+  background: var(--df-status-review-bg);
+}
+
+.risk-badge--high,
+.risk-badge--blocked {
+  color: var(--df-status-danger-text);
+  border-color: var(--df-status-danger-line);
+  background: var(--df-status-danger-bg);
+}
+
+.risk-reasons,
+.limitations {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--df-text-2);
+}
+
 .filter-row label {
   display: grid;
   gap: 5px;
@@ -541,6 +620,16 @@ tr:last-child td {
   border: 1px solid var(--df-status-danger-line);
 }
 
+.constraint-table {
+  min-width: 980px;
+}
+
+.constraint-table input[type="checkbox"] {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--df-agent-text);
+}
+
 .repair-list {
   display: grid;
   gap: 10px;
@@ -552,6 +641,27 @@ tr:last-child td {
   background: var(--df-surface-1);
   padding: 12px;
   box-shadow: var(--shadow-inset);
+}
+
+.failure-list {
+  display: grid;
+  gap: 8px;
+}
+
+.failure-row {
+  display: grid;
+  gap: 5px;
+  border: 1px solid var(--df-status-review-line);
+  border-radius: 6px;
+  background: var(--df-status-review-bg);
+  color: var(--df-status-review-text);
+  padding: 10px;
+}
+
+.failure-row span,
+.failure-row p {
+  margin: 0;
+  color: var(--df-status-review-text);
 }
 
 .repair-row header {
@@ -628,6 +738,50 @@ tr:last-child td {
   grid-column: 1 / -1;
   margin: 0;
   color: var(--df-text-2);
+}
+
+.handoff-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--df-line);
+  border-radius: 6px;
+  background: var(--df-surface-2);
+  padding: 10px;
+  box-shadow: var(--shadow-inset);
+}
+
+.handoff-panel p {
+  margin: 0;
+  color: var(--df-text-2);
+}
+
+.command-list {
+  display: grid;
+  gap: 6px;
+}
+
+.command-row {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.command-row span {
+  color: var(--df-text-2);
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.command-row code {
+  display: block;
+  overflow-x: auto;
+  border: 1px solid var(--df-line);
+  border-radius: 6px;
+  background: var(--df-code-bg);
+  color: var(--df-code-text);
+  padding: 8px;
 }
 
 .evidence-note,
@@ -746,8 +900,14 @@ tr:last-child td {
   .metric-strip,
   .journal-grid,
   .receipt-grid,
-  .diff-grid {
+  .diff-grid,
+  .risk-badge-row,
+  .command-row {
     grid-template-columns: 1fr;
+  }
+
+  .risk-badge-row {
+    display: grid;
   }
 
   .panel-heading,

@@ -165,12 +165,16 @@ Streamable HTTP is available for local experiments.
   deployments should use `dataforge15-playground`; older `dataforge-playground`
   deployments are historical.
 - `playground/web/` is the static browser UI deployed through Cloudflare
-  Workers Static Assets.
+  Workers Static Assets. Its primary workflow is `POST /api/analyze`: upload a
+  CSV, review categorical risk and pending inferred constraints, inspect
+  verified dry-run repairs and non-repairs, then export a receipt with the
+  local CLI apply/audit/revert command shape.
 - `playground-model/` is a separate Gradio Space demo for the published
   `DataForge-0.5B-SFT` smoke checkpoint. It accepts small CSV snippets and is
   intentionally limited to demo use.
 
-The playground does not persist uploaded files and does not call an LLM unless a
+The playground does not persist uploaded files, does not use browser storage,
+does not mutate data in the hosted flow, and does not call an LLM unless a
 backend provider key is explicitly configured.
 
 ## Benchmark Results
