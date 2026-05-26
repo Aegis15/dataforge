@@ -1,0 +1,31 @@
+name: Playground monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+concurrency:
+  group: playground-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install monitor dependencies
+        run: python -m pip install -e . httpx
+
+      - name: Run Playground monitor
+        env:
+          PLAYGROUND_ALERT_WEBHOOK_URL: ${{ secrets.PLAYGROUND_ALERT_WEBHOOK_URL }}
+        run: python scripts/playground/monitor_playground.py --json

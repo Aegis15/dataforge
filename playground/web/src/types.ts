@@ -4,6 +4,27 @@ export interface BackendCapability {
   status: "ok";
   advanced_available: boolean;
   max_upload_bytes: number;
+  service?: string;
+  api_version?: string;
+  contract_version?: string;
+  build_sha?: string;
+  server_time_utc?: string;
+  environment?: string;
+  cors_configured?: boolean;
+  otel_enabled?: boolean;
+  limits?: {
+    max_upload_bytes: number;
+    max_rows: number;
+    max_columns: number;
+    max_cells?: number;
+  };
+  metrics?: {
+    requests_total?: number;
+    responses_4xx?: number;
+    responses_5xx?: number;
+    error_rate?: number;
+    latency_ms?: Record<string, number>;
+  };
 }
 
 export interface RuntimeConfig {
@@ -58,6 +79,7 @@ export interface VerifiedFix {
   reason: string;
   confidence: number;
   provenance: string;
+  verifier_reason?: string;
 }
 
 export interface RepairJournal {
@@ -74,6 +96,16 @@ export interface RepairJournal {
 export interface RepairResponse {
   fixes: VerifiedFix[];
   txn_journal: RepairJournal | null;
+  receipt?: {
+    contract_version: string;
+    safety_verdict: string;
+    verifier_verdict: string;
+    issues_count: number;
+    fixes_count: number;
+    candidate_provenance: string[];
+    source_sha256: string;
+    reason: string;
+  };
   meta: {
     api_version: string;
     contract_version: string;

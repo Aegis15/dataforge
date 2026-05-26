@@ -454,7 +454,8 @@ tr:last-child td {
 }
 
 .metric-strip,
-.journal-grid {
+.journal-grid,
+.receipt-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
@@ -566,6 +567,13 @@ tr:last-child td {
   color: var(--df-text-2);
 }
 
+.verifier-note {
+  border-top: 1px solid var(--df-line-subtle);
+  margin: 10px 0 0;
+  padding-top: 8px;
+  color: var(--df-status-safe-text);
+}
+
 .diff-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -614,6 +622,58 @@ tr:last-child td {
   background: var(--df-code-bg);
   color: var(--df-code-text);
   padding: 12px;
+}
+
+.receipt-grid p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--df-text-2);
+}
+
+.evidence-note,
+.copy-fallback {
+  border: 1px solid var(--df-line);
+  border-radius: 6px;
+  background: var(--df-surface-2);
+  color: var(--df-text-2);
+  padding: 10px;
+  box-shadow: var(--shadow-inset);
+}
+
+.evidence-note {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.evidence-note svg {
+  color: var(--df-status-safe-text);
+}
+
+.evidence-note p,
+.copy-fallback p {
+  margin-bottom: 0;
+}
+
+.copy-fallback {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.copy-fallback textarea {
+  min-height: 132px;
+  width: 100%;
+  resize: vertical;
+  border: 1px solid var(--df-line);
+  border-radius: 6px;
+  background: var(--df-code-bg);
+  color: var(--df-code-text);
+  padding: 10px;
+  font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
 }
 
 .problem-banner,
@@ -685,6 +745,7 @@ tr:last-child td {
   .sample-grid,
   .metric-strip,
   .journal-grid,
+  .receipt-grid,
   .diff-grid {
     grid-template-columns: 1fr;
   }

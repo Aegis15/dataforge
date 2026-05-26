@@ -78,3 +78,41 @@ def gate(
             status = "ok" if step.ok else "fail"
             typer.echo(f"{status:4} {step.name}: {step.detail}")
     raise typer.Exit(code=0 if report.ok else 1)
+
+
+@release_app.command(name="playground-check")
+def playground_check(
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Print machine-readable JSON."),
+    ] = False,
+    frontend_url: Annotated[
+        str,
+        typer.Option("--frontend-url", help="Cloudflare Playground frontend URL."),
+    ] = "https://dataforge.praneshrajan15.workers.dev/playground",
+    backend_url: Annotated[
+        str,
+        typer.Option("--backend-url", help="Hugging Face Playground backend URL."),
+    ] = "https://Praneshrajan15-dataforge-playground.hf.space",
+    latency_threshold_ms: Annotated[
+        float,
+        typer.Option("--latency-threshold-ms", help="Warm health latency threshold."),
+    ] = 5_000.0,
+) -> None:
+    """Verify the deployed Playground release checklist."""
+    from dataforge.release.playground_check import report_to_json, run_playground_check
+
+    report = run_playground_check(
+        frontend_url=frontend_url,
+        backend_url=backend_url,
+        latency_threshold_ms=latency_threshold_ms,
+        include_doctor=True,
+        include_smoke=True,
+    )
+    if json_output:
+        typer.echo(report_to_json(report))
+    else:
+        for check in report.checks:
+            status = "ok" if check.ok else "fail"
+            typer.echo(f"{status:4} {check.name}: {check.detail}")
+    raise typer.Exit(code=0 if report.ok else 1)
