@@ -11,7 +11,7 @@ ifndef PYTHON
 PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),python)
 endif
 
-.PHONY: help setup setup-all lint format type test test-mapped frontend-install frontend-build frontend-test frontend-gate backend-gate release-gate sft-preflight coverage bench bench-free mutation clean lock uv-lock
+.PHONY: help setup setup-all lint format type test test-mapped frontend-install frontend-build frontend-test frontend-gate backend-gate release-gate playground-release-check sft-preflight coverage bench bench-free mutation clean lock uv-lock
 
 help:
 	@echo "DataForge15 dev targets"
@@ -25,6 +25,7 @@ help:
 	@echo "  frontend-gate Run Vite typecheck, unit tests, build budget, and Playwright"
 	@echo "  backend-gate  Run the canonical backend release-quality gate"
 	@echo "  release-gate  Build, audit, offline-install, and smoke-test the wheel"
+	@echo "  playground-release-check  Verify deployed Playground checklist"
 	@echo "  sft-preflight Validate SFT JSONL/config before launching Kaggle"
 	@echo "  coverage      Run tests with coverage (fails at <90%)"
 	@echo "  bench         Run pytest-benchmark suites"
@@ -50,7 +51,7 @@ format:
 	$(PYTHON) -m ruff check --fix dataforge tests scripts/ci scripts/playground scripts/data scripts/model scripts/publish_model.py playground/api/app.py
 
 type:
-	$(PYTHON) -m mypy --strict dataforge playground/api/app.py scripts/ci/readme_truth.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
+	$(PYTHON) -m mypy --strict dataforge playground/api/app.py scripts/ci/readme_truth.py scripts/ci/openapi_contract.py scripts/ci/backend_gate.py scripts/playground/build_samples.py scripts/playground/stage_space.py scripts/playground/verify_space_backend.py scripts/playground/monitor_playground.py scripts/data/collect_sft_trajectories.py scripts/data/validate_sft_readiness.py scripts/model/verify_sft_release.py scripts/model/publish_dataset_readme.py scripts/publish_model.py
 
 test:
 	$(PYTHON) -m pytest tests/ -x -v
@@ -74,6 +75,9 @@ backend-gate:
 
 release-gate:
 	$(PYTHON) -m dataforge.release.gate
+
+playground-release-check:
+	$(PYTHON) -m dataforge release playground-check --json
 
 sft-preflight:
 	$(PYTHON) scripts/data/validate_sft_readiness.py

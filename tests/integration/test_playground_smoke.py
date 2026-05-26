@@ -15,7 +15,14 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from playground.api.app import MAX_UPLOAD_BYTES, app, limiter
+from playground.api.app import (
+    MAX_UPLOAD_BYTES,
+    MAX_UPLOAD_CELLS,
+    MAX_UPLOAD_COLUMNS,
+    MAX_UPLOAD_ROWS,
+    app,
+    limiter,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -66,8 +73,20 @@ def test_health(client: TestClient) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "ok"
+    assert body["service"] == "DataForge Playground API"
     assert body["advanced_available"] is False
     assert body["max_upload_bytes"] == MAX_UPLOAD_BYTES
+    assert body["limits"] == {
+        "max_upload_bytes": MAX_UPLOAD_BYTES,
+        "max_rows": MAX_UPLOAD_ROWS,
+        "max_columns": MAX_UPLOAD_COLUMNS,
+        "max_cells": MAX_UPLOAD_CELLS,
+    }
+    assert body["api_version"] == "0.1.0"
+    assert body["contract_version"] == "repair_contract_v2"
+    assert "server_time_utc" in body
+    assert "metrics" in body
+    assert "requests_total" in body["metrics"]
 
 
 @pytest.mark.integration
@@ -86,15 +105,23 @@ def test_health_reports_advanced_capability_when_keyed(
 def test_cors_rejects_unconfigured_workers_dev_origin(client: TestClient) -> None:
     """Workers-hosted frontends must be explicitly configured in production CORS."""
     origin = "https://dataforge.example-subdomain.workers.dev"
-    response = client.options(
+    response = client.get(
+        "/api/health",
+        headers={"Origin": origin},
+    )
+    assert response.status_code == 403
+    assert response.json()["error"] == "origin_not_allowed"
+    assert "access-control-allow-origin" not in response.headers
+
+    preflight = client.options(
         "/api/health",
         headers={
             "Origin": origin,
             "Access-Control-Request-Method": "GET",
         },
     )
-    assert response.status_code == 400
-    assert "access-control-allow-origin" not in response.headers
+    assert preflight.status_code == 403
+    assert "access-control-allow-origin" not in preflight.headers
 
 
 # ---------------------------------------------------------------------------
@@ -195,6 +222,55 @@ def test_oversize_body_rejected(client: TestClient) -> None:
     )
     assert response.status_code == 413
     assert response.json()["error"] == "file_too_large"
+    assert response.headers["x-dataforge-request-id"]
+
+
+@pytest.mark.integration
+def test_malformed_csv_returns_stable_problem_detail(client: TestClient) -> None:
+    """Malformed CSV uploads are client errors, not profile pipeline failures."""
+    response = client.post(
+        "/api/profile",
+        files={"file": ("broken.csv", io.BytesIO(b'id,name\n1,"unterminated'), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["error"] == "invalid_csv"
+    assert body["status"] == 400
+    assert body["request_id"] == response.headers["x-dataforge-request-id"]
+
+
+@pytest.mark.integration
+def test_empty_csv_returns_stable_problem_detail(client: TestClient) -> None:
+    """Empty CSV uploads get a clear problem detail."""
+    response = client.post(
+        "/api/profile",
+        files={"file": ("empty.csv", io.BytesIO(b""), "text/csv")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"] == "empty_csv"
+
+
+@pytest.mark.integration
+def test_upload_row_and_column_limits_are_enforced(client: TestClient) -> None:
+    """The backend rejects valid CSVs that exceed playground processing limits."""
+    too_many_rows = "value\n" + "\n".join(str(index) for index in range(MAX_UPLOAD_ROWS + 1))
+    row_response = client.post(
+        "/api/profile",
+        files={"file": ("rows.csv", io.BytesIO(too_many_rows.encode()), "text/csv")},
+    )
+    assert row_response.status_code == 413
+    assert row_response.json()["error"] == "too_many_rows"
+
+    too_many_columns = ",".join(f"c{index}" for index in range(MAX_UPLOAD_COLUMNS + 1))
+    too_many_columns += "\n" + ",".join("x" for _ in range(MAX_UPLOAD_COLUMNS + 1))
+    column_response = client.post(
+        "/api/profile",
+        files={"file": ("columns.csv", io.BytesIO(too_many_columns.encode()), "text/csv")},
+    )
+    assert column_response.status_code == 413
+    assert column_response.json()["error"] == "too_many_columns"
 
 
 # ---------------------------------------------------------------------------
@@ -247,6 +323,9 @@ def test_repair_dry_run(client: TestClient) -> None:
     assert "fixes" in body
     assert "txn_journal" in body
     assert body["meta"]["contract_version"] == "repair_contract_v2"
+    assert "receipt" in body
+    assert body["receipt"]["contract_version"] == "repair_contract_v2"
+    assert body["receipt"]["source_sha256"] == body["txn_journal"]["source_sha256"]
 
     journal = body["txn_journal"]
     assert "txn_id" in journal
@@ -257,6 +336,8 @@ def test_repair_dry_run(client: TestClient) -> None:
     assert journal["applied"] is False
     assert journal["fixes_count"] == len(body["fixes"])
     assert journal["events"] == [{"event_type": "created"}]
+    for fix in body["fixes"]:
+        assert "verifier_reason" in fix
 
 
 @pytest.mark.integration

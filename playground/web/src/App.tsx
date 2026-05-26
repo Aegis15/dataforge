@@ -86,6 +86,10 @@ function App() {
   const maxUploadBytes = capability?.max_upload_bytes ?? DEFAULT_MAX_UPLOAD_BYTES;
   const busy = datasetState === "loading" || profileState === "loading" || repairState === "loading";
   const canRun = backendState === "ready" && dataset !== null && !busy;
+  const evidenceText = useMemo(
+    () => (repair && dataset ? buildEvidenceExport(dataset.file.name, profile, repair) : ""),
+    [dataset, profile, repair],
+  );
   const groupedIssues = useMemo(() => groupIssues(profile?.issues ?? []), [profile]);
   const visibleIssues = useMemo(
     () => filterAndSortIssues(groupedIssues, filter, severityFilter, sortKey),
@@ -129,7 +133,6 @@ function App() {
     const validation = validateCsvFile(file, maxUploadBytes);
     if (!validation.ok) {
       setDatasetState("error");
-      setDataset(null);
       setProblem(localProblem(validation.message ?? "The CSV file could not be accepted."));
       return;
     }
@@ -140,12 +143,12 @@ function App() {
       setDatasetState("ready");
       setProfile(null);
       setRepair(null);
+      setCopyState("idle");
       setProfileState("idle");
       setRepairState("idle");
       setActiveTab("profile");
     } catch (error) {
       setDatasetState("error");
-      setDataset(null);
       setProblem(localProblem(error instanceof Error ? error.message : "The CSV preview failed."));
     }
   }
@@ -202,6 +205,7 @@ function App() {
     }
     setRepairState("loading");
     setProblem(null);
+    setCopyState("idle");
     setActiveTab("repair");
     try {
       setRepair(await client.repair(dataset.file, advanced));
@@ -220,11 +224,11 @@ function App() {
   }
 
   async function copyEvidence() {
-    if (!repair || !dataset) {
+    if (!evidenceText) {
       return;
     }
     try {
-      await navigator.clipboard.writeText(buildEvidenceExport(dataset.file.name, profile, repair));
+      await navigator.clipboard.writeText(evidenceText);
       setCopyState("copied");
     } catch {
       setCopyState("failed");
@@ -232,11 +236,10 @@ function App() {
   }
 
   function exportEvidence() {
-    if (!repair || !dataset) {
+    if (!evidenceText || !dataset) {
       return;
     }
-    const body = buildEvidenceExport(dataset.file.name, profile, repair);
-    const url = URL.createObjectURL(new Blob([body], { type: "application/json" }));
+    const url = URL.createObjectURL(new Blob([evidenceText], { type: "application/json" }));
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = `${dataset.file.name.replace(/\.csv$/i, "")}-dataforge-dry-run.json`;
@@ -393,6 +396,9 @@ function App() {
           </div>
 
           {problem ? <ProblemBanner problem={problem} /> : null}
+          {copyState === "failed" && evidenceText ? (
+            <CopyFallback evidenceText={evidenceText} />
+          ) : null}
 
           <div className="tabs" role="tablist" aria-label="Result views">
             {TABS.map((tab) => (
@@ -426,7 +432,7 @@ function App() {
             />
           </ResultPanel>
           <ResultPanel id="repair" activeTab={activeTab}>
-            <RepairView state={repairState} repair={repair} />
+            <RepairView state={repairState} repair={repair} dataset={dataset} />
           </ResultPanel>
           <ResultPanel id="journal" activeTab={activeTab}>
             <JournalView repair={repair} />
@@ -574,6 +580,14 @@ function ProfileView({
         <Metric label="Issues" value={profile.meta.total_issues} />
         <Metric label="Contract" value={profile.meta.contract_version} compact />
       </div>
+      <EvidenceNote
+        title={profile.meta.total_issues === 0 ? "No issues matched current detectors" : "Issue groups are detector evidence"}
+        body={
+          profile.meta.total_issues === 0
+            ? "The current detector set did not flag this CSV. Review source context before treating the data as production-clean."
+            : "Unsafe items should be reviewed first; review items are plausible repairs that still need context. Row indices are zero-based."
+        }
+      />
 
       <div className="filter-row">
         <label>
@@ -653,7 +667,15 @@ function IssueTable({ issues }: { issues: IssueGroup[] }) {
   );
 }
 
-function RepairView({ state, repair }: { state: WorkState; repair: RepairResponse | null }) {
+function RepairView({
+  state,
+  repair,
+  dataset,
+}: {
+  state: WorkState;
+  repair: RepairResponse | null;
+  dataset: DatasetInput | null;
+}) {
   if (state === "loading") {
     return <LoadingState label="Running dry repair" />;
   }
@@ -662,24 +684,37 @@ function RepairView({ state, repair }: { state: WorkState; repair: RepairRespons
       <EmptyState
         icon={<Wrench aria-hidden="true" />}
         title="Dry-run repairs appear here"
-        body="Run repair dry run to inspect proposed changes before any local apply workflow."
+        body={
+          dataset
+            ? "Run repair dry run to inspect proposed changes, verifier evidence, and the transaction receipt."
+            : "Load a sample or upload a CSV before requesting repair evidence."
+        }
       />
     );
   }
   if (repair.fixes.length === 0) {
     return (
-      <EmptyState
-        icon={<CheckCircle2 aria-hidden="true" />}
-        title="No repairs proposed"
-        body="DataForge did not find verified repair candidates for this CSV."
-      />
+      <div className="result-stack">
+        <EvidenceNote
+          title="No verified repairs were proposed"
+          body="This means the dry-run pipeline did not find a candidate that passed safety and verifier gates. It is not a proof that every value is correct."
+        />
+        {repair.receipt ? <ReceiptSummary repair={repair} /> : null}
+      </div>
     );
   }
   return (
-    <div className="repair-list">
-      {repair.fixes.map((fix) => (
-        <RepairDiff key={`${fix.row}:${fix.column}:${fix.old_value}:${fix.new_value}`} fix={fix} />
-      ))}
+    <div className="result-stack">
+      <EvidenceNote
+        title="Verified dry-run evidence"
+        body="Every listed fix passed the hosted safety and verifier gates. Nothing is applied in the browser; use the CLI for reversible local apply workflows."
+      />
+      {repair.receipt ? <ReceiptSummary repair={repair} /> : null}
+      <div className="repair-list">
+        {repair.fixes.map((fix) => (
+          <RepairDiff key={`${fix.row}:${fix.column}:${fix.old_value}:${fix.new_value}`} fix={fix} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -709,6 +744,7 @@ function RepairDiff({ fix }: { fix: VerifiedFix }) {
         </div>
       </div>
       <p>{fix.reason}</p>
+      {fix.verifier_reason ? <p className="verifier-note">{fix.verifier_reason}</p> : null}
     </article>
   );
 }
@@ -732,6 +768,43 @@ function JournalView({ repair }: { repair: RepairResponse | null }) {
       <pre tabIndex={0} aria-label="Dry-run transaction journal">
         {JSON.stringify(repair.txn_journal, null, 2)}
       </pre>
+    </div>
+  );
+}
+
+function ReceiptSummary({ repair }: { repair: RepairResponse }) {
+  if (!repair.receipt) {
+    return null;
+  }
+  return (
+    <div className="receipt-grid" aria-label="Repair receipt summary">
+      <Metric label="Safety" value={repair.receipt.safety_verdict} compact />
+      <Metric label="Verifier" value={repair.receipt.verifier_verdict} compact />
+      <Metric label="Issues" value={repair.receipt.issues_count} />
+      <Metric label="Fixes" value={repair.receipt.fixes_count} />
+      <p>{repair.receipt.reason}</p>
+    </div>
+  );
+}
+
+function EvidenceNote({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="evidence-note">
+      <ShieldCheck aria-hidden="true" />
+      <div>
+        <strong>{title}</strong>
+        <p>{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function CopyFallback({ evidenceText }: { evidenceText: string }) {
+  return (
+    <div className="copy-fallback" role="status" aria-live="polite">
+      <strong>Clipboard permission was blocked</strong>
+      <p>Export still works. You can also select this evidence payload directly.</p>
+      <textarea aria-label="Copyable repair evidence" readOnly value={evidenceText} />
     </div>
   );
 }

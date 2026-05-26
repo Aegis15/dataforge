@@ -81,6 +81,10 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
         error_code = "http_error"
         message = str(raw_detail)
 
+    request_id = getattr(request.state, "dataforge_request_id", None)
+    if isinstance(request_id, str) and request_id and "request_id" not in extensions:
+        extensions["request_id"] = request_id
+
     return problem_response(
         status=exc.status_code,
         type_=f"https://dataforge.local/problems/{error_code}",

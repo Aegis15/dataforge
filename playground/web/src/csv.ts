@@ -113,6 +113,31 @@ export function problemToMessage(problem: ProblemDetail): string {
   if (problem.error === "file_too_large") {
     return "The uploaded CSV is larger than the hosted playground limit.";
   }
+  if (problem.error === "invalid_csv") {
+    return "The CSV could not be parsed. Check for unterminated quotes, inconsistent delimiters, or broken rows.";
+  }
+  if (problem.error === "empty_csv") {
+    return "The CSV needs a header row and at least one data row.";
+  }
+  if (problem.error === "too_many_rows") {
+    return `The CSV has more rows than this hosted playground allows${
+      typeof problem.max_rows === "number" ? ` (${problem.max_rows})` : ""
+    }.`;
+  }
+  if (problem.error === "too_many_columns") {
+    return `The CSV has more columns than this hosted playground allows${
+      typeof problem.max_columns === "number" ? ` (${problem.max_columns})` : ""
+    }.`;
+  }
+  if (problem.error === "too_many_cells") {
+    return "The CSV is too wide and tall for this hosted playground.";
+  }
+  if (problem.error === "unsupported_file_type") {
+    return "Upload a CSV file with a .csv extension or text/csv content type.";
+  }
+  if (problem.error === "request_timeout") {
+    return "The backend timed out before completing the request. Try a smaller CSV or retry after the backend cools down.";
+  }
   if (problem.error === "rate_limit_exceeded") {
     return "Too many requests. Wait about a minute before trying again.";
   }
@@ -134,6 +159,7 @@ export function buildEvidenceExport(
       issue_count: profile?.meta.total_issues ?? null,
       fixes: repair.fixes,
       transaction_journal: repair.txn_journal,
+      repair_receipt: repair.receipt ?? null,
       contract_version: repair.meta.contract_version,
     },
     null,

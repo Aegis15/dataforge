@@ -36,6 +36,7 @@ MYPY_PATHS = [
     "scripts/playground/build_samples.py",
     "scripts/playground/stage_space.py",
     "scripts/playground/verify_space_backend.py",
+    "scripts/playground/monitor_playground.py",
     "scripts/data/collect_sft_trajectories.py",
     "scripts/data/validate_sft_readiness.py",
     "scripts/model/verify_sft_release.py",

@@ -42,6 +42,7 @@ const repairPayload = {
       reason: "Tenfold outlier relative to neighboring rows.",
       confidence: 0.91,
       provenance: "heuristic",
+      verifier_reason: "All proposed fixes passed the SMT verifier.",
     },
   ],
   txn_journal: {
@@ -53,6 +54,16 @@ const repairPayload = {
     applied: false,
     events: [{ event_type: "created" }],
     note: "Playground is stateless.",
+  },
+  receipt: {
+    contract_version: "repair_contract_v2",
+    safety_verdict: "allow",
+    verifier_verdict: "accept",
+    issues_count: 2,
+    fixes_count: 1,
+    candidate_provenance: ["heuristic"],
+    source_sha256: "a".repeat(64),
+    reason: "Dry run completed without mutating the source file.",
   },
   meta: {
     api_version: "0.1.0",
@@ -110,6 +121,7 @@ test("sample path profiles, repairs, exports evidence, and passes automated acce
 
   await page.getByRole("button", { name: /Repair dry run/ }).click();
   await expect(page.getByText("Tenfold outlier")).toBeVisible();
+  await expect(page.getByText("All proposed fixes passed the SMT verifier.")).toBeVisible();
 
   const repairTab = page.getByRole("tab", { name: "Repair" });
   await repairTab.focus();
@@ -137,6 +149,36 @@ test("uploaded CSV path validates and profiles without samples", async ({ page }
   await expect(page.getByText("upload.csv")).toBeVisible();
   await page.getByRole("button", { name: "Profile" }).click();
   await expect(page.getByText("decimal_shift")).toBeVisible();
+});
+
+test("failed upload keeps the last valid dataset and shows a copy fallback", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: () => Promise.reject(new Error("permission denied")),
+      },
+    });
+  });
+  await page.goto("/");
+
+  await page
+    .locator("#csv-upload")
+    .setInputFiles({ name: "upload.csv", mimeType: "text/csv", buffer: Buffer.from(sampleCsv) });
+  await expect(page.getByText("1020")).toBeVisible();
+
+  await page.locator("#csv-upload").setInputFiles({
+    name: "broken.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from('id,name\n1,"unterminated'),
+  });
+  await expect(page.getByRole("alert")).toContainText("Dataset validation failed");
+  await expect(page.getByText("1020")).toBeVisible();
+
+  await page.getByRole("button", { name: /Repair dry run/ }).click();
+  await page.getByRole("button", { name: "Copy" }).click();
+  await expect(page.getByRole("button", { name: "Copy failed" })).toBeVisible();
+  await expect(page.getByLabel("Copyable repair evidence")).toHaveValue(/transaction_journal/);
 });
 
 test("client rejects files above the health capability limit", async ({ page }) => {
@@ -195,6 +237,13 @@ for (const colorScheme of ["light", "dark"] as const) {
 
     await page.getByRole("button", { name: /Repair dry run/ }).click();
     await expect(page.getByText("Tenfold outlier")).toBeVisible();
+    await expect(page.getByText("Verified dry-run evidence")).toBeVisible();
+
+    const layout = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(layout.scrollWidth).toBeLessThanOrEqual(layout.innerWidth + 1);
 
     await page.getByRole("tab", { name: "Journal" }).click();
     await expect(page.getByText("txn-demo", { exact: true })).toBeVisible();

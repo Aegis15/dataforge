@@ -9,21 +9,27 @@ All uploaded data is processed in memory or under a per-request temporary
 directory and is discarded before the request completes.
 """
 
+import asyncio
 import io
 import logging
 import os
+import re
 import tempfile
 import time
-from collections import defaultdict
+import uuid
+from collections import defaultdict, deque
 from collections.abc import Callable
+from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
+from threading import Lock
 from typing import Any, Protocol, TypeVar, cast
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from pandas.errors import EmptyDataError, ParserError
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import Response
 from starlette.types import ASGIApp
@@ -129,11 +135,142 @@ _RateLimitExceeded: type[Exception] = (
 logger = logging.getLogger("playground.api")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
-MAX_UPLOAD_BYTES = 1_048_576
+
+def _positive_int_env(name: str, default: int) -> int:
+    """Return a positive integer env override, falling back safely."""
+    try:
+        value = int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+MAX_UPLOAD_BYTES = _positive_int_env("DATAFORGE_PLAYGROUND_MAX_UPLOAD_BYTES", 1_048_576)
 MAX_MULTIPART_OVERHEAD_BYTES = 16_384
+MAX_UPLOAD_ROWS = _positive_int_env("DATAFORGE_PLAYGROUND_MAX_ROWS", 10_000)
+MAX_UPLOAD_COLUMNS = _positive_int_env("DATAFORGE_PLAYGROUND_MAX_COLUMNS", 128)
+MAX_UPLOAD_CELLS = _positive_int_env("DATAFORGE_PLAYGROUND_MAX_CELLS", 200_000)
+REQUEST_TIMEOUT_SECONDS = _positive_int_env("DATAFORGE_PLAYGROUND_TIMEOUT_SECONDS", 20)
 SAMPLES_DIR = Path(__file__).resolve().parent / "samples"
 SLOWAPI_CONFIG = Path(__file__).resolve().parent / "slowapi.env"
 ALLOWED_SAMPLES = {"hospital_10rows", "flights_10rows", "beers_10rows"}
+ACCEPTED_UPLOAD_TYPES = {"", "text/csv", "text/plain", "application/vnd.ms-excel"}
+OTEL_ENABLED_VALUES = {"1", "true", "yes", "on"}
+
+
+class _RequestMetrics:
+    """Tiny in-process request counters for free-tier health reporting."""
+
+    def __init__(self, window_size: int = 200) -> None:
+        self._lock = Lock()
+        self._window_size = window_size
+        self._latencies_ms: deque[float] = deque(maxlen=window_size)
+        self._requests_total = 0
+        self._responses_4xx = 0
+        self._responses_5xx = 0
+        self._routes: dict[str, int] = defaultdict(int)
+
+    def record(self, *, method: str, path: str, status_code: int, duration_ms: float) -> None:
+        """Record one completed request."""
+        with self._lock:
+            self._requests_total += 1
+            self._latencies_ms.append(duration_ms)
+            self._routes[f"{method} {path}"] += 1
+            if 400 <= status_code < 500:
+                self._responses_4xx += 1
+            elif status_code >= 500:
+                self._responses_5xx += 1
+
+    def snapshot(self) -> dict[str, Any]:
+        """Return a JSON-safe metrics snapshot."""
+        with self._lock:
+            latencies = sorted(self._latencies_ms)
+            total = self._requests_total
+            responses_5xx = self._responses_5xx
+            return {
+                "requests_total": total,
+                "responses_4xx": self._responses_4xx,
+                "responses_5xx": responses_5xx,
+                "error_rate": round(responses_5xx / total, 4) if total else 0.0,
+                "latency_ms": {
+                    "window_size": len(latencies),
+                    "p50": _percentile(latencies, 0.50),
+                    "p95": _percentile(latencies, 0.95),
+                    "max": round(latencies[-1], 2) if latencies else 0.0,
+                },
+                "routes": dict(sorted(self._routes.items())),
+            }
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    """Return a nearest-rank percentile for a small rolling window."""
+    if not values:
+        return 0.0
+    index = min(len(values) - 1, max(0, int(round(percentile * (len(values) - 1)))))
+    return round(values[index], 2)
+
+
+request_metrics = _RequestMetrics()
+
+
+def _request_id(request: Request) -> str | None:
+    """Return the current request id when request middleware has assigned one."""
+    request_id = getattr(request.state, "dataforge_request_id", None)
+    return request_id if isinstance(request_id, str) and request_id else None
+
+
+class RequestContextMiddleware(BaseHTTPMiddleware):
+    """Attach request IDs, duration headers, and lightweight metrics."""
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+        request.state.dataforge_request_id = request_id
+        started = time.perf_counter()
+        try:
+            response = await call_next(request)
+        except Exception:
+            duration_ms = (time.perf_counter() - started) * 1000
+            request_metrics.record(
+                method=request.method,
+                path=request.url.path,
+                status_code=500,
+                duration_ms=duration_ms,
+            )
+            logger.exception(
+                "Playground request crashed",
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "duration_ms": round(duration_ms, 2),
+                },
+            )
+            raise
+
+        duration_ms = (time.perf_counter() - started) * 1000
+        request_metrics.record(
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            duration_ms=duration_ms,
+        )
+        response.headers["X-DataForge-Request-Id"] = request_id
+        response.headers["X-DataForge-Duration-Ms"] = f"{duration_ms:.2f}"
+        logger.info(
+            "Playground request completed",
+            extra={
+                "request_id": request_id,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": response.status_code,
+                "duration_ms": round(duration_ms, 2),
+            },
+        )
+        return response
 
 
 class SizeCapMiddleware(BaseHTTPMiddleware):
@@ -160,7 +297,15 @@ class SizeCapMiddleware(BaseHTTPMiddleware):
             try:
                 length = int(content_length)
             except ValueError:
-                return JSONResponse(status_code=400, content={"error": "invalid_content_length"})
+                return problem_response(
+                    status=400,
+                    type_="https://dataforge.local/problems/invalid_content_length",
+                    title="Invalid Content Length",
+                    detail="The Content-Length header must be an integer.",
+                    instance=str(request.url.path),
+                    error="invalid_content_length",
+                    request_id=_request_id(request),
+                )
             if length > self.max_body_bytes:
                 logger.warning(
                     "Rejected request: Content-Length %d exceeds max body %d",
@@ -175,6 +320,7 @@ class SizeCapMiddleware(BaseHTTPMiddleware):
                     instance=str(request.url.path),
                     error="file_too_large",
                     max_bytes=self.max_file_bytes,
+                    request_id=_request_id(request),
                 )
         return await call_next(request)
 
@@ -204,7 +350,52 @@ class FallbackRateLimitMiddleware(BaseHTTPMiddleware):
                     instance=str(request.url.path),
                     headers={"Retry-After": "60"},
                     error="rate_limit_exceeded",
+                    retry_after=60,
+                    request_id=_request_id(request),
                 )
+        return await call_next(request)
+
+
+class OriginGuardMiddleware(BaseHTTPMiddleware):
+    """Reject browser requests from origins outside the configured allowlist."""
+
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        allow_origins: list[str],
+        allow_origin_regex: str | None,
+    ) -> None:
+        super().__init__(app)
+        self._allow_origins = frozenset(allow_origins)
+        self._allow_origin_pattern = (
+            re.compile(allow_origin_regex) if allow_origin_regex is not None else None
+        )
+
+    def _allowed(self, origin: str) -> bool:
+        if origin in self._allow_origins:
+            return True
+        return bool(
+            self._allow_origin_pattern is not None and self._allow_origin_pattern.fullmatch(origin)
+        )
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        """Deny disallowed browser origins before endpoint handlers run."""
+        origin = request.headers.get("origin")
+        if origin and not self._allowed(origin):
+            return problem_response(
+                status=403,
+                type_="https://dataforge.local/problems/origin_not_allowed",
+                title="Origin Not Allowed",
+                detail="This playground backend only accepts browser requests from configured frontend origins.",
+                instance=str(request.url.path),
+                error="origin_not_allowed",
+                request_id=_request_id(request),
+            )
         return await call_next(request)
 
 
@@ -238,6 +429,10 @@ def _build_cors_origin_regex() -> str | None:
     return "^(" + "|".join(patterns) + ")$"
 
 
+CORS_ORIGINS = _build_cors_origins()
+CORS_ORIGIN_REGEX = _build_cors_origin_regex()
+
+
 app = FastAPI(
     title="DataForge Playground API",
     description="Stateless backend for the hosted DataForge playground.",
@@ -254,15 +449,21 @@ if not SLOWAPI_AVAILABLE:
     app.add_middleware(FallbackRateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_build_cors_origins(),
-    allow_origin_regex=_build_cors_origin_regex(),
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=False,
 )
+app.add_middleware(
+    OriginGuardMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
+)
+app.add_middleware(RequestContextMiddleware)
 app.state.limiter = limiter
 app.add_exception_handler(HTTPException, problem_exception_handler)
-configure_fastapi_observability(app, service_name="dataforge-playground-api")
+OTEL_INSTRUMENTED = configure_fastapi_observability(app, service_name="dataforge-playground-api")
 
 
 @app.exception_handler(_RateLimitExceeded)
@@ -277,28 +478,119 @@ async def _rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
         instance=str(request.url.path),
         headers={"Retry-After": "60"},
         error="rate_limit_exceeded",
+        retry_after=60,
+        request_id=_request_id(request),
     )
+
+
+def _upload_problem(
+    *,
+    status_code: int,
+    error: str,
+    message: str,
+    **extensions: Any,
+) -> HTTPException:
+    """Build an HTTPException that normalizes to problem+json."""
+    return HTTPException(
+        status_code=status_code,
+        detail={"error": error, "message": message, **extensions},
+    )
+
+
+def _validate_upload_file(file: UploadFile) -> None:
+    """Reject clearly unsupported upload metadata before reading bytes."""
+    upload_name = Path(file.filename or "upload.csv").name
+    content_type = (file.content_type or "").split(";", maxsplit=1)[0].strip().lower()
+    if not upload_name.lower().endswith(".csv") and content_type not in ACCEPTED_UPLOAD_TYPES:
+        raise _upload_problem(
+            status_code=415,
+            error="unsupported_file_type",
+            message="Upload a CSV file with a .csv extension or text/csv content type.",
+            accepted_types=sorted(ACCEPTED_UPLOAD_TYPES - {""}),
+        )
 
 
 async def _read_upload(file: UploadFile) -> bytes:
     """Read an uploaded file with a defensive hard cap."""
+    _validate_upload_file(file)
     data = await file.read(MAX_UPLOAD_BYTES + 1)
     if len(data) > MAX_UPLOAD_BYTES:
-        raise HTTPException(
+        raise _upload_problem(
             status_code=413,
-            detail={"error": "file_too_large", "max_bytes": MAX_UPLOAD_BYTES},
+            error="file_too_large",
+            message="The uploaded CSV is larger than the hosted playground limit.",
+            max_bytes=MAX_UPLOAD_BYTES,
+        )
+    if len(data) == 0:
+        raise _upload_problem(
+            status_code=400,
+            error="empty_csv",
+            message="CSV must include a header row and at least one data row.",
         )
     return data
 
 
 def _csv_to_df(data: bytes) -> pd.DataFrame:
     """Parse CSV bytes into a string-preserving DataFrame."""
-    return pd.read_csv(
-        io.BytesIO(data),
-        dtype=str,
-        keep_default_na=False,
-        na_filter=False,
-    )
+    try:
+        df = pd.read_csv(
+            io.BytesIO(data),
+            dtype=str,
+            keep_default_na=False,
+            na_filter=False,
+        )
+    except EmptyDataError as exc:
+        raise _upload_problem(
+            status_code=400,
+            error="empty_csv",
+            message="CSV must include a header row and at least one data row.",
+        ) from exc
+    except ParserError as exc:
+        raise _upload_problem(
+            status_code=400,
+            error="invalid_csv",
+            message="CSV could not be parsed. Check quoting, delimiters, and row structure.",
+        ) from exc
+
+    if len(df.columns) == 0 or len(df) == 0:
+        raise _upload_problem(
+            status_code=400,
+            error="empty_csv",
+            message="CSV must include a header row and at least one data row.",
+        )
+    _enforce_dataframe_limits(df)
+    return df
+
+
+def _enforce_dataframe_limits(df: pd.DataFrame) -> None:
+    """Apply hosted playground row, column, and cell limits after parsing."""
+    row_total = len(df)
+    column_total = len(df.columns)
+    cell_total = row_total * column_total
+    if row_total > MAX_UPLOAD_ROWS:
+        raise _upload_problem(
+            status_code=413,
+            error="too_many_rows",
+            message="The uploaded CSV has more rows than the hosted playground allows.",
+            max_rows=MAX_UPLOAD_ROWS,
+            observed_rows=row_total,
+        )
+    if column_total > MAX_UPLOAD_COLUMNS:
+        raise _upload_problem(
+            status_code=413,
+            error="too_many_columns",
+            message="The uploaded CSV has more columns than the hosted playground allows.",
+            max_columns=MAX_UPLOAD_COLUMNS,
+            observed_columns=column_total,
+        )
+    if cell_total > MAX_UPLOAD_CELLS:
+        raise _upload_problem(
+            status_code=413,
+            error="too_many_cells",
+            message="The uploaded CSV has too many cells for the hosted playground.",
+            max_cells=MAX_UPLOAD_CELLS,
+            observed_cells=cell_total,
+        )
 
 
 def _severity_to_str(severity: Severity) -> str:
@@ -349,6 +641,7 @@ def _fixes_to_response(
     fixes: list[VerifiedFix],
     transaction: RepairTransaction,
     *,
+    receipt: Any,
     source_name: str,
 ) -> dict[str, Any]:
     """Format accepted repair proposals plus a redacted transaction journal."""
@@ -364,6 +657,7 @@ def _fixes_to_response(
                 "reason": proposed_fix.reason,
                 "confidence": proposed_fix.confidence,
                 "provenance": proposed_fix.provenance,
+                "verifier_reason": proposed_fix.verifier_reason,
             }
         )
 
@@ -381,6 +675,16 @@ def _fixes_to_response(
                 "Playground is stateless. This journal is ephemeral and discarded "
                 "after the response. Install the CLI to apply and revert repairs."
             ),
+        },
+        "receipt": {
+            "contract_version": receipt.contract_version,
+            "safety_verdict": receipt.safety_verdict,
+            "verifier_verdict": receipt.verifier_verdict,
+            "issues_count": receipt.issues_count,
+            "fixes_count": receipt.fixes_count,
+            "candidate_provenance": receipt.candidate_provenance,
+            "source_sha256": receipt.source_sha256,
+            "reason": receipt.reason,
         },
         "meta": {
             "api_version": app.version,
@@ -400,8 +704,9 @@ def _run_repair_pipeline(
     upload_name: str,
     source_bytes: bytes,
     allow_llm: bool,
-) -> tuple[list[VerifiedFix], RepairTransaction]:
+) -> tuple[list[VerifiedFix], RepairTransaction, Any]:
     """Run the real dry-run repair pipeline inside a temporary workspace."""
+    _csv_to_df(source_bytes)
     with tempfile.TemporaryDirectory() as tmpdir:
         temp_root = Path(tmpdir)
         upload_path = temp_root / upload_name
@@ -418,7 +723,52 @@ def _run_repair_pipeline(
         )
         if result.transaction is None:
             raise RuntimeError(result.receipt.reason)
-        return result.fixes, result.transaction
+        return result.fixes, result.transaction, result.receipt
+
+
+_ResultT = TypeVar("_ResultT")
+
+
+async def _run_with_timeout(label: str, func: Callable[[], _ResultT]) -> _ResultT:
+    """Run a blocking pipeline step with a public timeout failure mode."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(func),
+            timeout=float(REQUEST_TIMEOUT_SECONDS),
+        )
+    except TimeoutError as exc:
+        logger.warning("%s timed out after %d seconds", label, REQUEST_TIMEOUT_SECONDS)
+        raise _upload_problem(
+            status_code=504,
+            error="request_timeout",
+            message="The playground backend timed out before completing the request.",
+            timeout_seconds=REQUEST_TIMEOUT_SECONDS,
+        ) from exc
+
+
+def _profile_upload(source_bytes: bytes, *, advanced_requested: bool) -> dict[str, Any]:
+    """Parse and profile a CSV upload in a worker thread."""
+    df = _csv_to_df(source_bytes)
+    issues = run_all_detectors(df, schema=None)
+    return _issues_to_response(issues, df, advanced_requested=advanced_requested)
+
+
+def _limits_payload() -> dict[str, int]:
+    """Return processing limits exposed to the frontend and monitors."""
+    return {
+        "max_upload_bytes": MAX_UPLOAD_BYTES,
+        "max_rows": MAX_UPLOAD_ROWS,
+        "max_columns": MAX_UPLOAD_COLUMNS,
+        "max_cells": MAX_UPLOAD_CELLS,
+    }
+
+
+def _environment_name() -> str:
+    """Return a non-secret deployment environment label."""
+    configured = os.environ.get("DATAFORGE_ENV") or os.environ.get("DATAFORGE_PLAYGROUND_ENV")
+    if configured:
+        return configured
+    return "development" if os.environ.get("DATAFORGE_PLAYGROUND_DEV") == "1" else "production"
 
 
 @app.get("/")
@@ -427,6 +777,8 @@ async def root() -> dict[str, Any]:
     return {
         "service": "DataForge Playground API",
         "status": "ok",
+        "api_version": app.version,
+        "contract_version": CONTRACT_VERSION,
         "docs_url": "/api/docs",
         "frontend_hosting": "cloudflare_static_assets",
     }
@@ -436,9 +788,23 @@ async def root() -> dict[str, Any]:
 async def health() -> dict[str, Any]:
     """Return backend readiness plus UI-facing capability metadata."""
     return {
+        "service": "DataForge Playground API",
         "status": "ok",
         "advanced_available": _advanced_available(),
         "max_upload_bytes": MAX_UPLOAD_BYTES,
+        "api_version": app.version,
+        "contract_version": CONTRACT_VERSION,
+        "build_sha": os.environ.get("DATAFORGE_BUILD_SHA")
+        or os.environ.get("GITHUB_SHA")
+        or "unknown",
+        "server_time_utc": datetime.now(UTC).isoformat(),
+        "environment": _environment_name(),
+        "limits": _limits_payload(),
+        "cors_configured": bool(CORS_ORIGINS or CORS_ORIGIN_REGEX),
+        "otel_enabled": os.environ.get("DATAFORGE_OTEL_ENABLED", "").strip().lower()
+        in OTEL_ENABLED_VALUES,
+        "otel_instrumented": OTEL_INSTRUMENTED,
+        "metrics": request_metrics.snapshot(),
     }
 
 
@@ -480,8 +846,10 @@ async def profile(request: Request, file: UploadFile) -> dict[str, Any]:
     )
 
     try:
-        df = _csv_to_df(source_bytes)
-        issues = run_all_detectors(df, schema=None)
+        return await _run_with_timeout(
+            "profile",
+            lambda: _profile_upload(source_bytes, advanced_requested=advanced_requested),
+        )
     except HTTPException:
         raise
     except Exception as exc:
@@ -493,8 +861,6 @@ async def profile(request: Request, file: UploadFile) -> dict[str, Any]:
                 "message": "The profile pipeline could not complete safely.",
             },
         ) from exc
-
-    return _issues_to_response(issues, df, advanced_requested=advanced_requested)
 
 
 @app.post("/api/repair")
@@ -518,10 +884,13 @@ async def repair(request: Request, file: UploadFile) -> dict[str, Any]:
     )
 
     try:
-        fixes, transaction = _run_repair_pipeline(
-            upload_name=upload_name,
-            source_bytes=source_bytes,
-            allow_llm=advanced_requested,
+        fixes, transaction, receipt = await _run_with_timeout(
+            "repair",
+            lambda: _run_repair_pipeline(
+                upload_name=upload_name,
+                source_bytes=source_bytes,
+                allow_llm=advanced_requested,
+            ),
         )
     except HTTPException:
         raise
@@ -535,4 +904,4 @@ async def repair(request: Request, file: UploadFile) -> dict[str, Any]:
             },
         ) from exc
 
-    return _fixes_to_response(fixes, transaction, source_name=upload_name)
+    return _fixes_to_response(fixes, transaction, receipt=receipt, source_name=upload_name)

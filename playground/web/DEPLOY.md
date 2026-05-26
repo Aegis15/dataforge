@@ -67,6 +67,9 @@ The default config deploys to the enabled Worker URL:
 
 ```bash
 python scripts/playground/verify_frontend_deploy.py
+python scripts/playground/monitor_playground.py --json
+node scripts/playground/audit_live_playground.mjs --json
+dataforge15 release playground-check --json
 ```
 
 The verifier checks that:
@@ -76,6 +79,8 @@ The verifier checks that:
 - The backend root returns API metadata instead of stale frontend HTML.
 - `/api/health` exposes `status`, `advanced_available`, and `max_upload_bytes`.
 - Backend CORS allows the exact deployed frontend origin.
+- The release checklist also rejects broad `workers.dev` CORS, runs a sample
+  profile/repair smoke flow, and confirms the local release doctor passes.
 
 ## Quality Gates
 
@@ -90,6 +95,11 @@ npm --prefix playground/web run test:e2e
 The browser suite covers sample and upload flows, repair dry-run evidence,
 keyboard tabs, mobile viewport behavior, export/copy actions, and axe-powered
 accessibility checks.
+
+The scheduled production monitor lives in
+`.github/workflows/playground-monitor.yml` and runs the same public endpoint
+checks every 15 minutes. Set `PLAYGROUND_ALERT_WEBHOOK_URL` as a repository
+secret only if an external alert target is desired.
 
 ## Notes
 
