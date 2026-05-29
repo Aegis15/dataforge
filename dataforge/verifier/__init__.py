@@ -6,6 +6,7 @@ from typing import Any
 
 __all__ = [
     "AggregateDependency",
+    "ConstraintIR",
     "DomainBound",
     "FunctionalDependency",
     "SMTVerifier",
@@ -13,6 +14,7 @@ __all__ = [
     "SchemaToSMT",
     "VerificationResult",
     "VerificationVerdict",
+    "constraint_ir_from_schema",
     "explain_unsat_core",
 ]
 
@@ -23,6 +25,10 @@ def __getattr__(name: str) -> Any:
         from dataforge.verifier import schema as schema_module
 
         return getattr(schema_module, name)
+    if name in {"ConstraintIR", "constraint_ir_from_schema"}:
+        from dataforge.verifier import constraint_ir as constraint_ir_module
+
+        return getattr(constraint_ir_module, name)
     if name in {"SchemaToSMT", "VerificationResult", "VerificationVerdict"}:
         from dataforge.verifier import smt as smt_module
 

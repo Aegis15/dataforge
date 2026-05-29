@@ -11,7 +11,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from dataforge.cli.common import load_schema, read_csv, schema_from_mapping
+    from dataforge.cli.common import load_schema, schema_from_mapping
     from dataforge.detectors import Issue, Schema, Severity, run_all_detectors
     from dataforge.engine.repair import (
         CandidateFix,
@@ -36,6 +36,16 @@ if TYPE_CHECKING:
         infer_schema,
         load_constraint_review_artifact,
     )
+    from dataforge.stores import (
+        DuckDBStore,
+        PatchPlan,
+        TableStoreError,
+        TableStoreRepairResult,
+        is_table_store_uri,
+        run_table_store_repair,
+        store_from_uri,
+    )
+    from dataforge.table import read_csv
     from dataforge.transactions.log import (
         TransactionAuditReport,
         TransactionAuditVerdict,
@@ -44,7 +54,13 @@ if TYPE_CHECKING:
     )
     from dataforge.transactions.revert import TransactionRevertError, revert_transaction
     from dataforge.transactions.txn import CellFix, RepairTransaction
-    from dataforge.verifier import SMTVerifier, VerificationResult, VerificationVerdict
+    from dataforge.verifier import (
+        ConstraintIR,
+        SMTVerifier,
+        VerificationResult,
+        VerificationVerdict,
+        constraint_ir_from_schema,
+    )
 
 __all__ = [
     "CONTRACT_VERSION",
@@ -53,7 +69,10 @@ __all__ = [
     "ConstraintCandidate",
     "ConstraintReviewArtifact",
     "ConstraintReviewError",
+    "ConstraintIR",
+    "DuckDBStore",
     "Issue",
+    "PatchPlan",
     "ProposedFix",
     "RepairFailure",
     "RepairPipelineRequest",
@@ -73,12 +92,15 @@ __all__ = [
     "TransactionAuditVerdict",
     "TransactionLogError",
     "TransactionRevertError",
+    "TableStoreError",
+    "TableStoreRepairResult",
     "VerificationResult",
     "VerificationVerdict",
     "VerifiedFix",
     "__version__",
     "load_schema",
     "build_constraint_review_artifact",
+    "constraint_ir_from_schema",
     "dump_constraint_review_artifact",
     "load_constraint_review_artifact",
     "read_csv",
@@ -87,6 +109,9 @@ __all__ = [
     "run_repair_pipeline",
     "schema_from_mapping",
     "infer_schema",
+    "is_table_store_uri",
+    "run_table_store_repair",
+    "store_from_uri",
     "verify_transaction_log",
 ]
 
@@ -99,8 +124,11 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "ConstraintCandidate": ("dataforge.schema_inference", "ConstraintCandidate"),
     "ConstraintReviewArtifact": ("dataforge.schema_inference", "ConstraintReviewArtifact"),
     "ConstraintReviewError": ("dataforge.schema_inference", "ConstraintReviewError"),
+    "ConstraintIR": ("dataforge.verifier", "ConstraintIR"),
+    "DuckDBStore": ("dataforge.stores", "DuckDBStore"),
     "Issue": ("dataforge.detectors", "Issue"),
     "ProposedFix": ("dataforge.repairers", "ProposedFix"),
+    "PatchPlan": ("dataforge.stores", "PatchPlan"),
     "RepairFailure": ("dataforge.engine.repair", "RepairFailure"),
     "RepairPipelineRequest": ("dataforge.engine.repair", "RepairPipelineRequest"),
     "RepairPipelineResult": ("dataforge.engine.repair", "RepairPipelineResult"),
@@ -119,6 +147,8 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
     "TransactionAuditVerdict": ("dataforge.transactions.log", "TransactionAuditVerdict"),
     "TransactionLogError": ("dataforge.transactions.log", "TransactionLogError"),
     "TransactionRevertError": ("dataforge.transactions.revert", "TransactionRevertError"),
+    "TableStoreError": ("dataforge.stores", "TableStoreError"),
+    "TableStoreRepairResult": ("dataforge.stores", "TableStoreRepairResult"),
     "VerificationResult": ("dataforge.verifier", "VerificationResult"),
     "VerificationVerdict": ("dataforge.verifier", "VerificationVerdict"),
     "VerifiedFix": ("dataforge.engine.repair", "VerifiedFix"),
@@ -127,6 +157,7 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
         "dataforge.schema_inference",
         "build_constraint_review_artifact",
     ),
+    "constraint_ir_from_schema": ("dataforge.verifier", "constraint_ir_from_schema"),
     "dump_constraint_review_artifact": (
         "dataforge.schema_inference",
         "dump_constraint_review_artifact",
@@ -135,12 +166,15 @@ _PUBLIC_EXPORTS: dict[str, tuple[str, str]] = {
         "dataforge.schema_inference",
         "load_constraint_review_artifact",
     ),
-    "read_csv": ("dataforge.cli.common", "read_csv"),
+    "read_csv": ("dataforge.table", "read_csv"),
     "revert_transaction": ("dataforge.transactions.revert", "revert_transaction"),
     "run_all_detectors": ("dataforge.detectors", "run_all_detectors"),
     "run_repair_pipeline": ("dataforge.engine.repair", "run_repair_pipeline"),
     "schema_from_mapping": ("dataforge.cli.common", "schema_from_mapping"),
     "infer_schema": ("dataforge.schema_inference", "infer_schema"),
+    "is_table_store_uri": ("dataforge.stores", "is_table_store_uri"),
+    "run_table_store_repair": ("dataforge.stores", "run_table_store_repair"),
+    "store_from_uri": ("dataforge.stores", "store_from_uri"),
     "verify_transaction_log": ("dataforge.transactions.log", "verify_transaction_log"),
 }
 

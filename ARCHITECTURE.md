@@ -9,7 +9,7 @@ remain installable without web or model dependencies.
 
 ```mermaid
 flowchart LR
-    A["CSV + optional schema"] --> B["Detectors"]
+    A["CSV/table store + optional schema"] --> B["Detectors"]
     B --> C["Repairers"]
     C --> D["SafetyFilter"]
     D --> E["SMTVerifier"]
@@ -37,9 +37,13 @@ flowchart LR
   row deletion, conflicting batch writes, and unconfirmed sensitive changes.
 - **Verification**: Z3-backed SMT checks that reject fixes which violate schema
   constraints or cannot be proven safe.
+- **Patch planning**: `PatchPlan` is the backend-neutral write contract for
+  table stores. It records row identity, expected old values, forward SQL,
+  rollback SQL, preflight probes, verifier obligations, safety verdicts, and
+  audit metadata before any warehouse mutation.
 - **Transactions**: append-only hash-chained JSONL journals, immutable source
   snapshots, post-state hash guards, local audit verification, and
-  byte-for-byte revert.
+  byte-for-byte CSV revert or backend rollback for proven table stores.
 - **Benchmarks**: Hospital, Flights, and Beers loaders, method runners, quota
   accounting, and generated markdown reports.
 - **OpenEnv environment**: HTTP and in-process environment with typed actions:
@@ -105,6 +109,20 @@ flowchart TB
 
 The core pipeline owns repair behavior. Surrounding surfaces can expose or test
 the pipeline, but they should not create parallel write semantics.
+
+## Table Stores
+
+`dataforge.stores` contains the v1 table-store boundary:
+
+- `CSVStore` wraps the existing release-gated CSV transaction engine.
+- `DuckDBStore` is the local warehouse conformance adapter and supports
+  patch-plan dry-run, apply, audit, and rollback when stable row identity
+  columns are configured.
+- Snowflake, BigQuery, and Databricks adapters emit non-mutating patch plans and
+  refuse apply until credentialed conformance tests prove reversible semantics.
+
+Warehouse apply is denied unless the patch plan has stable row identity,
+preflight probes, rollback SQL, and deterministic verification evidence.
 
 ## Dependency Guidance
 

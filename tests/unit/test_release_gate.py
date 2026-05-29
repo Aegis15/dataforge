@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 
 from dataforge.release.gate import (
+    REQUIRED_SDIST_MEMBERS,
     REQUIRED_WHEEL_MEMBERS,
     SCHEMA_VERSION,
     ReleaseGateReport,
@@ -77,19 +78,7 @@ def test_wheel_contents_audit_rejects_non_package_files(tmp_path: Path) -> None:
 
 def test_sdist_contents_audit_accepts_allowed_surface(tmp_path: Path) -> None:
     sdist_path = tmp_path / "dataforge15-0.1.0rc1.tar.gz"
-    members = {
-        "PKG-INFO",
-        "README.md",
-        "LICENSE",
-        "MANIFEST.in",
-        "pyproject.toml",
-        "dataforge/__init__.py",
-        "dataforge/py.typed",
-        "dataforge/cli/constraints.py",
-        "dataforge/cli/profile.py",
-        "dataforge/cli/repair.py",
-        "dataforge/fixtures/hospital_10rows.csv",
-        "dataforge/fixtures/hospital_schema.yaml",
+    members = set(REQUIRED_SDIST_MEMBERS) | {
         "dataforge15.egg-info/PKG-INFO",
         "dataforge15.egg-info/SOURCES.txt",
         "dataforge15.egg-info/requires.txt",

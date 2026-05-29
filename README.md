@@ -30,6 +30,8 @@ Shipped in the current worktree:
 - Pending constraint review artifacts via `profile --constraints-out`, which
   can feed repair only after individual candidates are marked accepted
 - Matching deterministic repairers wired through SafetyFilter -> SMTVerifier
+- Backend-neutral `PatchPlan` and `TableStore` contracts for CSV, DuckDB, and
+  dry-run-only cloud warehouse boundaries
 - Reversible hash-chained transaction journals with immutable source snapshots
 - Public backend repair engine at `dataforge.engine.repair`
 - Real-world benchmark harness for Hospital, Flights, and Beers
@@ -45,6 +47,7 @@ Shipped in the current worktree:
 Not shipped yet:
 
 - warehouse-native or external adapter packages
+- credentialed Snowflake, BigQuery, or Databricks apply/revert conformance
 - a hosted product domain
 - design-partner, pilot-user, or customer validation evidence is not yet claimed
 - A production-quality trained model family
@@ -75,6 +78,21 @@ dataforge15 audit <txn-id>
 dataforge15 revert <txn-id>
 dataforge15 revert <txn-id> --search-root path/to --json
 ```
+
+Warehouse targets use `warehouse://` URIs and always emit a `patch_plan_v1`
+contract before any mutation. DuckDB is the local conformance backend; cloud
+warehouse adapters are dry-run-only boundaries until credentialed apply,
+audit, and rollback suites are enabled:
+
+```bash
+dataforge15 repair "warehouse://duckdb?database=dev.duckdb&relation=main.model&row_id=id" --dry-run --json
+dataforge15 repair "warehouse://snowflake?relation=PUBLIC.MODEL&row_id=ID" --dry-run --json
+```
+
+DuckDB `--apply` requires a stable row identity, records the patch plan in the
+transaction journal, and can be reverted through the same `audit` and `revert`
+commands. Snowflake, BigQuery, and Databricks apply are intentionally refused
+until their conformance gates prove reversible transactions.
 
 New transaction logs are local tamper-evident hash chains. `dataforge15 audit`
 verifies the chain head, event order, replayability, and revert prerequisites;

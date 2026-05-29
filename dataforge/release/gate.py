@@ -34,6 +34,11 @@ REQUIRED_WHEEL_MEMBERS = frozenset(
         "dataforge/fixtures/hospital_10rows.csv",
         "dataforge/fixtures/hospital_schema.yaml",
         "dataforge/safety/constitutions/default.yaml",
+        "dataforge/stores/cloud.py",
+        "dataforge/stores/duckdb.py",
+        "dataforge/stores/patch_plan.py",
+        "dataforge/stores/registry.py",
+        "dataforge/stores/repair.py",
         "dataforge/transactions/log.py",
         "dataforge/transactions/revert.py",
     }
@@ -59,6 +64,11 @@ REQUIRED_SDIST_MEMBERS = frozenset(
         "dataforge/cli/profile.py",
         "dataforge/cli/constraints.py",
         "dataforge/cli/repair.py",
+        "dataforge/stores/cloud.py",
+        "dataforge/stores/duckdb.py",
+        "dataforge/stores/patch_plan.py",
+        "dataforge/stores/registry.py",
+        "dataforge/stores/repair.py",
         "dataforge/fixtures/hospital_10rows.csv",
         "dataforge/fixtures/hospital_schema.yaml",
     }
@@ -403,6 +413,51 @@ def _json_step(
     )
 
 
+def _warehouse_dry_run_contract_step(result: subprocess.CompletedProcess[str]) -> ReleaseGateStep:
+    """Validate the installed warehouse dry-run contract without credentials."""
+    try:
+        payload = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        return ReleaseGateStep(
+            name="smoke_warehouse_cloud_dry_run_contract",
+            ok=False,
+            detail=f"Could not parse JSON output: {exc}",
+            metadata={"stdout_tail": _tail(result.stdout), "stderr_tail": _tail(result.stderr)},
+        )
+
+    plan = payload.get("patch_plan")
+    errors: list[str] = []
+    if payload.get("schema_version") != "table_store_repair_result_v1":
+        errors.append("warehouse dry-run result schema_version mismatch")
+    if payload.get("backend") != "snowflake":
+        errors.append(f"expected backend='snowflake', found {payload.get('backend')!r}")
+    if payload.get("mode") != "dry_run":
+        errors.append(f"expected mode='dry_run', found {payload.get('mode')!r}")
+    if not isinstance(plan, dict):
+        errors.append("patch_plan is missing or is not an object")
+    else:
+        if plan.get("schema_version") != "patch_plan_v1":
+            errors.append("patch_plan schema_version mismatch")
+        if plan.get("apply_supported") is not False:
+            errors.append("cloud warehouse dry-run must not claim apply support")
+        if plan.get("reversible") is not False:
+            errors.append("cloud warehouse dry-run must not claim reversibility")
+        if plan.get("operations") != []:
+            errors.append("cloud warehouse dry-run must not emit write operations")
+    return ReleaseGateStep(
+        name="smoke_warehouse_cloud_dry_run_contract",
+        ok=not errors,
+        detail="warehouse dry-run contract matched"
+        if not errors
+        else "warehouse dry-run contract mismatch",
+        metadata={
+            "errors": errors,
+            "top_level_keys": sorted(payload) if isinstance(payload, dict) else [],
+            "patch_plan_keys": sorted(plan) if isinstance(plan, dict) else [],
+        },
+    )
+
+
 def _copy_packaged_fixtures(venv_python: Path, smoke_dir: Path, *, cwd: Path) -> ReleaseGateStep:
     """Copy demo fixtures from the installed wheel into a mutable smoke directory."""
     script = (
@@ -641,6 +696,23 @@ def run_release_gate(*, keep_artifacts: bool = False) -> ReleaseGateReport:
             step, _result = _run_command(name, command, cwd=temp_root, timeout_seconds=30)
             if not _append_step(steps, step):
                 return ReleaseGateReport(ok=False, steps=steps, artifact_sha256=artifact_hashes)
+
+        step, warehouse_dry_run_result = _run_command(
+            "smoke_warehouse_cloud_dry_run",
+            [
+                dataforge15,
+                "repair",
+                "warehouse://snowflake?relation=PUBLIC.HOSPITALS&row_id=id",
+                "--dry-run",
+                "--json",
+            ],
+            cwd=temp_root,
+            timeout_seconds=30,
+        )
+        if not _append_step(steps, step):
+            return ReleaseGateReport(ok=False, steps=steps, artifact_sha256=artifact_hashes)
+        if not _append_step(steps, _warehouse_dry_run_contract_step(warehouse_dry_run_result)):
+            return ReleaseGateReport(ok=False, steps=steps, artifact_sha256=artifact_hashes)
 
         step, apply_result = _run_command(
             "smoke_repair_apply",
